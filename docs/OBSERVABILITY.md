@@ -88,10 +88,18 @@ something that left no task of its own behind:
 | `:knowledge_deleted` | `name`, `agent` | an operator removed a concept from the Studio |
 | `:knowledge_retrieved` | `name`, `agent` | the model called `load_knowledge` — the adoption signal (retrieval calls per conversation), not the `<knowledge>` injection itself |
 | `:knowledge_backfilled` | `agent`, `sessions`, `concepts`, `conflicts`, `dropped{}` | the recovery re-scan (`insika knowledge:backfill`) finished replaying an agent's stored sessions |
+| `:retrieval_reranked` | `provider`, `candidate_count`, `selected_count` | an opt-in memory or knowledge rerank selected candidates; no candidate text |
+| `:provider_warning` | `provider`, `message` | a rerank failed or returned invalid indexes; fallback context remains available |
 
 `delivery_failed` and `breaker_open` are the two the operator config is pointed at
 (`alerts.webhook` on the profile): each only fires when something durable did
 not land. `:ttft` is additive debug, absent unless `INSIKA_TURN_TIMING` is set.
+
+Rerank requests have `operation: "rerank"` in native model diagnostics. Their
+reported cost is tracked separately from chat and included once in the total.
+If any rerank request lacks usage, the rerank and total cost remain unknown.
+Candidate and selected counts measure narrowing, not recall: records excluded
+by the lexical index or recent-note window cannot appear in those counts.
 
 `:channel_delivered` is the one worth alerting on: a turn can be `:task_completed`
 and correct while the customer got nothing, because delivery is a separate,

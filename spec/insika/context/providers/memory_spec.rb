@@ -128,6 +128,20 @@ RSpec.describe Insika::Context::Providers::Memory do
         request(memory: true, message: "peanuts", retrieval: retrieval)) }.wait
     end
 
+    it "breaks equal lexical scores by recency, then stable note ID" do
+      mem.add_note(tenant: "acme", id: "b", text: "blue b", at: "2026-01-01T00:00:00Z")
+      mem.add_note(tenant: "acme", id: "a", text: "blue a", at: "2026-01-01T00:00:00Z")
+      mem.add_note(tenant: "acme", id: "new", text: "blue new", at: "2026-01-02T00:00:00Z")
+      llm = double
+      expect(llm).to receive(:rerank) do |_query, docs, **_options|
+        expect(docs).to eq(["blue new", "blue a", "blue b"])
+        Struct.new(:results).new([Struct.new(:index).new(0)])
+      end
+      wide = retrieval.merge(rerank: retrieval[:rerank].merge(candidate_limit: 3))
+      Async { described_class.new(store: mem, llm: llm).call(
+        request(memory: true, message: "blue", retrieval: wide)) }.wait
+    end
+
     it "uses the marked session cell without exposing other chats" do
       mem.add_note(tenant: "chat:one", text: "my peanuts", at: "2026-01-01T00:00:00Z")
       mem.add_note(tenant: "chat:two", text: "other secret", at: "2026-01-01T00:00:00Z")
