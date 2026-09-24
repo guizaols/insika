@@ -2098,7 +2098,8 @@ module Insika
       # fall back to tenant || session, today's behavior).
       ContextRequest.new(profile: profile, message: state.message, session: session,
                          checkpoint: resume_from, tenant: command_tenant(task), vars: vars,
-                         memory_scope: memory_tenant(task))
+                         memory_scope: memory_tenant(task),
+                         diagnostics: ->(type, data) { emit(type, data, task: task) })
     end
 
     # task_started payload. Carries the EXPLICIT command tenant so

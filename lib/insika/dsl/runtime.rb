@@ -262,7 +262,7 @@ module Insika
           Insika::Context::Providers::SkillTrigger.new(catalog: c[:skill_catalog]),
           Insika::Context::Providers::ToolSearch.new(catalog: c[:tool_catalog]),
           Insika::Context::Providers::Memory.new(store: spine.memory_store),
-          Insika::Context::Providers::Knowledge.new(store: spine.knowledge_store),
+          Insika::Context::Providers::Knowledge.new(store: spine.knowledge_store, llm: @llm),
           # Session briefing: read path. Inert for agents without briefing_fields.
           # Before Session, so the durable head renders above the transcript and
           # the tail recitation lands after it.

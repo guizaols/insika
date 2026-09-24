@@ -46,6 +46,27 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     fake
   end
 
+  it "attributes rerank diagnostics to the current task without candidate text" do
+    rerank = { provider: "cohere", model: "rerank-v3.5", candidate_limit: 2, timeout_seconds: 2 }
+    ranked_profile = Insika::AgentProfile.build(id: "acme", model: "m",
+      knowledge: { retrieve: true, top_k: 1, rerank: rerank })
+    knowledge_store.write("acme", "campinas", Insika::Knowledge::Concept.render(
+      name: "campinas", description: "campinas", type: "fact", body: "private body",
+      provenance: "observed", confidence: 0.6, sources: [], occurrences: 1,
+      created_at: Time.now.utc.iso8601, updated_at: Time.now.utc.iso8601))
+    task = task_for
+    state = Struct.new(:message, :session).new("campinas", nil)
+    request = build_executor.send(:build_context_request, task, ranked_profile, state, nil)
+    llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(0)]))
+
+    Async { Insika::Context::Providers::Knowledge.new(store: knowledge_store, llm: llm).call(request) }.wait
+
+    event = event_stream.events.find { |item| item.type == :retrieval_reranked }
+    expect(event.meta[:task_id]).to eq(task.id)
+    expect(event.data).to include(provider: "Knowledge", candidate_count: 1, selected_count: 1)
+    expect(event.data.inspect).not_to include("private body")
+  end
+
   it "writes the extracted concept to the knowledge store and emits :knowledge_learned" do
     stub_extractor(concepts: [{ "name" => "cep-13-campinas", "description" => "d", "type" => "fact", "body" => "b" }],
                    dropped: {}, cost: nil)
