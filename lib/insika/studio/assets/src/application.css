@@ -1470,7 +1470,7 @@
   .operation-workspace .drill-master { background:var(--panel); }
   .operation-workspace .drill-item { border:1px solid transparent; }
   .operation-workspace .drill-item.active { border-color:var(--line-2); background:var(--surface-1); }
-  .operation-detail { background:var(--ink); }
+  .operation-workspace .drill-detail { background:var(--ink); }
   .operation-detail .card, .operation-table, .card.operation-summary, .card.operation-diagnostics { box-shadow:none; border-radius:var(--radius-lg); }
   .operation-summary { display:flex; align-items:start; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; overflow-wrap:anywhere; }
   .operation-summary > div { min-width:0; }
