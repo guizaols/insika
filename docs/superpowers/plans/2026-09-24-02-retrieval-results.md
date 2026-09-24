@@ -20,6 +20,8 @@ Selected identities and candidate documents came from actual provider fragments 
 
 ## Live provider experiment
 
+Follow-up: a [live-model experiment with local agent packs](2026-09-24-02-retrieval-live-results.md) was subsequently completed. The status below describes this original deterministic run.
+
 **NOT RUN.** No provider credential or deployment latency/cost budget was supplied. These synthetic results establish harness behavior only. Before enabling an agent, run the same corpus with that graph’s isolated provider credentials and a registered rerank model, compare real answers, and confirm selected-context or answer improvement without regression, zero isolation/retention failures, and latency/cost within its existing deployment budget. Deployed packs remain off.
 
 ## Observed candidate documents and selections
