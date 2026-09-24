@@ -18,7 +18,7 @@
     <div class="model-filter-group">
       <label class="sr-only" for="model-period">Period</label>
       <select id="model-period" name="period"><% { "24h" => "Last 24 hours", "7d" => "Last 7 days", "30d" => "Last 30 days" }.each do |value, label| %><option value="<%= value %>"<%== ' selected' if @period == value %>><%= label %></option><% end %></select>
-      <button type="submit" class="model-apply">Apply filters <span aria-hidden="true">↗</span></button>
+      <button type="submit" class="primary">Apply filters <span aria-hidden="true">↗</span></button>
     </div>
   </form>
 
