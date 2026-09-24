@@ -1,7 +1,7 @@
-<header class="page-head">
+<header class="page-head harvest-head">
   <div>
     <%== crumbs_for("Harvest") %>
-    <h1>Harvest<span class="sub"><%= @agent ? "#{@agent}" : "no agent" %></span></h1>
+    <h1>Harvest<span class="sub">Turn conversation evidence into reusable skills</span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/harvest", @agent) %>
@@ -14,6 +14,7 @@
   <div class="empty">No agents yet. Add a <span class="mono">harvest:</span> block to an agent's pack to mine its finished traffic.</div>
 <% else %>
   <div class="card">
+    <h2>Find new skills</h2>
     <form method="post" action="/studio/harvest" class="actions">
       <%== csrf_tag %>
       <label>
@@ -24,24 +25,32 @@
           <% end %>
         </select>
       </label>
-      <label title="Ignore the mined markers and re-read the whole window (the ledger dedup still protects).">
-        <input type="checkbox" name="full" value="1"> full window
+      <label class="check" title="Ignore the mined markers and re-read the whole window (the ledger dedup still protects).">
+        <input type="checkbox" name="full" value="1"> Re-read full window
       </label>
-      <button type="submit" class="primary">Mine now</button>
+      <button type="submit" class="primary" data-turbo-submits-with="Mining…">Mine now</button>
     </form>
     <div class="skill-desc muted">
-      Reads this agent's finished conversations, asks the configured miner for SKILL
-      proposals, and filters them through the negative list and the evidence ledger.
-      Nothing is ever applied automatically — a candidate only lands after the double
-      gate AND a human approval.
+      Reviews finished conversations and proposes skills. Nothing is applied until the evidence checks pass and you approve it.
     </div>
   </div>
 
+  <% if @candidates.empty? && @blocked.empty? && @pending_gates.empty? %>
+    <div class="empty">No skills awaiting review. Mine finished conversations to find candidates.</div>
+  <% end %>
+
   <%# The human's inbox. %>
   <% if @candidates.any? %>
-    <h2>Awaiting approval<span class="sub">the human's answer</span></h2>
+    <h2>Awaiting approval<span class="sub">review evidence before applying</span></h2>
     <% @candidates.each do |cand| %>
-      <div class="card">
+      <div class="card harvest-candidate">
+        <div class="review-heading"><div><h3><%= cand.name %></h3><p class="muted"><%= cand.description %></p></div><span class="pill warn">Awaiting approval</span></div>
+        <section class="harvest-proposal">
+          <h3>Proposed skill</h3>
+          <p class="muted"><%= cand.rationale %></p>
+          <div class="markdown-preview" data-controller="markdown"><%= cand.body %></div>
+        </section>
+        <details class="review-details"><summary>Evaluation results</summary>
         <div class="skill-desc">
           <span class="status <%= status_class(cand.status) %>">gated</span>
           <span class="mono"><%= cand.name %></span>
@@ -55,19 +64,23 @@
           <span class="mono"><%= cand.proposer %></span> · <%= (cand.eval_gate || {})["passed_cases"] %>/<%= (cand.eval_gate || {})["cases"] %> case(s) no regression
           · conversion <%= (cand.conversion_gate || {})["current"] %> vs <%= (cand.conversion_gate || {})["baseline"] %> (threshold <%= (cand.conversion_gate || {})["threshold"] %>)
         </div>
+        </details>
         <% if (excerpt = candidate_excerpt(cand)).any? %>
-          <details class="skill-desc">
-            <summary>evidence excerpt</summary>
+          <details class="review-details" open>
+            <summary>Conversation evidence</summary>
             <% excerpt.each do |sid, idx, text| %>
-              <div class="preview muted">
-                <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid %></a> [<%= idx %>]: <%= text %>
+              <div class="harvest-evidence">
+                <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>">Open conversation ↗</a>
+                <p class="review-source"><%= text %></p>
               </div>
             <% end %>
           </details>
         <% end %>
+        <details class="review-details"><summary>Source conversations</summary>
         <% Array(cand.origin).each do |sid| %>
           <a class="mono muted" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>"><%= sid %></a>
         <% end %>
+        </details>
         <form method="post" action="/studio/harvest/promote" class="actions">
           <%== csrf_tag %>
           <input type="hidden" name="agent" value="<%= cand.agent %>">
@@ -76,13 +89,11 @@
             Note
             <input type="text" name="note" placeholder="why (optional)">
           </label>
-          <button type="submit" class="primary">Promote</button>
+          <button type="submit" class="primary" data-turbo-submits-with="Promoting…">Promote</button>
           <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
         </form>
         <div class="skill-desc muted">
-          Promoting snapshots the pre-promotion state, writes the skill into this store's
-          scope, enables it on the allowlist and appends the promotion log row. Rollback
-          is the one-click mirror.
+          Promoting saves and enables this skill for the agent. The previous state is saved so you can roll it back.
         </div>
       </div>
     <% end %>
@@ -90,7 +101,7 @@
 
   <%# Gated-but-blocked: the ruler's hole, named. %>
   <% if @blocked.any? %>
-    <h2>Blocked<span class="sub">gated, waiting on the ruler</span></h2>
+    <h2>Blocked<span class="sub">resolve these before approval</span></h2>
     <div class="card">
       <ul class="history">
         <% @blocked.each do |cand| %>
@@ -116,7 +127,7 @@
 
   <%# Mined, not yet gated. %>
   <% if @pending_gates.any? %>
-    <h2>Pending<span class="sub">mined, awaiting the double gate</span></h2>
+    <h2>Pending<span class="sub">awaiting evaluation and conversion checks</span></h2>
     <div class="card">
       <ul class="history">
         <% @pending_gates.each do |cand| %>
@@ -128,7 +139,7 @@
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= cand.agent %>">
               <input type="hidden" name="candidate_id" value="<%= cand.id %>">
-              <button type="submit" class="primary">Gate it</button>
+              <button type="submit" class="primary" data-turbo-submits-with="Checking…">Run checks</button>
               <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
             </form>
           </li>
@@ -139,7 +150,7 @@
 
   <%# The promotion log — the single ledger, with the rollback mirror. %>
   <% if @promotions.any? %>
-    <h2>Promoted<span class="sub">the append-only log</span></h2>
+    <h2>Promoted<span class="sub">promotion history</span></h2>
     <div class="card">
       <ul class="history">
         <% @promotions.each do |row| %>
@@ -159,7 +170,7 @@
                 <%== csrf_tag %>
                 <input type="hidden" name="agent" value="<%= row.agent %>">
                 <input type="hidden" name="snapshot_ref" value="<%= row.snapshot_ref %>">
-                <input type="text" name="reason" placeholder="why (optional)">
+                <label>Rollback reason <input type="text" name="reason" placeholder="Optional"></label>
                 <button type="submit" class="ghost">Rollback</button>
               </form>
             <% end %>
@@ -171,7 +182,8 @@
 
   <%# The negative list block. %>
   <% if @negative && @negative.rules.any? %>
-    <h2>Negative list<span class="sub">the versioned seed, engine-applied</span></h2>
+    <details class="review-details"><summary>Negative list rules</summary>
+    <h2>Negative list<span class="sub">rules that exclude candidates</span></h2>
     <div class="card">
       <ul class="history">
         <% @negative.rules.each do |rule| %>
@@ -188,11 +200,12 @@
         <span class="mono">insika harvest:negative import --agent ID --file F</span>.
       </div>
     </div>
+    </details>
   <% end %>
 
   <%# The ruler block. %>
   <% if @criterion %>
-    <h2>The conversion criterion<span class="sub">frozen before the first promotion</span></h2>
+    <h2>Conversion criterion<span class="sub">frozen before the first promotion</span></h2>
     <div class="card">
       <div class="skill-desc">
         <span class="pill">metric <%= @criterion.rule.metric %></span>
@@ -210,7 +223,7 @@
 
   <% if @runs.any? %>
     <h2>Runs<span class="sub">most recent first</span></h2>
-    <div class="card">
+    <div class="card table-scroll" tabindex="0" role="region" aria-label="Harvest runs">
       <table class="grid">
         <thead>
           <tr><th>status</th><th>run</th><th class="num">candidates</th><th class="num">tokens</th><th class="time">started</th></tr>
