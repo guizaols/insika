@@ -7,6 +7,25 @@ permalink: /observability/
 
 # Observability — native model diagnostics and OpenTelemetry
 
+## Studio Models
+
+Open the operator-authenticated `/studio/models` page to filter native
+requests by the last 24 hours, 7 days, or 30 days, provider, and model. It shows
+request volume, failures, retries, reported USD cost and unknown-cost coverage,
+p50/p90/p95 latency, separate input/output/cache-read/cache-write/thinking token
+subtotals, and the 20 slowest measured requests linked to their tasks.
+
+Request latency includes native retries. Retries count usage attempts beyond the
+first within a request, not Insika task executions. Percentiles use completed
+requests with measured durations. Cost and token values sum only reported usage;
+when coverage is incomplete, they are subtotals, and a dash means no value was
+reported. An unknown-cost failed attempt followed by a priced success leaves
+partial cost coverage even when the subtotal is known.
+
+The page reads content-free summaries stored independently of the capped task
+trace. History starts when the summaries are deployed; earlier requests are not
+backfilled. Task deletion, retention, and tenant purge remove their summaries.
+
 Insika already has an observability spine: the **event stream**. Every turn emits
 structured events (`task_started`, `tool_call`/`tool_result`, `data_tool_call`,
 `task_completed`/`task_failed`/`task_cancelled`), each stamped with
@@ -80,7 +99,7 @@ The bridge speaks the standard the market already runs on: point any OTLP backen
 at Insika and a real turn shows up as a full trace, next to counters and histograms
 you can chart without touching a span.
 
-**This page is a convention, not an integration.** Insika ships no dashboard, no
+**The OpenTelemetry section is a convention, not an integration.** Insika ships no OTEL dashboard, no
 backend config, no vendor file. It ships a stable set of attribute and instrument
 names, and the recipes below tell you what to chart against them — in whatever you
 already run.
