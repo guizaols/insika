@@ -70,12 +70,14 @@ The engine never writes store vocabulary.
 
 The **Facts** page (operate group, next to Follow-ups) shows:
 
-- **Pending** — oldest first, because evidence ages. Each card is the fact,
-  its confidence, its scope (`tenant:customer`), and the evidence excerpt read
-  from the transcript at request time (evidence is a link, never a copy). Three
-  buttons: **Approve & save to memory**, **Reject** (with an optional reason,
-  shown on the card), **Dismiss** (ghost — labelled "will not be proposed
-  again").
+- **Pending** — oldest first, because evidence ages. Select a fact to review its
+  proposed value, model confidence and conversation evidence. Long excerpts scroll
+  within the evidence panel; **Open conversation** shows their source. Keys and
+  scope/session IDs live under **Technical details**. **Approve & save to memory**
+  saves the value; **Reject or dismiss** expands the alternatives, including an
+  optional rejection reason. Both prevent the same key and value from being proposed
+  again. Decisions refresh the queue and open the next pending fact in the selected
+  agent/scope.
 - **Stale** — the CAS-lost re-present (below): the proposed value struck
   through next to the operator's current value, resolved by dismissal.
 - **Recent** — every resolved proposal, most recent first, with operator and

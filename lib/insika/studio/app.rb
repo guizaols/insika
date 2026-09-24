@@ -2805,9 +2805,9 @@ end
       @selected = insika[:proposal_store]&.find(id)
       next_404 unless @selected
       if turbo_frame?("fact-detail")
-        render("fact_detail", locals: { frame_only: true }, layout: false)
+        render("fact_detail", layout: false)
       else
-        view("fact_detail", locals: { frame_only: false })
+        view("facts")
       end
     end
 
