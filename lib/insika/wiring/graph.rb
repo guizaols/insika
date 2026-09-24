@@ -218,6 +218,7 @@ module Insika
         # the per-turn extraction hook (nil = the loop is off,
         # parity). Gated per-agent by `profile.knowledge`.
         knowledge_store: spine.knowledge_store,
+        # llm stays graph-scoped; Executor binds instrumentation on operation copies.
         **executor_extra
       )
 
