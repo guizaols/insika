@@ -18,7 +18,7 @@
     <% active_id = defined?(active_id) ? active_id : nil %>
     <% show_outcomes = defined?(show_outcomes) ? show_outcomes : false %>
     <% if @agents.empty? %>
-      <div class="empty">No agents yet. Create your first agent from the pane on the right.</div>
+      <div class="empty">No agents yet. Create your first agent using the new agent form.</div>
     <% else %>
       <% @agents.each do |a| %>
         <a class="drill-item<%== ' active' if a.id == active_id %>"
@@ -29,7 +29,7 @@
           <div class="drill-item-name">
             <span class="avatar sm <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
             <span class="txt" title="<%= a.id %>"><%= a.id %></span>
-            <% if a.memory %><span class="pill plain">mem</span><% end %>
+            <% if a.memory %><span class="pill plain">memory</span><% end %>
             <% if show_outcomes && (latest = @latest_outcomes&.dig(a.id)) %>
               <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
                     title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
