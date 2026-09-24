@@ -900,12 +900,20 @@ module Insika
         # (the Response content lives in the :done event).
         @hooks.around(:task, state) do |state|
         yield state if block_given?
-        prepare_turn(task, profile, state, actor, resume_from) # stages 2-3 (mutates state)
+        prepare = ->(st) { prepare_turn(task, profile, st, actor, resume_from) }
+        paid_retrieval = (Coercion.truthy?(profile.knowledge&.dig("retrieve")) && profile.knowledge&.dig("rerank")) ||
+                         (profile.memory && profile.memory_retrieval)
+        middleware_options = if paid_retrieval && @middleware.is_a?(MiddlewareStack)
+                               { prepare: prepare }
+                             else
+                               prepare.call(state)
+                               {}
+                             end
 
         # stage 4: Middleware wraps stages 5-9. A link that
         # short-circuits does NOT call the terminal and sets state.halt_reason.
         terminal_ran = false
-        @middleware.call(state) do |st|
+        @middleware.call(state, **middleware_options) do |st|
           raise Insika::Error, "turn halted: #{st.halt_reason}" if st.halt_reason
 
           terminal_ran = true
@@ -2096,10 +2104,16 @@ module Insika
       # travels in vars["history"] (Session provider convention), not in a field
       # of its own. `memory_scope` is the WS8 customer cell (nil = the providers
       # fall back to tenant || session, today's behavior).
+      turn = state.turn
       ContextRequest.new(profile: profile, message: state.message, session: session,
                          checkpoint: resume_from, tenant: command_tenant(task), vars: vars,
                          memory_scope: memory_tenant(task),
-                         diagnostics: ->(type, data) { emit(type, data, task: task) })
+                         diagnostics: lambda { |type, data|
+                           if type == :llm_usage && data["operation"] == "rerank"
+                             (state.rerank_usage ||= []) << data
+                           end
+                           emit(type, data.merge("turn" => turn), task: task)
+                         })
     end
 
     # task_started payload. Carries the EXPLICIT command tenant so
@@ -2616,7 +2630,11 @@ module Insika
 
     def persist_turn(task, profile, state, content, session: true, reply_origin: nil, timing: nil)
       new_messages = turn_transcript(state, content, origin: command_origin(task), reply_origin: reply_origin)
-      transcript = flatten_history(state.context.history) + new_messages
+      # Early edge refusal has no built context; retain the existing history in
+      # its checkpoint while keeping the refusal out of the session transcript.
+      history = state.context&.history || command_history(task) ||
+                (task.session_id && @session_store.find(task.session_id)&.messages)
+      transcript = flatten_history(history) + new_messages
 
       @checkpoint_store.save(Insika::Checkpoint.new(
                                task_id: task.id, turn: state.turn + 1, session_id: task.session_id,
@@ -2741,13 +2759,13 @@ module Insika
       return unless config && Coercion.truthy?(config["extract"])
       return if knowledge_transcript(new_messages).length < KNOWLEDGE_MIN_CHARS
 
-      extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model)
+      extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model, llm: @llm)
       return unless extractor
 
       # Same resolved model as the extractor — a deployment names one
       # knowledge model, not two. nil consolidator (no model resolvable) is
       # still meaningful: write_concept's conservative default.
-      consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model)
+      consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model, llm: @llm)
 
       run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator) }
       return run.call unless @supervised

@@ -14,7 +14,7 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     Insika::AgentProfile.build(id: "acme", model: "m", knowledge: { "extract" => true, "model" => "fake-model" })
   end
 
-  def build_executor(store: knowledge_store)
+  def build_executor(store: knowledge_store, llm: nil)
     Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
@@ -22,7 +22,7 @@ RSpec.describe "Insika::Executor knowledge extraction" do
       profiles: { "acme" => profile },
       session_store: Insika::SessionStore.new(store: backend), task_store: Insika::TaskStore.new(store: backend),
       checkpoint_store: Insika::CheckpointStore.new(store: backend),
-      event_stream: event_stream, knowledge_store: store
+      event_stream: event_stream, knowledge_store: store, llm: llm
     )
   end
 
@@ -55,7 +55,7 @@ RSpec.describe "Insika::Executor knowledge extraction" do
       provenance: "observed", confidence: 0.6, sources: [], occurrences: 1,
       created_at: Time.now.utc.iso8601, updated_at: Time.now.utc.iso8601))
     task = task_for
-    state = Struct.new(:message, :session).new("campinas", nil)
+    state = Insika::TurnState.new(task: task, profile: ranked_profile, turn: 7, message: "campinas")
     request = build_executor.send(:build_context_request, task, ranked_profile, state, nil)
     llm = double(rerank: Struct.new(:results).new([Struct.new(:index).new(0)]))
 
@@ -63,8 +63,24 @@ RSpec.describe "Insika::Executor knowledge extraction" do
 
     event = event_stream.events.find { |item| item.type == :retrieval_reranked }
     expect(event.meta[:task_id]).to eq(task.id)
-    expect(event.data).to include(provider: "Knowledge", candidate_count: 1, selected_count: 1)
+    expect(event.data).to include(provider: "Knowledge", candidate_count: 1, selected_count: 1, "turn" => 7)
     expect(event.data.inspect).not_to include("private body")
+  end
+
+  it "records the captured turn in both native retrieval diagnostic stores" do
+    executor = build_executor
+    traces = Insika::LLMTraceStore.new(store: backend)
+    executor.instance_variable_set(:@llm_trace_store, traces)
+    executor.instance_variable_set(:@model_metrics_store, Insika::ModelMetricsStore.new(store: backend))
+    task = task_for
+    state = Insika::TurnState.new(task: task, profile: profile, turn: 7, message: "query")
+    request = executor.send(:build_context_request, task, profile, state, nil)
+    state.instance_variable_set(:@turn, 8)
+    request.diagnostics.call(:llm_usage, { "operation" => "rerank", "request_id" => "r1", "input_tokens" => 12 })
+
+    expect(traces.for_task(task.id).fetch("entries").first).to include("turn" => 7, "operation" => "rerank")
+    metric = backend.get(Insika::ModelMetricsStore::SCOPE, Insika::ModelMetricsStore.task_prefix(task.id) + "r1")
+    expect(metric).to include("task_id" => task.id, "turn" => 7)
   end
 
   it "writes the extracted concept to the knowledge store and emits :knowledge_learned" do
@@ -81,6 +97,16 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     expect(event_stream.types).to include(:knowledge_learned)
     learned = event_stream.events.find { |e| e.type == :knowledge_learned }
     expect(learned.data).to eq(name: "cep-13-campinas", type: "fact", agent: "acme")
+  end
+
+  it "passes its own LLM context to extraction and consolidation" do
+    llm = Object.new
+    extractor = stub_extractor(concepts: [], dropped: {}, cost: nil)
+    expect(Insika::Knowledge::ExtractorFactory).to receive(:build)
+      .with(profile.knowledge, utility_model: nil, llm: llm).and_return(extractor)
+    expect(Insika::Knowledge::ConsolidatorFactory).to receive(:build)
+      .with(profile.knowledge, utility_model: nil, llm: llm).and_return(nil)
+    build_executor(llm: llm).send(:finalize_knowledge_extraction, task_for, profile, long_messages)
   end
 
   it "no-ops without a knowledge store (parity)" do

@@ -167,9 +167,11 @@ The order is not arbitrary:
 - **The initial checkpoint is written before the model call.** "The checkpoint of
   turn *n* holds the state at the *start* of turn *n*." Without it, a crash during
   the model call would orphan the task with no checkpoint — unrecoverable.
-- **Middleware wraps the model-facing stages**, so the edge limiter and input
-  guardrail run *before* the provider is ever touched — a flood or an injection is
-  refused without a paid model call.
+- **Middleware wraps the chat stages.** For opt-in reranking, the leading edge
+  limiter also wraps context preparation: admission runs once before paid retrieval.
+  Context still precedes policy; the input guardrail and plugin middleware receive
+  the prepared context, including any budget warning, before chat runs. Turns with
+  lexical-only retrieval keep the original order.
 - **Persistence is a fixed order** (checkpoint → session → task) and a pure drain
   point: the last stage never suspends, so a checkpoint is never left half-written.
 - **Output validation** runs as an after-task hook on the produced content

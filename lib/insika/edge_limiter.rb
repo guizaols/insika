@@ -57,7 +57,7 @@ module Insika
       @event_stream = event_stream
     end
 
-    def call(state, &nxt)
+    def call(state, prepare: nil, &nxt)
       edge = platform_edge
       limits = state.profile.limits || {}
       # A resume (crash/pause recovery) re-enters the pipeline for a turn that was
@@ -100,9 +100,12 @@ module Insika
       # turn  rides the same rule: the follow-up policy is the
       # volume control, not the budget wall.
       budget_on = budget_configured?(state)
-      budget_enforce(state) unless resumed || scheduled
+      budget_notes = []
+      budget_enforce(state, notes: budget_notes) unless resumed || scheduled
 
       result = begin
+        prepare&.call(state)
+        budget_notes.each { |note| inject_budget_note(state, note) }
         nxt.call(state)
       ensure
         # A turn that FAILED after burning tokens still SPENT them: record the
@@ -154,12 +157,20 @@ module Insika
     # blind. Same billed-spend rule as `Evals::Runner#billed_tokens`.
     # nil usage (workflow turn / provider without counts) records nothing.
     def record_usage(state, window)
-      usage = state.usage || {}
-      tokens = usage[:total_tokens].to_i + usage[:cached_tokens].to_i +
-               usage[:cache_creation_tokens].to_i
+      tokens = billed_tokens(state)
       return if tokens.zero?
 
       @ledger.add(TOKENS_KIND, state.profile.id.to_s, window: window, by: tokens)
+    end
+
+    # Native rerank counts remain separate from chat usage and retain unknown
+    # fields. Only reported token buckets contribute to spend enforcement.
+    def billed_tokens(state)
+      usage = state.usage || {}
+      usage[:total_tokens].to_i + usage[:cached_tokens].to_i + usage[:cache_creation_tokens].to_i +
+        Array(state.rerank_usage).sum do |entry|
+          %w[input_tokens output_tokens cache_read_tokens cache_write_tokens].sum { |key| entry[key].to_i }
+        end
     end
 
     # Graceful halt: safe reply + audit metadata, short-circuit (no nxt).
@@ -187,7 +198,7 @@ module Insika
 
     # -> truthy (the budget hash) when budget checks ran. Raises BudgetExceeded
     # on a HARD cap breach.
-    def budget_enforce(state, now: Time.now)
+    def budget_enforce(state, notes:, now: Time.now)
       budget = state.profile.respond_to?(:budget) ? state.profile.budget : nil
       return nil if budget.nil? || @budget_ledger.nil?
 
@@ -202,9 +213,9 @@ module Insika
               retry_after: @budget_ledger.reset_in(w[:window], now: now)
             )
           end
-          warn_budget(state, tenant, agent, w, spent, now, level: "cap")
+          warn_budget(state, tenant, agent, w, spent, now, level: "cap", notes: notes)
         elsif spent >= w[:alert_at]
-          warn_budget(state, tenant, agent, w, spent, now, level: "alert_at")
+          warn_budget(state, tenant, agent, w, spent, now, level: "alert_at", notes: notes)
         end
       end
       budget
@@ -240,10 +251,9 @@ module Insika
     # (window) cell: the `alert_at` crossing and the real soft-cap crossing are
     # separate markers, so the cap event is never swallowed by the 80% one that
     # fired earlier (WS2).
-    def warn_budget(state, tenant, agent, w, spent, now, level:)
-      inject_budget_note(state,
-                         "[budget: agent '#{agent}' is at #{spent}/#{w[:cap]} tokens this " \
-                         "#{w[:window]} window — keep this turn cheap]")
+    def warn_budget(state, tenant, agent, w, spent, now, level:, notes:)
+      notes << "[budget: agent '#{agent}' is at #{spent}/#{w[:cap]} tokens this " \
+               "#{w[:window]} window — keep this turn cheap]"
       return if @budget_ledger.mark_alert(tenant: tenant, agent: agent, window: w[:window],
                                           level: level, now: now)
 
@@ -280,9 +290,7 @@ module Insika
     # The turn's REAL billed spend (input + output + cached + cache_creation —
     # the A4 rule) on the calendar windows.
     def record_budget_usage(state, now: Time.now)
-      usage = state.usage || {}
-      tokens = usage[:total_tokens].to_i + usage[:cached_tokens].to_i +
-               usage[:cache_creation_tokens].to_i
+      tokens = billed_tokens(state)
       return if tokens.zero?
 
       @budget_ledger.add(tenant: budget_tenant(state), agent: state.profile.id.to_s,

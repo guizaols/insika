@@ -232,6 +232,10 @@ module Insika
           profiles: profiles, proposal_store: spine.proposal_store,
           session_store: spine.session_store, memory_store: spine.memory_store,
           settings_store: executor_extra[:settings_store],
+          distiller_factory: ->(config) {
+            Insika::Distill::DistillerFactory.build(config,
+              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+          },
           event_stream: spine.event_stream
         )
 
@@ -327,7 +331,11 @@ module Insika
           skill_store: skill_catalog.store, # the harvest's dedup reads the authored skills
           tool_trace_store: executor_extra[:tool_trace_store],
           settings_store: executor_extra[:settings_store],
-          negative_list: nil, miner_factory: nil,
+          negative_list: nil,
+          miner_factory: ->(config) {
+            Insika::Harvest::MinerFactory.build(config,
+              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+          },
           event_stream: spine.event_stream
         )
         executor.harvest_engine = Insika::HarvestEngine.new(
@@ -566,7 +574,11 @@ module Insika
                        skill_store: skill_catalog.store,
                        tool_trace_store: executor_extra[:tool_trace_store],
                        settings_store: executor_extra[:settings_store],
-                       negative_list: nil, miner_factory: nil,
+                       negative_list: nil,
+                       miner_factory: ->(config) {
+                         Insika::Harvest::MinerFactory.build(config,
+                           utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+                       },
                        event_stream: spine.event_stream
                      ))
         bus.register(:gate_harvest,

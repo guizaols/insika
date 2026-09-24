@@ -163,7 +163,7 @@ module Deploy
     # per-turn OutputFilter (stream redaction) injected into the Executor. Per-agent
     # `guardrails:` config auto-enables/disables each turn; the moderator resolves the
     # platform utility_model (SettingsStore, #18) as its fallback model.
-    GUARDRAILS = Insika::Safety::Factory.new(settings_store: SETTINGS_STORE)
+    GUARDRAILS = Insika::Safety::Factory.new(settings_store: SETTINGS_STORE, llm: LLM_CONTEXT)
 
     # Production edge: rate-limit per chat + token ceiling per
     # agent, both opt-in (Studio > Settings > Edge limits; per-agent overrides in
@@ -299,7 +299,7 @@ module Deploy
     # needs `GOLDEN_STORE`/`SETTINGS_STORE`, and neither lives on the spine —
     # the minimal wiring builds without either) — registered here, the same
     # call `DSL::Runtime` makes for its own graph.
-    Insika::Wiring::Graph.register_persona_eval_tool(GRAPH, golden_store: GOLDEN_STORE, settings_store: SETTINGS_STORE)
+    Insika::Wiring::Graph.register_persona_eval_tool(GRAPH, golden_store: GOLDEN_STORE, settings_store: SETTINGS_STORE, llm: LLM_CONTEXT)
 
     # Refinement: a candidate is scored by RUNNING it —
     # clone the agent, apply the edits to the clone, replay the golden set over the
@@ -342,7 +342,7 @@ module Deploy
           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
-      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) }
     )
     # Who WRITES the candidates. Per agent (`refinement.proposers`, a
     # PANEL — or `refinement.proposer`, one), falling back to the platform
@@ -353,7 +353,7 @@ module Deploy
     # spend money on.
     PROPOSER_FACTORY = lambda { |config|
       Insika::Refinement::ProposerFactory.panel(
-        config, utility_model: (SETTINGS_STORE.get || {})["utility_model"]
+        config, utility_model: (SETTINGS_STORE.get || {})["utility_model"], llm: LLM_CONTEXT
       )
     }
     # `mode: auto_apply` reuses this handler rather than writing files itself, so
@@ -408,7 +408,7 @@ module Deploy
           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
-      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"]) }
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) }
     )
     # The second ruler: the store's funnel metric against the frozen baseline.
     # nil criterion -> the gate refuses with :no_criterion.
@@ -420,7 +420,10 @@ module Deploy
       session_store: SESSION_STORE, task_store: TASK_STORE,
       skill_store: SKILL_STORE, tool_trace_store: TOOL_TRACE_STORE,
       settings_store: SETTINGS_STORE, negative_list: HARVEST_NEGATIVE,
-      miner_factory: nil, # resolves harvest.miner.model -> the platform utility_model
+      miner_factory: ->(config) {
+        Insika::Harvest::MinerFactory.build(config,
+          utility_model: (SETTINGS_STORE.get || {})["utility_model"], llm: LLM_CONTEXT)
+      },
       event_stream: EVENT_STREAM
     )
     # the automated loop rides the deployment's own runner (the negative
@@ -458,7 +461,7 @@ module Deploy
       BUS.register(:judge_shadow_pairs,
                    Insika::Commands::JudgeShadowPairs.new(
                      shadow_pairs: SPINE.shadow_pair_store, settings_store: SETTINGS_STORE,
-                     criterion: PARITY_CRITERION, event_stream: EVENT_STREAM
+                     criterion: PARITY_CRITERION, event_stream: EVENT_STREAM, llm: LLM_CONTEXT
                    ))
     end
 

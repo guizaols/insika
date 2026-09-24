@@ -156,6 +156,9 @@ module Insika
     # (workflow) or provider without counts.
     attr_accessor :usage
 
+    # Native rerank usage events, separate from the chat/Responses token totals.
+    attr_accessor :rerank_usage
+
     # Internal (Tool Search): ids of side-effects already completed in the
     # interrupted turn, propagated to the tools PROMOTED by tool_search (the same `skip`
     # that the eager tools' wrap_tools receives). Set in run_pipeline;
