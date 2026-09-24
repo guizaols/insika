@@ -88,6 +88,27 @@ RSpec.describe "Durable model metrics" do
         expect(@backend.list(Insika::ModelMetricsStore::SCOPE)).to be_empty
       end
 
+      it "buckets filtered requests without bridging missing measurements or averaging percentiles" do
+        start = now - 86_400
+        [start, start + 1800, start + 3600, now].each_with_index do |at, i|
+          record("llm_request", id: i.to_s, at: at.iso8601, duration_ms: [10, 30, nil, 90][i])
+          record("llm_usage", id: i.to_s, cost: [0.1, nil, 0, 0.3][i])
+        end
+        record("llm_request", id: "excluded", provider: "other", duration_ms: 999)
+        report = store.report(period: "24h", provider: "deepseek", now: now)
+        series = report.fetch("series")
+        expect(series.size).to eq(24)
+        expect(series.first).to include("at" => start.iso8601, "requests" => 2,
+          "p50_ms" => 10, "p95_ms" => 30, "cost" => 0.1, "unknown_cost_requests" => 1)
+        expect(series[1]).to include("requests" => 1, "cost" => 0, "p50_ms" => nil)
+        expect(series[2]).to include("requests" => 0, "cost" => nil, "p95_ms" => nil)
+        expect(series.last).to include("requests" => 1, "p95_ms" => 90)
+        expect(series.sum { |bucket| bucket["requests"] }).to eq(report["totals"]["requests"])
+        expect(report["totals"]["p50_ms"]).to eq(30)
+        expect(store.report(period: "7d", now: now)["series"].size).to eq(28)
+        expect(store.report(period: "30d", now: now)["series"].size).to eq(30)
+      end
+
       it "removes metrics through retention and tenant purge and does not recreate them" do
         sessions = Insika::SessionStore.new(store: @backend)
         memory = Insika::MemoryStore.new(store: @backend)

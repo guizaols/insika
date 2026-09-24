@@ -3490,6 +3490,31 @@ RSpec.describe Studio::App do
       expect(res.headers["location"]).to eq("/studio/login")
     end
 
+    it "renders real temporal charts with gaps and accessible exact values" do
+      metrics["series"] = [100, nil, 900].each_with_index.map do |duration, i|
+        { "at" => "2026-09-24T0#{i}:00:00Z", "requests" => duration ? 1 : 0,
+          "cost" => duration ? 0.125 : nil, "unknown_cost_requests" => 0,
+          "p50_ms" => duration, "p90_ms" => duration, "p95_ms" => duration }
+      end
+      app, = build_app(model_metrics_store: double(report: metrics))
+      body = login(app).get("/models").body
+      expect(body).to include("Requests over time", "Reported cost over time", "Latency over time", "Cost by model")
+      expect(body).to include('aria-label="Requests over time"', 'aria-label="Latency over time"', "View chart data")
+      expect(body).to include("2026-09-24 01:00 UTC", "No reported value")
+      expect(body).to match(/class="model-bar requests"[^>]*y="0.0"[^>]*height="180.0"/)
+      # Two isolated measured buckets must stay isolated, not become a line across the gap.
+      expect(body.scan(/class="model-line p50" d="M[^L"]+"/).size).to eq(2)
+      expect(body).not_to include("NaN", "Infinity")
+    end
+
+    it "keeps integer model costs proportional in the comparison chart" do
+      metrics["models"].first["cost"] = 1
+      metrics["models"] << metrics["models"].first.merge("model" => "second", "cost" => 2)
+      app, = build_app(model_metrics_store: double(report: metrics))
+      body = login(app).get("/models").body
+      expect(body).to include('class="fill" width="50.0"', 'class="fill" width="100.0"')
+    end
+
     it "passes native GET filters to the report and renders measured coverage safely" do
       store = double
       expect(store).to receive(:report).with(period: "24h", provider: "bad<provider", model: "model&one").and_return(metrics)
@@ -3517,7 +3542,7 @@ RSpec.describe Studio::App do
       body = login(app).get("/models").body
 
       expect(body).to include("12.35 ms", ">12.35</td>", "p50 (ms)", "1 of 2 unknown (50.0%)")
-      expect(body.scan("0.000012").length).to eq(3)
+      expect(body).to include("$0.000012", ">0.000012</td>")
       expect(body).to include('title="Reported subtotal; 1 of 2 requests have unknown cache read tokens"')
       expect(body).to include('aria-label="0 reported cache read tokens; 1 of 2 requests have unknown cache read tokens"')
       expect(body).not_to include("12.3456789")

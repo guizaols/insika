@@ -69,6 +69,7 @@ module Insika
         "period" => period, "from" => from.utc.iso8601, "to" => now.utc.iso8601,
         "providers" => providers, "model_options" => model_options,
         "totals" => summarize(rows),
+        "series" => time_series(rows, from: from, to: now, period: period),
         "models" => rows.group_by { |row| [row["provider"], row["model"]] }
           .sort_by { |key, _| key.map(&:to_s) }.map do |(name, model_name), group|
             summarize(group).merge("provider" => name, "model" => model_name)
@@ -80,6 +81,20 @@ module Insika
     end
 
     private
+
+    def time_series(rows, from:, to:, period:)
+      count = { "24h" => 24, "7d" => 28, "30d" => 30 }.fetch(period)
+      step = (to - from) / count
+      buckets = Array.new(count) { [] }
+      rows.each do |row|
+        index = [((Time.iso8601(row["completed_at"]) - from) / step).floor, count - 1].min
+        buckets[index] << row
+      end
+      buckets.each_with_index.map do |group, index|
+        summarize(group).merge("at" => (from + index * step).utc.iso8601,
+          "until" => (from + (index + 1) * step).utc.iso8601)
+      end
+    end
 
     def summarize(rows)
       durations = rows.filter_map { |row| row["duration_ms"] }.sort

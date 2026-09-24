@@ -2469,6 +2469,34 @@ end
       view("models")
     end
 
+    def model_chart_value(value, unit)
+      return "—" if value.nil?
+
+      case unit
+      when "USD" then format("$%.6f", value)
+      when "ms" then format("%.2f ms", value)
+      else value.to_i.to_s
+      end
+    end
+
+    def model_chart_tick(value, unit)
+      return "$0" if unit == "USD" && value.zero?
+      return format("$%.4g", value) if unit == "USD"
+      return format("%.1f s", value / 1000.0) if unit == "ms" && value >= 1000
+      return format("%.3g ms", value) if unit == "ms"
+
+      format("%.3g", value)
+    end
+
+    def model_chart_paths(points)
+      points.slice_when { |left, right| left.nil? || right.nil? }.filter_map do |segment|
+        values = segment.compact
+        next if values.empty?
+
+        "M" + values.map { |x, y| format("%.2f %.2f", x, y) }.join(" L")
+      end
+    end
+
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     # `?agent=` narrows to one agent (the task's command payload stamps it).
     def render_tasks
