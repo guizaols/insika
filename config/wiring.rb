@@ -107,7 +107,7 @@ module Insika
       # Inert for agents without tools_deferred (returns []).
       Insika::Context::Providers::ToolSearch.new(catalog: TOOL_CATALOG),
       # Cross-session memory: read path. Inert for agents without `memory`.
-      Insika::Context::Providers::Memory.new(store: MEMORY_STORE),
+      Insika::Context::Providers::Memory.new(store: MEMORY_STORE, llm: LLM_CONTEXT),
       # Learned knowledge: read path. Inert for agents without
       # `knowledge.retrieve`.
       Insika::Context::Providers::Knowledge.new(store: SPINE.knowledge_store, llm: LLM_CONTEXT),

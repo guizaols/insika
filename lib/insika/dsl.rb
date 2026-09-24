@@ -265,6 +265,7 @@ module Insika
 
       # --- knobs -----------------------------------------------------------
       def memory(on = true) = @config[:memory] = on
+      def memory_retrieval(hash) = (@config[:memory_retrieval] ||= {}).merge!(hash.transform_keys(&:to_s))
 
       # Spend caps per calendar window (WS2): daily/monthly token budgets for
       # this agent, per (tenant, agent) when multi-tenant. HARD is the default:

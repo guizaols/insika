@@ -146,6 +146,15 @@ conversation; memory is the small set of facts that should outlive any single
 conversation. Facts and notes are editable from the Studio agent page. See
 [`examples/memory/`](https://github.com/guizaols/insika/tree/main/examples/memory/) for a runnable cross-session example.
 
+To select a smaller memory block for each message, keep `"memory": true` and add
+`"memory_retrieval": {"top_k": 3, "rerank": {"provider": "cohere", "model": "rerank-v3.5", "candidate_limit": 20, "timeout_seconds": 2}}`
+to the agent profile or pack. The engine first reads only the current memory cell,
+ranks active facts and considers the newest `candidate_limit` notes by word overlap and recency,
+then sends at most `candidate_limit` redacted candidates to the configured reranker.
+An empty message or reranker failure keeps the usual full facts and ten recent notes.
+Older notes outside that read window remain available in the store and Studio, but
+cannot be selected for the turn.
+
 Facts carry **provenance metadata**: every fact record stores `origin`
 (who wrote it — `"engine"`, `"operator"`, `"legacy"` or `"distilled"`),
 `created_at` / `updated_at` timestamps, and an optional `expires_at` (ISO8601) —

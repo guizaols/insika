@@ -62,6 +62,19 @@ RSpec.describe Insika::Context::Reranker do
     expect(result).to eq([0])
   end
 
+  it "redacts secret-like query and document text before the provider call" do
+    secret = "sk-abcdefghijklmnop1234"
+    llm = double
+    expect(llm).to receive(:rerank) do |query, docs, **_opts|
+      expect(query).to include("peanuts", "[REDACTED:secret]")
+      expect(docs.first).to include("allergy", "[REDACTED:secret]")
+      expect([query, *docs].join).not_to include(secret)
+      Struct.new(:results).new([Struct.new(:index).new(0)])
+    end
+    Async { described_class.new(llm: llm).select(query: "peanuts #{secret}",
+      documents: ["allergy #{secret}"], config: config, top_k: 1) }.wait
+  end
+
   it "times out and leaves lexical ordering available" do
     llm = double
     allow(llm).to receive(:rerank) { Async::Task.current.sleep(0.1) }

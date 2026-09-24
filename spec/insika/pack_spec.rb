@@ -9,6 +9,17 @@ require "json"
 # files + skills + tools). from_h (wire JSON) and from_dir (disk, docs/prompt-base/06).
 RSpec.describe Insika::Pack do
   describe ".from_h" do
+    it "preserves memory retrieval through JSON pack data" do
+      config = { "id" => "a", "memory" => true,
+                 "memory_retrieval" => { "top_k" => 1,
+                   "rerank" => { "provider" => "cohere", "model" => "rerank-v3.5",
+                                  "candidate_limit" => 2, "timeout_seconds" => 2 } } }
+      pack = described_class.from_h(JSON.parse(JSON.generate("config" => config)))
+      profile = Insika::AgentProfile.build(**pack.config)
+      expect(profile.memory_retrieval).to eq(config["memory_retrieval"])
+      expect(Insika::AgentProfile.build(**profile.to_h).memory_retrieval).to eq(config["memory_retrieval"])
+    end
+
     it "normalizes config (symbol), files/skills (string keys) and tools (array)" do
       pack = described_class.from_h(
         "config" => { "id" => "loja", "model" => "m" },
@@ -101,4 +112,3 @@ RSpec.describe Insika::Pack do
     end
   end
 end
-

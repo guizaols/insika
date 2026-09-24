@@ -5,12 +5,12 @@ module Insika
     module Providers
       # Read path for cross-session memory. Thin adapter over
       # the MemoryStore — same pattern as the Skill/ToolSearch provider: one
-      # `:system` fragment with the tenant's facts + recent notes. Deterministic
-      # (no embeddings/ranking).
+      # `:system` fragment with the tenant's facts + recent notes.
       class Memory < ContextProvider
-        def initialize(store:, notes_limit: 10)
+        def initialize(store:, notes_limit: 10, llm: nil)
           @store = store
           @notes_limit = notes_limit
+          @reranker = Reranker.new(llm: llm) if llm
         end
 
         # Per-agent opt-in. The Builder still applies the `context_providers`
@@ -22,8 +22,18 @@ module Insika
         def call(request)
           tenant = memory_scope(request)
           facts = @store.facts(tenant: tenant)
-          notes = @store.notes(tenant: tenant, limit: @notes_limit)
+          config = request.profile.memory_retrieval
+          limit = config ? [@notes_limit, config.dig("rerank", "candidate_limit")].max : @notes_limit
+          notes = @store.notes(tenant: tenant, limit: limit)
           return [] if facts.empty? && notes.empty?
+
+          legacy_notes = notes.first(@notes_limit)
+          if config && @reranker && !request.message.to_s.strip.empty?
+            selected = select_memory(request, facts, notes.first(config.dig("rerank", "candidate_limit")), config)
+            facts, notes = selected || [facts, legacy_notes]
+          else
+            notes = legacy_notes
+          end
 
           # priority MEMORY (75): between skills (80) and deferred tools (70) in
           # the sacrifice order. pinned false (cuttable under a tight budget).
@@ -32,6 +42,38 @@ module Insika
         end
 
         private
+
+        def select_memory(request, facts, notes, config)
+          query = request.message.to_s
+          terms = query.downcase.scan(/[[:alnum:]]+/).uniq
+          candidates = facts.map do |fact|
+            { kind: :fact, record: fact, id: "fact:#{fact.key}",
+              text: "#{fact.key} #{fact.value}", at: fact.updated_at.to_s }
+          end + notes.map do |note|
+            { kind: :note, record: note, id: "note:#{note.id}",
+              text: note.text.to_s, at: note.created_at.to_s }
+          end
+          candidates.sort_by! do |item|
+            words = item[:text].downcase.scan(/[[:alnum:]]+/).uniq
+            [-terms.count { |term| words.include?(term) }, -Time.iso8601(item[:at]).to_f, item[:id]]
+          rescue ArgumentError
+            [-terms.count { |term| words.include?(term) }, 0, item[:id]]
+          end
+          candidates = candidates.first(config.dig("rerank", "candidate_limit"))
+          rerank = config.fetch("rerank")
+          timeout = [rerank.fetch("timeout_seconds"),
+                     (request.profile.limits[:provider_timeout] || 5) * 0.9].min
+          documents = candidates.map { |item| item[:text] }
+          indexes = @reranker.select(query: query, documents: documents,
+                                     config: rerank.merge("timeout_seconds" => timeout),
+                                     top_k: config.fetch("top_k"), emit: request.diagnostics,
+                                     source: "Memory", budget: request.profile.limits[:context_budget] || 8_000)
+          return nil unless indexes
+
+          selected = indexes.map { |index| candidates[index] }
+          [selected.filter_map { |item| item[:record] if item[:kind] == :fact },
+           selected.filter_map { |item| item[:record] if item[:kind] == :note }]
+        end
 
         # Engine memory scope (WS8): the request's CUSTOMER-scoped cell
         # ("[tenant:]customer" — engine-owner memory is per customer, never per

@@ -111,6 +111,7 @@ module Insika
         subagents: h[:subagents],
         tools_deferred: h[:tools_deferred],
         memory: h[:memory],
+        memory_retrieval: h[:memory_retrieval],
         prompt_caching: h[:prompt_caching],
         # tool_persistence: the one opt-out flag — nil round-trips as nil (= ON);
         # only a stored explicit false turns the discipline block off.
