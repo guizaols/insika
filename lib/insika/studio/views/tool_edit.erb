@@ -11,6 +11,8 @@
 <form class="card" method="post" action="<%= new ? "/studio/tools/def" : "/studio/tools/def/#{Rack::Utils.escape(@tool_name)}" %>" data-controller="dirty-guard">
   <%== csrf_tag %>
 
+  <fieldset class="subgroup">
+    <legend>Tool identity &amp; request</legend>
   <div class="grid-2">
     <label>name <span class="muted">(identifier for the model, <code>[a-z0-9_]</code>)</span>
       <% if new %>
@@ -36,10 +38,18 @@
     <input type="text" name="url" value="<%= @form[:url] %>" placeholder="https://viacep.com.br/ws/{{cep}}/json"<%== " required" unless @form[:presentation] %>>
   </label>
 
+  </fieldset>
+
+  <fieldset class="subgroup">
+    <legend>Arguments from the model</legend>
   <label>parameters <span class="muted">(one per line: <code>name | type | required|optional | description</code> — type is <code>string</code>/<code>number</code>/<code>integer</code>/<code>boolean</code> or <code>array:string</code>. For a list of objects or a nested object, paste a full <strong>JSON Schema</strong> instead: any text starting with <code>{</code> is read as one.)</span>
     <textarea name="parameters" rows="6" placeholder="cep | string | required | The ZIP code to look up"><%= @form[:parameters] %></textarea>
   </label>
 
+  </fieldset>
+
+  <details class="newfile"<%== " open" if %i[query headers body secret_headers].any? { |key| !@form[key].to_s.empty? } %>>
+    <summary>Query, headers &amp; request body</summary>
   <div class="grid-2">
     <label>query <span class="muted">(one <code>key=value</code> per line)</span>
       <textarea name="query" rows="3" placeholder="term={{q}}"><%= @form[:query] %></textarea>
@@ -59,6 +69,10 @@
     </div>
   </label>
 
+  </details>
+
+  <fieldset class="subgroup">
+    <legend>Response &amp; safeguards</legend>
   <div class="grid-2">
     <label>response
       <select name="extract">
@@ -80,7 +94,10 @@
     <input type="number" name="timeout" value="<%= @form[:timeout] %>" min="1" placeholder="30">
   </label>
 
+  </fieldset>
+
   <div class="actions">
+    <span class="muted">Saving updates this tool for every agent that uses it.</span>
     <button type="submit" class="primary" data-turbo-submits-with="<%= new ? "Creating…" : "Saving…" %>"><%= new ? "Create tool" : "Save tool" %></button>
     <a class="btn ghost" href="/studio/tools">← back</a>
   </div>
@@ -96,8 +113,8 @@
   </form>
 
   <% if @versions.any? %>
-    <div class="card">
-      <h2 class="eyebrow">versions</h2>
+    <details class="card newfile">
+      <summary>Previous versions <span class="count"><%= @versions.size %></span></summary>
       <% @versions.each_with_index do |v, i| %>
         <form class="promptfile-head" method="post" action="/studio/tools/def/<%= Rack::Utils.escape(@tool_name) %>/restore">
           <%== csrf_tag %>
@@ -106,6 +123,6 @@
           <button type="submit" class="ghost">Restore</button>
         </form>
       <% end %>
-    </div>
+    </details>
   <% end %>
 <% end %>

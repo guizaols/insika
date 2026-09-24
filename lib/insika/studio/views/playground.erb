@@ -4,7 +4,7 @@
 <header class="page-head">
   <div>
     <%== crumbs_for("Playground") %>
-    <h1>Playground<span class="sub">start or resume a conversation</span></h1>
+    <h1>Playground<span class="sub">Test an agent in a new or existing conversation</span></h1>
   </div>
 </header>
 
@@ -32,7 +32,8 @@
       </label>
       <span class="pill info chat-status" data-live-transcript-target="status">disconnected</span>
       <details class="pin chat-pin">
-        <summary>overrides <span class="muted">— pin a NEW conversation (Chat › Agent › Model › platform)</span></summary>
+        <summary>Model overrides <span class="muted">— new conversations only</span></summary>
+        <p class="muted">Leave blank to use the agent’s defaults. An existing session keeps its saved model settings.</p>
         <div class="row">
           <label>model<input type="text" name="model" placeholder="leave empty = agent/platform default"></label>
           <label>provider<input type="text" name="provider" placeholder="optional"></label>
@@ -47,7 +48,7 @@
         <% if @sent_message %><%== render("_message", locals: { m: { "role" => "user", "content" => @sent_message, "at" => nil }, prev: nil }) %><% end %>
       </div>
       <div class="empty chat-empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@history).empty? && @sent_message.nil? %>>
-        <% if @session_id %>Waiting for turn events…<% else %>Send a message to begin a conversation.<% end %>
+        <% if @session_id %>Waiting for turn events…<% else %>Choose an agent and send a message to begin. Leave the session blank for a new conversation.<% end %>
       </div>
     </div>
 
