@@ -95,6 +95,13 @@ end
 recalling (write-only, inspected by hand), or recall without learning
 (curate every concept by hand in the Studio, `provenance: policy`).
 
+The same settings are available in **Studio → Agents → select an agent →
+Configuration → Memory & knowledge**: learn from conversations, use knowledge in
+replies, concepts per turn, concept types, learning model and instructions.
+Knowledge reranking has its own switch and settings, independent of memory
+reranking, and defaults to off. Options authored in a pack but not exposed in the
+form, such as `index`, are preserved when saving.
+
 ## The write path
 
 After a turn completes, off the turn's critical path (the customer already has

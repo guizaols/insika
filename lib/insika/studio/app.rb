@@ -2304,7 +2304,7 @@ end
 
     # The agent config tab's groups, in sidebar order. The view renders the
     # same keys; a bogus ?cfg= falls back to the first group.
-    CONFIG_SECTIONS = %w[model guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
+    CONFIG_SECTIONS = %w[model retrieval guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
 
     SETTINGS_SECTIONS = %w[general models edge burst evals llm demo].freeze
     def render_settings
