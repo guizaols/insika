@@ -134,6 +134,10 @@ RSpec.describe "Insika.embed" do
       expect(events.size).to eq(4)
       trace = runtimes[index].graph.llm_trace_store.for_task("task-#{index}")
       expect(trace["entries"].size).to eq(4)
+      report = runtimes[index].graph.model_metrics_store.report
+      expect(report["totals"]).to include("requests" => 2, "attempts" => 2, "input_tokens" => 2)
+      expect(report["models"].map { |row| row["model"] }).to eq(%w[deepseek-chat deepseek-reasoner])
+      expect(report["slowest"].map { |row| row["task_id"] }.uniq).to eq(["task-#{index}"])
       expect(trace["entries"].map { |entry| entry["at"] }).to all(match(/\.\d{6}Z\z/))
       expect(events.map { |event| event.meta[:task_id] }.uniq).to eq(["task-#{index}"])
       expect(events.map { |event| event.meta[:session_id] }.uniq).to eq(["session-#{index}"])
@@ -153,6 +157,41 @@ RSpec.describe "Insika.embed" do
     RubyLLM.config.instrumenter = previous
   end
 
+  it "summarizes native transport retries within one measured request" do
+    runtime = embed(Insika::Stores::Memory.new, key: "A").runtime
+    runtime.llm.config.max_retries = 1
+    runtime.llm.config.retry_interval = 0
+    runtime.llm.config.retry_interval_randomness = 0
+    executor = runtime.graph.executor
+    allow(executor.instance_variable_get(:@chat_builder)).to receive(:assemble)
+    task = runtime.graph.task_store.create(id: "retry", command: {})
+    state = Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: 1, message: "private")
+    attempts = 0
+    allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
+      original.receiver.connection.adapter :test do |stub|
+        stub.post("/v1/chat/completions") do
+          attempts += 1
+          if attempts == 1
+            [500, { "Content-Type" => "application/json" }, '{"error":{"message":"private failure"}}']
+          else
+            [200, { "Content-Type" => "application/json" }, JSON.generate(
+              choices: [{ message: { role: "assistant", content: "Done" } }],
+              usage: { prompt_tokens: 5, completion_tokens: 2 })]
+          end
+        end
+      end
+      original.call(*args, **kwargs, &block)
+    end
+    Sync { executor.send(:create_chat, state.profile, state).ask("private") }
+    report = runtime.graph.model_metrics_store.report
+    expect(attempts).to eq(2)
+    expect(report["totals"]).to include("requests" => 1, "attempts" => 2, "retries" => 1,
+      "failed_attempts" => 1, "failures" => 0, "input_tokens" => 5, "output_tokens" => 2,
+      "unknown_cost_requests" => 1, "measured_requests" => 1)
+    expect(report["totals"]["p50_ms"]).to be >= 0
+    expect(JSON.generate(report)).not_to include("private")
+  end
+
   it "keeps model output and events when diagnostic storage fails" do
     runtime = embed(Insika::Stores::Memory.new, key: "A").runtime
     executor = runtime.graph.executor
@@ -166,6 +205,12 @@ RSpec.describe "Insika.embed" do
     expect(result).to eq("answer")
     expect(stream.events.map(&:type)).to eq([:llm_request])
     expect(stream.events.first.data.inspect).not_to include("private storage")
+    expect(runtime.graph.model_metrics_store.report["totals"]["requests"]).to eq(1)
+    allow(runtime.graph.model_metrics_store).to receive(:record).and_raise("metrics failure")
+    allow(runtime.graph.llm_trace_store).to receive(:record).and_call_original
+    context.config.instrumenter.instrument("request.ruby_llm", provider: "deepseek") { "answer" }
+    expect(runtime.graph.llm_trace_store.for_task("t")["entries"].size).to eq(1)
+    expect(stream.events.size).to eq(2)
   end
 
   describe ".2 — two graphs, two stores" do

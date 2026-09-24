@@ -18,7 +18,7 @@ module Insika
                    session_store:, task_store:, checkpoint_store:,
                    event_stream:, workflow_registry: nil, pending_action_store: nil,
                    capability_registry: nil, tool_catalog: nil, memory_store: nil,
-                   tool_trace_store: nil, llm_trace_store: nil, settings_store: nil, content_filter_factory: nil,
+                   tool_trace_store: nil, llm_trace_store: nil, model_metrics_store: nil, settings_store: nil, content_filter_factory: nil,
                     delegation_store: nil, channel_delivery: nil, llm: nil,
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
@@ -40,6 +40,7 @@ module Insika
       @pending_action_store = pending_action_store # approval gate
       @capability_registry = capability_registry # capability resolution (nil = off)
       @llm_trace_store = llm_trace_store
+      @model_metrics_store = model_metrics_store
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
@@ -3077,10 +3078,12 @@ module Insika
       tenant = task_tenant(task)
       meta[:tenant] = tenant unless tenant.nil?
       if type == :llm_request || type == :llm_usage
-        begin
-          @llm_trace_store&.record(task_id: task.id, entry: data.merge("type" => type.to_s, "at" => meta[:at]))
-        rescue StandardError
-          # Diagnostics must not interrupt the model or its event stream.
+        [@llm_trace_store, @model_metrics_store].each do |store|
+          begin
+            store&.record(task_id: task.id, entry: data.merge("type" => type.to_s, "at" => meta[:at]))
+          rescue StandardError
+            # Recorders fail independently; diagnostics must not interrupt the model.
+          end
         end
       end
       @event_stream.emit(Insika::Event.new(type: type, data: data, meta: meta))

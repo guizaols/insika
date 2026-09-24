@@ -110,6 +110,7 @@ Studio::App.configure(
   # config.ru wires both; this boot did not, so the local run was silently blind to
   # its own tool calls and context breakdown.
   llm_trace_store: W::GRAPH.llm_trace_store,
+  model_metrics_store: W::GRAPH.model_metrics_store,
   tool_trace_store: W::TOOL_TRACE_STORE, # tool-call trace in the session viewer
   context_trace_store: W::CONTEXT_TRACE_STORE, # context breakdown card (skills injected)
   # tasks/approvals pages (controls dispatch pause/resume/cancel/approve).
