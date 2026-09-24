@@ -409,16 +409,42 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         # free-form hashes; shape-validated by the command/engine/doctor
         # (never here — the refinement precedent). nil = off (parity).
         harvest: Coercion.deep_stringify(harvest),
-        # knowledge is profile DATA, deep-stringified like the other
-        # free-form hashes; shape-validated by the extractor/doctor
-        # (never here — the refinement precedent). nil = off (parity).
-        knowledge: Coercion.deep_stringify(knowledge),
+        # knowledge is profile DATA. Legacy extraction remains free-form;
+        # an explicit rerank declaration is validated when loaded.
+        knowledge: normalize_knowledge(knowledge),
         # schedules is profile DATA, deep-stringified like the other
         # free-form hashes (an ARRAY of declarations); parsed into
         # Insika::Schedule entries by the engine/doctor/Studio (shape-validated
         # THERE, never here). nil/[] = the feature is off (parity).
         schedules: normalize_schedules(schedules)
       )
+    end
+
+    def self.normalize_knowledge(value)
+      config = Coercion.deep_stringify(value)
+      return config unless config.is_a?(Hash) && config.key?("rerank")
+
+      rerank = config["rerank"]
+      raise ValidationError, "knowledge.rerank must be an object" unless rerank.is_a?(Hash)
+
+      top_k = config.fetch("top_k", 5)
+      limit = rerank["candidate_limit"]
+      timeout = rerank["timeout_seconds"]
+      valid = top_k.is_a?(Integer) && top_k.positive? &&
+              limit.is_a?(Integer) && limit >= top_k && limit <= 100 &&
+              timeout.is_a?(Numeric) && timeout.finite? && timeout.positive? &&
+              %w[provider model].all? { |key| rerank[key].is_a?(String) && !rerank[key].strip.empty? }
+      raise ValidationError, "invalid knowledge.rerank configuration" unless valid
+
+      require "ruby_llm"
+      begin
+        model = RubyLLM.models.find(rerank["model"], provider: rerank["provider"])
+      rescue RubyLLM::ModelNotFoundError
+        raise ValidationError, "knowledge.rerank model is not registered for provider"
+      end
+      raise ValidationError, "knowledge.rerank model does not support reranking" unless model.type == :rerank
+
+      config
     end
 
     # Declaring a tool allow/deny list IS opting into it. The list is only ever

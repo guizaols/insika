@@ -1,6 +1,30 @@
 # frozen_string_literal: true
 
 RSpec.describe Insika::AgentProfile do
+  describe "knowledge rerank configuration" do
+    let(:valid) { { provider: "cohere", model: "rerank-v3.5", candidate_limit: 20, timeout_seconds: 2 } }
+
+    it "normalizes valid opt-in configuration" do
+      profile = described_class.build(id: "a", knowledge: { retrieve: true, top_k: 5, rerank: valid })
+      expect(profile.knowledge.dig("rerank", "candidate_limit")).to eq(20)
+    end
+
+    it "rejects invalid opt-in limits and missing provider/model" do
+      [{ candidate_limit: 0 }, { candidate_limit: 101 }, { candidate_limit: 4 },
+       { timeout_seconds: 0 }, { provider: "" }, { model: "" }].each do |bad|
+        expect { described_class.build(id: "a", knowledge: { retrieve: true, top_k: 5,
+          rerank: valid.merge(bad) }) }.to raise_error(Insika::ValidationError)
+      end
+      expect { described_class.build(id: "a", knowledge: { retrieve: true, top_k: 0, rerank: valid }) }
+        .to raise_error(Insika::ValidationError)
+      expect { described_class.build(id: "a", knowledge: { retrieve: true, rerank: valid.merge(model: "not-a-model") }) }
+        .to raise_error(Insika::ValidationError)
+    end
+
+    it "keeps legacy knowledge declarations valid" do
+      expect(described_class.build(id: "a", knowledge: { retrieve: true, top_k: "old" }).knowledge["top_k"]).to eq("old")
+    end
+  end
   describe "compatibility with" do
     it "accepts the minimal signature" do
       profile = described_class.build(id: "a", model: "m")

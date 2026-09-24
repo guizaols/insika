@@ -384,6 +384,36 @@ RSpec.describe Insika::Telemetry::Recorder do
     let(:meter) { FakeMeter.new }
     subject(:recorder) { described_class.new(tracer: tracer, meter: meter) }
 
+    it "labels rerank cost separately and totals it once with chat cost" do
+      recorder.record(ev(:task_started, { agent: "a" }))
+      recorder.record(ev(:llm_request, { "operation" => "rerank", "request_id" => "rerank-1" }))
+      recorder.record(ev(:llm_usage, { "operation" => "rerank", "request_id" => "rerank-1", "cost" => 0.03 }))
+      recorder.record(ev(:task_completed, { usage: { cost_usd: 0.1 } }))
+      expect(turn_span.attributes).to include("insika.cost.usd" => 0.1,
+        "insika.cost.rerank_usd" => 0.03, "insika.cost.total_usd" => 0.13)
+      expect(meter["insika.cost"].points.sum(&:first)).to eq(0.13)
+    end
+
+    it "leaves the rerank total unknown when a request lacks usage" do
+      recorder.record(ev(:task_started, { agent: "a" }))
+      recorder.record(ev(:llm_request, { "operation" => "rerank", "request_id" => "r1" }))
+      recorder.record(ev(:llm_usage, { "operation" => "rerank", "request_id" => "r1", "cost" => 0.03 }))
+      recorder.record(ev(:llm_request, { "operation" => "rerank", "request_id" => "r2" }))
+      recorder.record(ev(:task_completed, { usage: { cost_usd: 0.1 } }))
+      expect(turn_span.attributes).not_to include("insika.cost.rerank_usd", "insika.cost.total_usd")
+    end
+
+    it "leaves the rerank total unknown when native events were truncated" do
+      recorder.record(ev(:task_started, { agent: "a" }))
+      recorder.record(ev(:llm_request, { "operation" => "rerank", "request_id" => "r1" }))
+      recorder.record(ev(:llm_usage, { "operation" => "rerank", "request_id" => "r1", "cost" => 0.03 }))
+      (Insika::LLMTraceStore::MAX_PER_TASK - 1).times do |i|
+        recorder.record(ev(:llm_request, { "operation" => "chat", "request_id" => "c#{i}" }))
+      end
+      recorder.record(ev(:task_completed, { usage: { cost_usd: 0.1 } }))
+      expect(turn_span.attributes).not_to include("insika.cost.rerank_usd", "insika.cost.total_usd")
+    end
+
     it "correlates interleaved and late attempts by request id without billing twice" do
       recorder.record(ev(:task_started, { agent: "a" }))
       recorder.record(ev(:llm_usage, { "request_id" => "r1", "status" => "failed", "input_tokens" => 3 }))

@@ -29,9 +29,9 @@ module Insika
   #                 fall back to tenant || session). Kept separate from `tenant`
   #                 (the <request_context> merchant label) on purpose.
   ContextRequest = Data.define(:session, :message, :profile, :tenant, :vars,
-                               :checkpoint, :memory_scope) do
+                               :checkpoint, :memory_scope, :diagnostics) do
     def initialize(session: nil, message: nil, profile: nil, tenant: nil, vars: {},
-                   checkpoint: nil, memory_scope: nil)
+                   checkpoint: nil, memory_scope: nil, diagnostics: nil)
       super
     end
   end

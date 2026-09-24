@@ -156,12 +156,29 @@ module Insika
         at = ts(meta[:at])
         usage = data[:usage]
         set_usage(turn.span, usage)
+        rerank_cost = rerank_cost(turn)
+        if rerank_cost
+          turn.span.set_attribute("insika.cost.rerank_usd", rerank_cost)
+          chat_cost = estimated_cost(usage)
+          turn.span.set_attribute("insika.cost.total_usd", chat_cost + rerank_cost) if chat_cost
+        end
         turn.span.set_attribute("insika.status", status.to_s)
         turn.span.record_error(exception_class(data[:error])) if status == :error
         finish_requests(turn)
         turn.tools.each { |t| t.span.finish(end_time: at) } # orphans (failure mid-way)
         turn.span.finish(end_time: at)
-        count_turn(turn, usage, status.to_s, elapsed(turn.start, at))
+        count_turn(turn, usage, status.to_s, elapsed(turn.start, at), rerank_cost)
+      end
+
+      def rerank_cost(turn)
+        return nil if turn.requests_truncated
+
+        requests = turn.requests.select { |entry| entry["type"] == "llm_request" && entry["operation"] == "rerank" }
+        attempts = turn.requests.select { |entry| entry["type"] == "llm_usage" && entry["operation"] == "rerank" }
+        return nil if attempts.empty? || attempts.any? { |entry| !entry["cost"].is_a?(Numeric) }
+        return nil if requests.any? { |request| attempts.none? { |entry| entry["request_id"] == request["request_id"] } }
+
+        attempts.sum { |entry| entry["cost"] }
       end
 
       def exception_class(value)
@@ -231,7 +248,7 @@ module Insika
 
       # --- metrics (no-op when no meter was injected) ------------------------
 
-      def count_turn(turn, usage, status, seconds)
+      def count_turn(turn, usage, status, seconds, rerank_cost = nil)
         return unless @instruments
 
         model = usage && usage[:model]
@@ -239,6 +256,7 @@ module Insika
         @instruments.turns.add(1, attributes: labels)
         @instruments.turn_duration.record(seconds, attributes: labels) if seconds
         count_usage(turn, usage)
+        @instruments.cost.add(rerank_cost, attributes: turn.labels.merge("insika.operation" => "rerank")) if rerank_cost
         count_cache_hit(turn, usage)
       end
 
