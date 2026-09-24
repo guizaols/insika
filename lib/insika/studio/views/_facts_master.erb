@@ -8,10 +8,10 @@
     Local: active_id lights the current row. %>
 <aside class="drill-pane drill-master">
   <div class="drill-pane-head">
-    <div class="title"><strong>Facts <span class="count"><%= @pending.size + @stale.size + @recent.size %></span></strong></div>
+    <div class="title"><strong>Review queue <span class="count"><%= @pending.size + @stale.size + @recent.size %></span></strong><span class="count">Oldest pending first</span></div>
   </div>
   <div class="drill-search">
-    <input type="search" class="filter-input" placeholder="Filter facts by key, value or scope…" aria-label="Filter facts"
+    <input type="search" class="filter-input" placeholder="Search facts…" aria-label="Filter facts by key, value or scope"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
   </div>
   <nav class="drill-pane-body drill-list" aria-label="facts" data-controller="active-link">
@@ -20,25 +20,17 @@
     <% else %>
       <% [["Pending", @pending], ["Stale", @stale], ["Recent", @recent]].each do |label, rows| %>
         <% next if rows.empty? %>
-        <div class="drill-group-label"><%= label %></div>
+        <div class="drill-group-label"><%= label %><span><%= rows.size %></span></div>
         <% rows.each do |p| %>
           <a class="drill-item<%== ' active' if p.id == active_id %>"
-             href="/studio/facts/<%= Rack::Utils.escape(p.id) %>"
+             href="/studio/facts/<%= Rack::Utils.escape(p.id) %><%= "?agent=#{Rack::Utils.escape(@filter)}" if @filter %>"
              data-turbo-frame="fact-detail" data-turbo-action="advance"
-             data-list-filter-target="item" data-filter-text="<%= p.key %> <%= p.value %> <%= p.scope %>"
+             data-list-filter-target="item" data-filter-text="<%= p.key %> <%= p.key.tr('_', ' ') %> <%= p.value %> <%= p.scope %>"
              data-active-link-target="item" data-action="click->active-link#select">
-            <%== render("_identity", locals: { id: p.id, name: p.key, sub: p.value }) %>
+            <span class="fact-item-key"><%= p.key.tr("_", " ").sub(/\A./, &:upcase) %></span>
+            <strong class="fact-item-value"><%= p.value %></strong>
             <div class="drill-item-sub fact-item-meta">
-              <span class="fact-item-conf">
-                <% if p.confidence %>
-                  <span class="tnum"><%= format("%.2f", p.confidence) %></span>
-                  <svg class="conf-bar" width="32" height="6" viewBox="0 0 32 6" aria-hidden="true">
-                    <rect class="track" width="32" height="6" rx="3"></rect>
-                    <rect class="fill" width="<%= (p.confidence.to_f.clamp(0, 1) * 32).round %>" height="6" rx="3"></rect>
-                  </svg>
-                <% end %>
-                <span class="status <%= status_class(p.status) %>"><%= p.status %></span>
-              </span>
+              <span class="status <%= status_class(p.status) %>"><%= p.status %></span>
               <span class="fact-item-age"><%= time_ago(%w[pending stale].include?(p.status) ? p.created_at : p.updated_at) %></span>
             </div>
           </a>

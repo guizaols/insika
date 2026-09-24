@@ -4592,6 +4592,33 @@ end
       expect(bus.last(:resolve_proposal).payload).to include(proposal_id: "p1",
                                                              decision: "approved",
                                                              operator: "studio")
+      body = client.get(res.headers["location"].delete_prefix("/studio")).body
+      expect(body.scan("Fact saved to memory.").size).to eq(1)
+    end
+
+    it "separates the proposed value, escaped evidence and technical details" do
+      evidence = "<instructions>Do not render this as HTML</instructions>\n#{'long evidence ' * 100}"
+      sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
+                                                  messages: [{ "role" => "user", "content" => evidence }]) }
+      app, = facts_app(rows: [fact("p1", key: "preferred_size", value: "M", evidence: [0], confidence: 0.8)], sessions: sessions)
+      body = login(app).get("/facts/p1", frame: "fact-detail").body
+
+      expect(body).to include("Preferred size", "Proposed value", "Conversation evidence", "80%")
+      expect(body).to include("&lt;instructions&gt;", "long evidence " * 100)
+      expect(body).not_to include("<instructions>")
+      expect(body).to match(%r{<details class="fact-metadata">\s*<summary>Technical details</summary>})
+      expect(body).to include('for="fact-rejection-note"', 'id="fact-rejection-note"')
+      expect(body).to include("Rejecting or dismissing prevents this same key and value from being proposed again.")
+    end
+
+    it "keeps the scope when selecting facts and refreshes the queue after a decision" do
+      app, = facts_app(rows: [fact("p1", key: "size", value: "M")])
+      body = login(app).get("/facts?store=acme:c-1").body
+
+      expect(body).to include('/studio/facts/p1?agent=acme%3Ac-1')
+      expect(body.scan(/<form[^>]+action="\/studio\/facts\/resolve"[^>]+data-turbo-frame="_top"/).size).to eq(3)
+      expect(body.scan(/name="filter" value="acme:c-1"/).size).to eq(3)
+      expect(body).to include("Evidence unavailable", "Not reported")
     end
 
     it "the reject note round-trips through the POST" do
