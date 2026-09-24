@@ -1996,6 +1996,15 @@ end
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = insika[:tool_store] ? insika[:tool_store].names : []
+      @tool_groups = @tools.group_by do |tool|
+        if tool.plugin.to_s.start_with?("mcp:")
+          "MCP: #{tool.plugin.delete_prefix('mcp:')}"
+        elsif @data_tool_names.include?(tool.name)
+          "HTTP tools"
+        else
+          "Native tools"
+        end
+      end.sort_by { |label, _| [label == "Native tools" ? 0 : label == "HTTP tools" ? 1 : 2, label] }
       # Stored but NOT in the catalog = the overlay refused the definition and dropped it
       # (only a stderr warn otherwise). The pane still links its editor, so the panel is
       # where you see it and where you fix it. `insika doctor` reports the same set.

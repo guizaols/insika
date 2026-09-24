@@ -1406,6 +1406,9 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
       settings = @settings_store.get
       config = settings["compaction"] || {}
       return [ok("compaction", "in-session compaction off")] unless Coercion.truthy?(config["enabled"])
+      if config["mode"] == "native"
+        return [ok("compaction", "native compaction on for supported Responses models; no summary fallback")]
+      end
 
       if Coercion.presence(config["model"]).nil? && Coercion.presence(settings["utility_model"]).nil?
         [Finding.new(check: "compaction", severity: :warn, fix: nil,

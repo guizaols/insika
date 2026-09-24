@@ -69,14 +69,14 @@ RSpec.describe Insika::Tools::AgentEnum do
       tool = Insika::Tools::Subagent.new(runner: runner, state: state_for(%w[security performance]))
 
       expect(tool.description).to include("Agents you may spawn: security, performance.")
-      expect(tool.params_schema.dig("properties", "agent", "enum")).to eq(%w[security performance])
+      expect(tool.parameters_schema.dig("properties", "agent", "enum")).to eq(%w[security performance])
     end
 
     it "spawn_subagents names them on each task's agent" do
       tool = Insika::Tools::Subagents.new(runner: runner, state: state_for(%w[security performance]))
 
       expect(tool.description).to include("Agents you may spawn: security, performance.")
-      expect(tool.params_schema.dig("properties", "tasks", "items", "properties", "agent", "enum"))
+      expect(tool.parameters_schema.dig("properties", "tasks", "items", "properties", "agent", "enum"))
         .to eq(%w[security performance])
     end
 
@@ -86,7 +86,7 @@ RSpec.describe Insika::Tools::AgentEnum do
       tool = Insika::Tools::Subagent.new(runner: runner, state: state_for(nil))
 
       expect(tool.description).to eq(Insika::Tools::Subagent.description)
-      expect(tool.params_schema.dig("properties", "agent")).not_to have_key("enum")
+      expect(tool.parameters_schema.dig("properties", "agent")).not_to have_key("enum")
     end
   end
 end

@@ -6,12 +6,13 @@ require "insika/tools/tool_search" # the Executor loads it lazily; explicit in t
 RSpec.describe Insika::Tools::ToolSearch do
   # A genuine deferred tool: name/description/parameters/execute (enough for the
   # catalog, the describe and the wrap in ToolEnvelope). Without inheriting RubyLLM::Tool.
-  Param = Struct.new(:type, :description, :required)
   def deferred_tool(name, desc)
     Class.new do
       define_method(:name) { name }
       define_method(:description) { desc }
-      def parameters = { to: Param.new("string", "destino", true) }
+      def parameters_schema
+        { type: "object", properties: { to: { type: "string", description: "destino" } }, required: ["to"] }
+      end
       def call(_args) = "sent"
     end.new
   end
@@ -55,7 +56,7 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(promoted.first).to be_a(Insika::ToolEnvelope)
     expect(promoted.first.name).to eq("send_email") # Envelope delegates name
     expect(result[:matched].map { |m| m[:name] }).to eq(["send_email"])
-    expect(result[:matched].first[:parameters]).to have_key(:to)
+    expect(result[:matched].first[:parameters]).to eq(to: { type: "string", description: "destino", required: true })
   end
 
   it "match outside deferred_allowed does NOT appear or get promoted (L1)" do

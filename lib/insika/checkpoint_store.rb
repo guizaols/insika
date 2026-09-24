@@ -54,6 +54,25 @@ module Insika
       end
     end
 
+    # Updates only the latest turn's partial progress; its initial snapshot and
+    # side-effect spill keys stay intact. Does not advance the checkpoint turn.
+    def save_continuation(task_id, turn:, continuation:)
+      raise ArgumentError, "continuation must be a Hash" unless continuation.is_a?(Hash)
+
+      @store.transaction do
+        current = latest(task_id)
+        unless current && current.turn == turn
+          raise ArgumentError, "continuation requires the latest checkpoint for turn #{turn}"
+        end
+
+        key = checkpoint_key(task_id, turn)
+        record = @store.get(SCOPE, key)
+        record["continuation"] = deep_stringify(continuation)
+        @store.set(SCOPE, key, record)
+        to_checkpoint(record)
+      end
+    end
+
     # -> Checkpoint | nil (highest turn). NUMERIC ordering: `list` sorts
     # lexicographically and "turn:9" > "turn:10" — parse n as an Integer.
     def latest(task_id)
@@ -71,12 +90,27 @@ module Insika
 
     # -> nil; idempotent (recording twice = one entry). In a transaction
     # (written before the tool goes back to the model).
-    def record_side_effect(task_id, turn:, tool_call_id:)
+    def record_side_effect(task_id, turn:, tool_call_id:, halt: nil)
+      raise ArgumentError, "halt must be a Hash" unless halt.nil? || halt.is_a?(Hash)
+
       @store.transaction do
         key = sideeffects_key(task_id, turn)
         ids = @store.get(SCOPE, key) || []
         id = tool_call_id.to_s
         @store.set(SCOPE, key, ids + [id]) unless ids.include?(id)
+        unless halt.nil?
+          checkpoint_key = checkpoint_key(task_id, turn)
+          record = @store.get(SCOPE, checkpoint_key)
+          unless record && record["continuation"].is_a?(Hash)
+            raise ArgumentError, "halt requires a checkpoint continuation for turn #{turn}"
+          end
+
+          continuation = record["continuation"]
+          record["continuation"] = continuation.merge(
+            "halts" => (continuation["halts"] || {}).merge(id => deep_stringify(halt))
+          )
+          @store.set(SCOPE, checkpoint_key, record)
+        end
       end
       nil
     end
@@ -158,7 +192,8 @@ module Insika
         agent_id: record["agent_id"],
         messages: record["messages"],
         completed_side_effects: record["completed_side_effects"],
-        created_at: record["created_at"]
+        created_at: record["created_at"],
+        continuation: record["continuation"]
       )
     end
 

@@ -24,10 +24,10 @@ module Insika
                   "it BLOCKS and returns the child's final answer. Set async:true to " \
                   "fire-and-forget a long task: it returns immediately and the child's " \
                   "result arrives later as a new message on this conversation."
-      param :agent, desc: "Id of the child agent to delegate to (must be one this agent may spawn)"
-      param :message, desc: "The self-contained task/prompt for the child agent"
-      param :async, type: :boolean, required: false,
-                    desc: "true = dispatch and continue (result delivered later); default false = wait for the answer"
+      parameter :agent, description: "Id of the child agent to delegate to (must be one this agent may spawn)"
+      parameter :message, description: "The self-contained task/prompt for the child agent"
+      parameter :async, type: :boolean, required: false,
+                    description: "true = dispatch and continue (result delivered later); default false = wait for the answer"
 
       # otherwise RubyLLM derives "insika--tools--subagent" from the class name.
       def name = "spawn_subagent"
@@ -51,7 +51,7 @@ module Insika
         "#{super} Agents you may spawn: #{@allowed.join(', ')}."
       end
 
-      def params_schema
+      def parameters_schema
         @agent_enum_schema ||= Insika::Tools::AgentEnum.inject(super, @allowed, path: %i[agent])
       end
 

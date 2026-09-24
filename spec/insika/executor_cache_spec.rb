@@ -89,13 +89,8 @@ RSpec.describe "Insika::Executor — layered identity cache " do
       chat.define_singleton_method(:ask) do |message, &on_chunk|
         @asked = message
         on_chunk&.call(FakeChat::Response.new("final"))
-        Object.new.tap do |o|
-          o.define_singleton_method(:input_tokens) { 500 }
-          o.define_singleton_method(:output_tokens) { 2_000 }
-          o.define_singleton_method(:cached_tokens) { 22_000 }
-          o.define_singleton_method(:cache_creation_tokens) { 0 }
-          o.define_singleton_method(:model_id) { "gpt" }
-        end
+        RubyLLM::Message.new(role: :assistant, content: "final", model: "gpt",
+                            tokens: RubyLLM::Tokens.new(input: 500, output: 2_000, cache_read: 22_000, cache_write: 0))
       end
     end
   end
@@ -187,17 +182,32 @@ RSpec.describe "Insika::Executor — layered identity cache " do
     full_chat.define_singleton_method(:ask) do |message, &on_chunk|
       @asked = message
       on_chunk&.call(FakeChat::Response.new("final"))
-      Object.new.tap do |o|
-        o.define_singleton_method(:input_tokens) { 0 }
-        o.define_singleton_method(:output_tokens) { 2_000 }
-        o.define_singleton_method(:cached_tokens) { 22_000 }
-        o.define_singleton_method(:cache_creation_tokens) { 0 }
-        o.define_singleton_method(:model_id) { "gpt" }
-      end
+      RubyLLM::Message.new(role: :assistant, content: "final", model: "gpt",
+                          tokens: RubyLLM::Tokens.new(input: 0, output: 2_000, cache_read: 22_000, cache_write: 0))
     end
     run_turn(build_executor, full_chat, task_id: "t1")
 
     expect(context_trace_store.for_session("s1").first.dig("cache", "hit_pct")).to eq(100)
+  end
+
+  it "exports native usage when a tool fails after a paid generation" do
+    native = RubyLLM.context { |config| config.openai_api_key = "spec-only" }
+      .chat(model: "gpt-4o", provider: :openai)
+    bad = Class.new(RubyLLM::Tool) do
+      def name = "bad"
+      def execute = raise(ArgumentError, "broken tool")
+    end.new
+    native.with_tools(bad)
+    call = RubyLLM::ToolCall.new(id: "bad", name: "bad", arguments: {})
+    allow(native.provider).to receive(:complete).and_return(
+      RubyLLM::Message.new(role: :assistant, content: nil, model: "gpt-4o",
+        tokens: RubyLLM::Tokens.new(input: 10, output: 2),
+        cost: RubyLLM::Cost.from_h({ total: 0.01 }), tool_calls: { "bad" => call }))
+
+    run_turn(build_executor, native, task_id: "failed-usage")
+
+    failed = event_stream.events.find { |event| event.type == :task_failed }
+    expect(failed.data[:usage]).to include(input_tokens: 10, output_tokens: 2, cost_usd: 0.01)
   end
 
   it "a vanished volatile category: the digest leaves the map, the prefix and the reason stay put" do

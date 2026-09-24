@@ -45,6 +45,7 @@ reports only the engine's contribution:
 | **gen** (p50/p95) | streaming the rest through the pipeline (filter/emit/event stream) |
 | **throughput** | turns/s a single process sustains at a given concurrency |
 | **pipeline overhead** | engine work per streamed token (µs) |
+| **allocations** | Ruby objects allocated per measured turn, including benchmark driver bookkeeping, excluding warmup |
 
 **Out of scope, on purpose:** end-to-end latency, time-to-first-token *against a
 provider*, and tokens/s of *model generation*. Those are provider-bound — the
@@ -52,8 +53,9 @@ Insika has no lever on them — so this suite makes no claim about them.
 
 The stub implements exactly the chat surface the executor touches, and each turn
 runs the full engine path: context build, policy resolution, guardrail
-detectors, chat assembly, the tool-call round-trip, streamed output, persistence,
-checkpointing, and the event stream. Only the network call is removed.
+detectors, chat assembly, tool-call callbacks, streamed output, persistence,
+checkpointing, and the event stream. The default mode replaces RubyLLM's Chat;
+use `--ruby-llm` below to include the real Chat and tool execution.
 
 ## Scenarios
 
@@ -62,8 +64,8 @@ imported the same way any pack is, so the measured path is the real one.
 
 - **greeting** — a minimal turn: a short system prompt, no tools. Baseline
   engine overhead.
-- **tool_call** — a turn where the agent calls one tool; exercises tool
-  assembly, the wrap/dispatch path, and the call→result round-trip.
+- **tool_call** — a turn simulating one tool call; exercises tool assembly and
+  call/result callbacks without executing the tool.
 - **multi_turn** — a one-shot carrying prior conversation messages; shows how
   overhead moves as the context the engine assembles grows.
 
@@ -80,11 +82,45 @@ imported the same way any pack is, so the measured path is the real one.
 | `--history-turns N` | `10` | prior messages for the `multi_turn` scenario |
 | `--output-tokens N` | `48` | tokens the stub streams per turn |
 | `--json` | off | emit results as JSON (for regression gating) |
+| `--ruby-llm` | off | run the real RubyLLM Chat with an offline provider |
 
 `--json` prints the engine version, Ruby/YJIT status, the full config, and every
 metric — a stable shape to diff across commits.
 
+## Offline RubyLLM benchmark
+
+```bash
+bundle exec ruby scripts/bench.rb --ruby-llm --json
+```
+
+This opt-in mode measures the engine **plus RubyLLM's real Chat and tool loop**.
+Only the provider is synthetic: it yields deterministic chunks without HTTP,
+credentials, or a model service. The normal executor creates the Chat, assembles
+its history and tools, and registers the production callbacks. The `tool_call`
+scenario executes two sequential lookup rounds; `greeting` streams an answer and
+`multi_turn` seeds the requested history before streaming.
+
+JSON includes the RubyLLM version, `mode`, and per-scenario `ruby_llm_activity`
+counts for provider calls, executed tools, history messages, and streamed chunks.
+Activity counts include warmup; allocation measurements exclude warmup and cover
+both measured passes. Compare matching modes and settings across versions; the
+default stub mode keeps its existing one-tool scenario. Neither mode measures
+HTTP serialization, network latency, or actual model generation.
+
+The offline provider supplies request `model_info`, as native RubyLLM 2 usage
+tracking does. Omitting it adds spurious catalog lookups during cost accounting.
+For an isolated, self-checking reproduction without Insika, run
+`ruby scripts/rubyllm_profile.rb 2.0.0 --profile` and repeat with
+`--request-context`. Use `1.16.0` for the old-gem comparison, outside Bundler.
+Method timings are inclusive and must not be summed; use runs without `--profile`
+for latency comparisons. This diagnostic still omits native HTTP processing.
+
 ## Reference numbers
+
+For the five-run main versus RubyLLM 2 migration comparison repeated on
+2026-09-24, see [current candidate results](RUBYLLM_2_MIGRATION.md#current-candidate-2026-09-24).
+It uses this harness, plus the API-equivalent baseline harness, without YJIT.
+The older YJIT reference below is not a migration acceptance result.
 
 A reference run. **The absolute milliseconds are machine-specific** — reproduce
 them on your own hardware with the command below; what travels across machines is

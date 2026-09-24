@@ -11,7 +11,7 @@ module InsikaCode
 
       description "Reads a UTF-8 text file from the workspace and returns its contents. " \
                   "Paths are relative to the workspace root."
-      param :path, desc: "Path to the file, relative to the workspace root"
+      parameter :path, description: "Path to the file, relative to the workspace root"
 
       def name = "read_file"
 

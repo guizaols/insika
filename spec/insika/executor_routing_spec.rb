@@ -26,10 +26,8 @@ RSpec.describe "Insika::Executor + routing (WS4)" do
       chat = Object.new
       chat.define_singleton_method(:with_instructions) { |_p| self }
       chat.define_singleton_method(:ask) do |_message|
-        response = Object.new
-        response.define_singleton_method(:content) { answer }
-        tokens.each { |k, v| response.define_singleton_method(k) { v } }
-        response
+        RubyLLM::Message.new(role: :assistant, content: answer,
+                            tokens: RubyLLM::Tokens.new(**tokens))
       end
       recorder << { model: model, provider: provider }
       chat
@@ -87,7 +85,7 @@ RSpec.describe "Insika::Executor + routing (WS4)" do
   before { session_store.create(id: "s1") }
 
   it "the message is classified into a route; the route + its cost ride the turn", :aggregate_failures do
-    llm = RoutingLLMDouble.new("shopping", tokens: { input_tokens: 50, output_tokens: 10 })
+    llm = RoutingLLMDouble.new("shopping", tokens: { input: 50, output: 10 })
     executor = build_executor(llm, profiles: { "order-agent" => order_profile })
     chat = FakeChat.new
     run_turn(executor, make_task("quero ver um vestido", id: "r1"), chat)

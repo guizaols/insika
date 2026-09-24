@@ -89,7 +89,7 @@ module Insika
       # first-10 audit reads back.
 
       # ask:   ->(prompt) { "<raw model text>" } | something answering #content
-      #        (+ #input_tokens/#output_tokens/#cached_tokens for cost).
+      #        (+ RubyLLM-compatible #tokens for cost).
       # model: the ref recorded as the candidate's `proposer` ("utility_model"
       #        default).
       attr_reader :model
@@ -110,7 +110,7 @@ module Insika
       # max_proposals: cap on surviving raw skills. Drops counted, never fixed.
       def mine(prompt:, message_counts:, max_proposals: 10)
         answer = @ask.call(prompt)
-        raw = parse(text_of(answer))
+        raw = parse(answer)
         skills = []
         dropped = DROP_KEYS.to_h { |k| [k, 0] }
         seen = {}
@@ -142,20 +142,25 @@ module Insika
       # discipline). The cached prefix is INCLUDED in the spent total (E1: the
       # run's cost is the harvest's only side spend).
       def cost_of(answer)
-        return nil unless answer.respond_to?(:input_tokens) && answer.respond_to?(:output_tokens)
+        return nil unless answer.respond_to?(:tokens)
 
-        input = answer.input_tokens.to_i
-        output = answer.output_tokens.to_i
-        cached = answer.respond_to?(:cached_tokens) ? answer.cached_tokens.to_i : 0
-        spent = input + output + cached
+        usage = answer.tokens
+        input = usage.input.to_i
+        output = usage.output.to_i
+        cached = usage.cache_read.to_i
+        spent = input + output + cached + usage.cache_write.to_i
         spent.positive? ? { "spent" => spent, "cached" => cached } : nil
       end
 
-      # Fences stripped, parsed STRICTLY (the Proposer's discipline): a model
-      # that improvises a schema fails here instead of producing half a skill.
-      def parse(raw)
-        body = raw.strip.gsub(/\A```(?:json)?\s*|\s*```\z/, "")
-        parsed = JSON.parse(body)
+      # Native responses own JSON parsing; injected text asks retain their
+      # existing fenced-JSON contract. Domain validation still runs below.
+      def parse(answer)
+        parsed = if answer.respond_to?(:parsed)
+                   answer.parsed
+                 else
+                   JSON.parse(text_of(answer).strip.gsub(/\A```(?:json)?\s*|\s*```\z/, ""))
+                 end
+        parsed = parsed["items"] if parsed.is_a?(Hash)
         raise Unusable, "the miner's answer is not an array" unless parsed.is_a?(Array)
 
         parsed
@@ -232,8 +237,11 @@ module Insika
         require "ruby_llm"
         llm ||= RubyLLM
         lambda do |prompt|
+          schema = { "type" => "object", "properties" => { "items" => SKILL_SCHEMA.json_schema },
+                     "required" => ["items"], "additionalProperties" => false }
           llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).ask(prompt)
+             .with_temperature(0).with_schema("schema" => schema, "strict" => false)
+             .ask("#{prompt}\n\nReturn the requested array inside a JSON object with the key \"items\".")
         end
       end
     end

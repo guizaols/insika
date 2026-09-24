@@ -78,9 +78,8 @@ RSpec.describe "Insika::Executor — in-session compaction end-to-end" do
     end
   end
 
-  def run_turn(task_id:)
-    chat = FakeChat.new
-    chat.final_content = "ok"
+  def run_turn(task_id:, chat: FakeChat.new)
+    chat.final_content = "ok" if chat.respond_to?(:final_content=)
     allow(executor).to receive(:create_chat).and_return(chat)
     command = Insika::Command.build(:send_message, { agent: "sales", message: "oi" })
     task_store.create(command: command.to_h, session_id: "s1", id: task_id)
@@ -147,5 +146,30 @@ RSpec.describe "Insika::Executor — in-session compaction end-to-end" do
     run_turn(task_id: "t1")
     expect(session_store.find("s1").compaction).to be_nil
     expect(llm.prompts).to be_empty
+  end
+
+  it "commits native compaction after a real chat turn and reloads it on the next turn" do
+    settings_store.update("compaction" => { "mode" => "native" })
+    context = RubyLLM.context { |config| config.openai_api_key = "spec-only" }
+    raw = { "object" => "response.compaction",
+      "output" => [{ "type" => "compaction", "encrypted_content" => "opaque-state" }] }
+    allow_any_instance_of(RubyLLM::Providers::OpenAI).to receive(:complete) do |*, **, &stream|
+      stream&.call(RubyLLM::Chunk.new(role: :assistant, content: "ok"))
+      RubyLLM::Message.new(role: :assistant, content: "ok")
+    end
+    allow_any_instance_of(RubyLLM::Providers::OpenAI).to receive(:compact) do |_, messages, **|
+      expect(messages.size).to eq(52)
+      expect(messages.map(&:content)).to include("meu CEP é 30140-071")
+      RubyLLM::Message.new(role: :assistant, content: "", raw_content: raw)
+    end
+
+    task, = run_turn(task_id: "t1", chat: context.chat(model: "gpt-4o-mini", provider: :openai))
+    expect(task.status).to eq(:completed)
+    expect(session_store.find("s1").compaction.fetch("native").fetch("message").fetch("raw_content")).to eq(raw)
+    task, chat = run_turn(task_id: "t2", chat: context.chat(model: "gpt-4o-mini", provider: :openai))
+    expect(task.status).to eq(:completed)
+    expect(chat.messages.find { |message| message.raw_content }&.raw_content).to eq(raw)
+    expect(session_store.find("s1").messages).to all(satisfy { |message| !message.key?("raw_content") })
+    expect(session_store.find("s1").messages.last.fetch("content")).to eq("ok")
   end
 end

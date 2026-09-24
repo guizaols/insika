@@ -138,6 +138,20 @@ RSpec.describe Insika::Telemetry::Recorder do
     let(:pricing) { Insika::Telemetry::Pricing.new({ "m" => { "input" => 1.0, "output" => 2.0 } }) }
     subject(:recorder) { described_class.new(tracer: tracer, pricing: pricing) }
 
+    it "reports recorded native cost without a custom pricing table" do
+      plain = described_class.new(tracer: tracer)
+      plain.record(ev(:task_started, { agent: "bia" }))
+      plain.record(ev(:task_completed, { usage: { model: "m", input_tokens: 10, cost_usd: 0.012 } }))
+      expect(turn_span.attributes["insika.cost.usd"]).to eq(0.012)
+    end
+
+    it "does not reprice unknown native cost as zero" do
+      plain = described_class.new(tracer: tracer)
+      plain.record(ev(:task_started, { agent: "bia" }))
+      plain.record(ev(:task_completed, { usage: { model: "m", cost_usd: nil } }))
+      expect(turn_span.attributes).not_to include("insika.cost.usd")
+    end
+
     it "priced model -> insika.cost.usd on the turn span" do
       recorder.record(ev(:task_started, { agent: "bia" }))
       recorder.record(ev(:task_completed, { usage: { model: "m", input_tokens: 1_000_000, output_tokens: 0 } }))

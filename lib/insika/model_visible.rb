@@ -20,19 +20,27 @@ module Insika
     # -> ModelVisible. `chat` is the RubyLLM chat at the boundary (instructions,
     # tools, messages are exactly the three parts the provider serializes).
     def self.capture(chat)
+      messages = chat.respond_to?(:messages) ? Array(chat.messages) : []
+      tools = chat.respond_to?(:tools) ? chat.tools : []
+      instructions = if chat.respond_to?(:instructions)
+                       chat.instructions
+                     else
+                       system = messages.select { |m| m.respond_to?(:role) && m.role.to_s == "system" }
+                       Coercion.presence(system.map(&:content).join("\n\n"))
+                     end
       new(
-        instructions: chat.respond_to?(:instructions) ? chat.instructions : nil,
-        tools: chat.respond_to?(:tools) ? Array(chat.tools).map { |t| tool_schema(t) } : [],
-        messages: chat.respond_to?(:messages) ? Array(chat.messages) : []
+        instructions: instructions,
+        tools: (tools.is_a?(Hash) ? tools.values : Array(tools)).map { |t| tool_schema(t) },
+        messages: messages
       )
     end
 
-    # -> Hash: the JSON-safe schema of ONE tool. Reads `parameters` then
+    # -> Hash: the JSON-safe schema of ONE tool. Reads `parameters_schema` then
     # `schema` (the two reader shapes the house FakeChat and the gem's tools
     # answer); a tool answering none degrades to nil, never raises.
     def self.tool_schema(tool)
-      params = if tool.respond_to?(:parameters)
-                 tool.parameters
+      params = if tool.respond_to?(:parameters_schema)
+                 tool.parameters_schema
                elsif tool.respond_to?(:schema)
                  tool.schema
                end

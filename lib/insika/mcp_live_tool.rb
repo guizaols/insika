@@ -4,13 +4,12 @@ require "json"
 require "ruby_llm"
 
 module Insika
-  # One live MCP tool. `name`/`description`/`params_schema`
+  # One live MCP tool. `name`/`description`/`parameters_schema`
   # come from the CACHED descriptor (McpStore#tools_cache — no I/O to build
   # this instance, same cost as any other tool the registry hands out).
   # `#execute` is the only thing that touches the network, calling through
-  # `client_for` (Insika::McpToolRegistry's memoized, started client — this
-  # class never builds or starts one itself) into the gem's own
-  # `RubyLLM::MCP::Tool#execute`, which already unwraps `content[].text` and
+  # `client_for` (Insika::McpToolRegistry's memoized, lazy client) into
+  # `RubyLLM::MCP::Tool#call`, which already unwraps `content[].text` and
   # turns `isError` into `{error:}`.
   #
   # Like every tool in this codebase, `#execute` NEVER raises: a connection
@@ -38,16 +37,16 @@ module Insika
     # are nil for every tool nobody configured, which is what they were before.
     attr_reader :evidence, :requires_evidence
 
-    def params_schema
+    def parameters_schema
       schema = @tool["inputSchema"]
       schema.nil? || schema.empty? ? { "type" => "object", "properties" => {} } : schema
     end
 
     def execute(**params)
-      live = @client_for.call.tool(@tool["name"])
+      live = @client_for.call.tools.find { |tool| tool.name == @tool["name"] }
       raise Insika::NotFoundError, "tool '#{@tool["name"]}' no longer offered" if live.nil?
 
-      parsed(live.execute(**params))
+      parsed(live.call(**params))
     rescue StandardError => e
       { error: "MCP instance '#{@instance_name}' tool '#{@tool["name"]}' failed: #{e.message}" }
     end
@@ -77,7 +76,7 @@ module Insika
     end
 
     def top_level_params
-      properties = params_schema["properties"] || params_schema[:properties] || {}
+      properties = parameters_schema["properties"] || parameters_schema[:properties] || {}
       properties.keys.map(&:to_s)
     end
   end

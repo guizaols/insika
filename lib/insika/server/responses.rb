@@ -197,7 +197,11 @@ module Insika
           # `model` travels alongside usage in the event; in the OpenAI shape it is a sibling of
           # usage (pure tokens in usage).
           model = usage[:model] || usage["model"]
-          response[:usage] = usage.reject { |k, _| k.to_s == "model" }
+          projected = usage.transform_keys(&:to_sym).reject { |k, _| k == :model }
+          cache = projected[:cached_tokens].to_i + projected[:cache_creation_tokens].to_i
+          projected[:input_tokens] += cache if projected[:input_tokens]
+          projected[:total_tokens] += cache if projected[:total_tokens]
+          response[:usage] = projected
           response[:model] = model if model
         end
         # Opt-in per-turn latency breakdown (INSIKA_TURN_TIMING). Absent

@@ -101,11 +101,12 @@ RSpec.describe Insika::Compaction do
 
   describe Insika::Compaction::Summarizer do
     it "returns the trimmed summary and the cost from a usage-bearing answer" do
-      answer = Struct.new(:content, :input_tokens, :output_tokens, :cached_tokens)
-                     .new("  resumo  ", 100, 20, 60)
+      answer = RubyLLM::Message.new(role: :assistant, content: "  resumo  ", input_tokens: 100,
+                                    output_tokens: 20, cache_read_tokens: 60, cache_write_tokens: 30,
+                                    thinking_tokens: 10)
       result = described_class.new(ask: ->(_p) { answer }).summarize(prompt: "p")
       expect(result[:summary]).to eq("resumo")
-      expect(result[:cost]).to eq({ "spent" => 120, "cached" => 60 })
+      expect(result[:cost]).to eq({ "spent" => 210, "cached" => 60 })
     end
 
     it "a plain-string answer works, with nil cost (never 0)" do

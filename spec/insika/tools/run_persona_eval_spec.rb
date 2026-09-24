@@ -9,8 +9,6 @@ require "insika/tools/run_persona_eval" # the Executor loads it lazily; explicit
 # side-effect tool is refused outright); budget is charged to the CALLING
 # agent, never the target.
 RSpec.describe Insika::Tools::RunPersonaEval do
-  Msg = Struct.new(:content, :input_tokens, :output_tokens, :cached_tokens, :cache_creation_tokens, keyword_init: true)
-
   # The chat RubyLLM hands back from `.chat(model:, provider:, ...)`.
   class FakeRawChat
     def initialize(script)
@@ -81,9 +79,10 @@ RSpec.describe Insika::Tools::RunPersonaEval do
   let(:judge_reply) { '{"score": 0.9, "reason": "handled the discovery well"}' }
   let(:llm) do
     FakeLLM.new(
-      "persona-model" => ->(_p) { Msg.new(content: "tá bom, obrigada <<goal_met>>", input_tokens: 10, output_tokens: 5) },
+      "persona-model" => ->(_p) { RubyLLM::Message.new(role: :assistant, content: "tá bom, obrigada <<goal_met>>", input_tokens: 10, output_tokens: 5) },
       "judge-model" => lambda { |_p|
-        Msg.new(content: judge_reply, input_tokens: 20, output_tokens: 8, cached_tokens: 2, cache_creation_tokens: 0)
+        RubyLLM::Message.new(role: :assistant, content: judge_reply, input_tokens: 20, output_tokens: 8,
+                             cache_read_tokens: 2, cache_write_tokens: 3, thinking_tokens: 4)
       }
     )
   end
@@ -166,8 +165,8 @@ RSpec.describe Insika::Tools::RunPersonaEval do
     it "charges the persona + judge spend to the CALLING agent, never the target" do
       seed_case(tenant: "acme")
       bound(tool, agent: "qa", tenant: "acme").execute(case_id: "case-1")
-      # persona: 10 + 5 = 15 · judge: 20 + 8 + 2 (cached) + 0 = 30 · total 45
-      expect(budget_ledger.current(tenant: "acme", agent: "qa")[:daily]).to eq(45)
+      # Thinking is already included in output; both cache buckets are billed.
+      expect(budget_ledger.current(tenant: "acme", agent: "qa")[:daily]).to eq(48)
       expect(budget_ledger.current(tenant: "acme", agent: "loja")[:daily]).to eq(0)
     end
   end
@@ -196,7 +195,7 @@ RSpec.describe Insika::Tools::RunPersonaEval do
       seed_case(id: "case-1")
       golden_store.write({ "id" => "case-2", "agent" => "loja",
                            "turns" => [{ "user" => "oi" }], "expect" => {} })
-      schema = bound(tool).params_schema
+      schema = bound(tool).parameters_schema
       enum = schema.dig(:properties, :case_id, :enum) || schema.dig("properties", "case_id", "enum")
       expect(enum).to eq(["case-1"])
     end
@@ -231,14 +230,14 @@ RSpec.describe Insika::Tools::RunPersonaEval do
     it "the enumerated case_id only lists the CALLING agent's own tenant" do
       seed_case(id: "case-1", tenant: "acme")
       seed_case(id: "case-2", tenant: "other")
-      schema = bound(tool, tenant: "acme").params_schema
+      schema = bound(tool, tenant: "acme").parameters_schema
       enum = schema.dig(:properties, :case_id, :enum) || schema.dig("properties", "case_id", "enum")
       expect(enum).to eq(["case-1"])
     end
 
     it "a case with no declared tenant belongs to 'platform' (the single-tenant default)" do
       seed_case(id: "case-1")
-      schema = bound(tool, tenant: nil).params_schema
+      schema = bound(tool, tenant: nil).parameters_schema
       enum = schema.dig(:properties, :case_id, :enum) || schema.dig("properties", "case_id", "enum")
       expect(enum).to eq(["case-1"])
     end

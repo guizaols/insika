@@ -18,7 +18,7 @@ module InsikaCode
     class Bash < Base
       description "Runs a shell command with the working directory set to the workspace root. " \
                   "Returns {exit_status, output}. Requires human approval."
-      param :command, desc: "The shell command to run (executed via the sandbox provider)"
+      parameter :command, description: "The shell command to run (executed via the sandbox provider)"
 
       def name = "bash"
 

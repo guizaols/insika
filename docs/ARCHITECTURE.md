@@ -210,7 +210,7 @@ flowchart TD
 ```
 
 HTTP data tools and presentation tools are both stored definitions. Presentation
-runs in-process; MCP remains a live server call (HTTP/SSE or stdio). HTTP egress
+runs in-process; MCP remains a live server call (Streamable HTTP or stdio). HTTP egress
 is checked before a request. Tool errors reach the model as error results so it
 can recover; a provenance refusal reports `blocked` without contacting the backend
 or asking an operator. Completed side effects are recorded for resume.
@@ -256,9 +256,12 @@ flowchart LR
   completed --> done(((  )))
 ```
 
-Resume always replays from the *start of the last checkpointed turn*. Tool calls
-that already completed in the interrupted turn are recorded in the checkpoint and
-**not** re-executed, so a non-idempotent side-effect fires at most once. A resumed
+Resume always replays from the *start of the last checkpointed turn*. Side-effect
+calls whose completion was recorded in the checkpoint are skipped when replayed
+with the same call id. An external effect can succeed before that record is saved;
+a crash or failed checkpoint write in that window can repeat the effect on resume.
+Use destination-supported idempotency keys or reconciliation for those operations:
+checkpointing alone does not provide exactly-once external execution. A resumed
 turn is also never re-counted against edge-limit ledgers. Cancellation is
 cooperative — checked at stage boundaries, never in the middle of a store write.
 

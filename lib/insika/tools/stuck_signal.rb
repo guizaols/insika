@@ -19,8 +19,8 @@ module Insika
       description "Signal that you cannot proceed and end the turn. Use when the " \
                   "request is out of your scope, you lack the data to help, or a human " \
                   "must take over. Write your final sentence to the customer first."
-      param :reason, desc: "Why you cannot proceed (goes to the operator, not the customer)"
-      param :message, desc: "Optional final message if you wrote none", required: false
+      parameter :reason, description: "Why you cannot proceed (goes to the operator, not the customer)"
+      parameter :message, description: "Optional final message if you wrote none", required: false
 
       def name = "signal_stuck"
 
@@ -34,7 +34,7 @@ module Insika
         # A Halt ends the tool loop here, so the turn cannot continue after declaring
         # stuck. The payload's `say` is the fallback final message when the model
         # wrote no lead-in (the executor's halt_answer already prefers the lead-in).
-        RubyLLM::Tool::Halt.new(Insika::ToolDefinition.wrap_halt(
+        Insika::ToolDefinition::Halt.new(Insika::ToolDefinition.wrap_halt(
                                   { "reason" => reason.to_s },
                                   message.to_s
                                 ))

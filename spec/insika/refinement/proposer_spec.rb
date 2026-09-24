@@ -37,9 +37,11 @@ RSpec.describe Insika::Refinement::Proposer do
   # the provider's MESSAGE and not only its text. A plain String stays valid and
   # simply reports no cost — which is what every fake, and every older caller, does.
   it "records what the proposal cost when the provider says, and nil when it does not" do
-    message = Struct.new(:content, :input_tokens, :output_tokens).new(JSON_REPLY, 900, 100)
+    message = RubyLLM::Message.new(role: :assistant, content: JSON_REPLY, input_tokens: 900, output_tokens: 100,
+                                   cache_read_tokens: 200, cache_write_tokens: 50, thinking_tokens: 40)
     expect(proposer(message).propose(agent_id: "s", findings: findings, files: files)["tokens"])
-      .to eq(1000)
+      .to eq(1250)
+    expect(propose(message)["cached"]).to eq(200)
     expect(propose(JSON_REPLY)["tokens"]).to be_nil
   end
 
