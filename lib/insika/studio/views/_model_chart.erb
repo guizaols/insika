@@ -1,0 +1,58 @@
+<% series = Array(@report && @report["series"]) %>
+<% values = series.flat_map { |bucket| fields.map { |field, _label| bucket[field] } }.compact %>
+<% has_values = !values.empty? && (unit != "requests" || values.sum.positive?) %>
+<% ceiling = [values.max || 0, unit == "USD" ? 0.000001 : 1].max.to_f %>
+<% count = [series.size, 1].max; slot = 600.0 / count %>
+<div class="model-plot-shell">
+  <div class="model-axis-y" aria-hidden="true">
+    <% [ceiling, ceiling / 2, 0].each do |tick| %><span><%= has_values ? model_chart_tick(tick, unit) : "—" %></span><% end %>
+  </div>
+  <div class="model-plot-body">
+    <svg class="model-plot" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="<%= title %>">
+      <title><%= title %></title>
+      <desc><%= unit %> by time interval. Missing measurements remain gaps. Exact values are available in the chart data table below.</desc>
+      <% [0, 90, 180].each do |y| %><line class="model-gridline" x1="0" x2="600" y1="<%= y %>" y2="<%= y %>"/><% end %>
+      <% if has_values %>
+        <% fields.each do |field, label| %>
+          <% color = field.delete_suffix("_ms") %>
+          <% points = series.each_with_index.map { |bucket, i| bucket[field].nil? ? nil : [(i + 0.5) * slot, 180 - bucket[field] / ceiling * 180] } %>
+          <% if unit != "requests" %>
+            <% model_chart_paths(points).each do |path| %><path class="model-line <%= color %>" d="<%= path %>" vector-effect="non-scaling-stroke"/><% end %>
+          <% end %>
+          <% points.each_with_index do |point, i| %>
+            <% next unless point %>
+            <% x, y = point; bucket = series[i] %>
+            <% stamp = Time.iso8601(bucket["at"]).utc.strftime("%Y-%m-%d %H:%M UTC") %>
+            <% description = "#{stamp} · #{label}: #{model_chart_value(bucket[field], unit)}" %>
+            <% description += " · #{bucket['unknown_cost_requests']} requests have unknown cost" if field == "cost" && bucket["unknown_cost_requests"].to_i.positive? %>
+            <% if unit == "requests" %>
+              <rect class="model-bar requests" x="<%= x - slot * 0.31 %>" y="<%= y %>" width="<%= slot * 0.62 %>" height="<%= 180 - y %>" rx="3" tabindex="0" aria-label="<%= description %>"><title><%= description %></title></rect>
+            <% else %>
+              <circle class="model-point <%= color %>" cx="<%= x %>" cy="<%= y %>" r="3.5" tabindex="0" aria-label="<%= description %>"><title><%= description %></title></circle>
+            <% end %>
+          <% end %>
+        <% end %>
+      <% end %>
+    </svg>
+    <% unless has_values %><div class="model-chart-empty"><strong><%= empty %></strong><span><%= series.sum { |b| b["requests"].to_i }.zero? ? "New requests will appear here." : "This provider has not reported these values." %></span></div><% end %>
+  </div>
+  <div class="model-axis-x" aria-hidden="true">
+    <% unless series.empty? %>
+      <% [0, series.size / 2, series.size - 1].uniq.each do |i| %>
+        <span><%= Time.iso8601(series[i]["at"]).utc.strftime(@period == "24h" ? "%H:%M" : "%b %-d · %H:%M") %></span>
+      <% end %>
+    <% end %>
+  </div>
+</div>
+<details class="model-chart-data">
+  <summary>View chart data<span><%= @period == "24h" ? "Hourly" : @period == "7d" ? "6-hour intervals" : "Daily" %> · UTC</span></summary>
+  <div class="model-table-scroll"><table class="grid">
+    <caption class="sr-only"><%= title %> — exact values</caption>
+    <thead><tr><th scope="col">Interval starts (UTC)</th><% fields.each do |_field, label| %><th scope="col" class="num"><%= label %> (<%= unit %>)</th><% end %><% if unit == "USD" %><th scope="col">Unknown cost</th><% end %></tr></thead>
+    <tbody><% series.each do |bucket| %><tr>
+      <th scope="row"><%= Time.iso8601(bucket["at"]).utc.strftime("%Y-%m-%d %H:%M UTC") %></th>
+      <% fields.each do |field, _label| %><td class="num"><%= bucket[field].nil? ? "No reported value" : model_chart_value(bucket[field], unit) %></td><% end %>
+      <% if unit == "USD" %><td><%= bucket["unknown_cost_requests"].to_i %> of <%= bucket["requests"] %> requests</td><% end %>
+    </tr><% end %></tbody>
+  </table></div>
+</details>

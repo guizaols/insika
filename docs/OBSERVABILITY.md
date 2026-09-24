@@ -15,6 +15,13 @@ request volume, failures, retries, reported USD cost and unknown-cost coverage,
 p50/p90/p95 latency, separate input/output/cache-read/cache-write/thinking token
 subtotals, and the 20 slowest measured requests linked to their tasks.
 
+Charts show request volume, reported cost, and p50/p90/p95 latency over time,
+plus a ranked cost comparison by model. They share the page filters. The 24-hour
+view uses hourly intervals, 7 days uses six-hour intervals, and 30 days uses
+daily intervals, all in UTC. Each chart has an expandable table of exact values.
+Missing cost or duration leaves a gap; no-call intervals have zero requests.
+The page is a snapshot: apply the filters again to refresh it.
+
 Request latency includes native retries. Retries count usage attempts beyond the
 first within a request, not Insika task executions. Percentiles use completed
 requests with measured durations. Cost and token values sum only reported usage;
