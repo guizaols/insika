@@ -2,7 +2,8 @@
 <!-- ── Config / model ────────────────────────────────────────────────────── -->
 <section class="section" id="config" data-tabs-target="panel">
   <% config_groups = [
-       ["model", "Model & limits", "model, memory, generation and runtime limits"],
+       ["model", "Model & limits", "model, generation and runtime limits"],
+       ["retrieval", "Memory & knowledge", "remember, learn, retrieve and rerank"],
        ["guardrails", "Guardrails", "input/output checks, strictness, safe replies"],
        ["grounding", "Grounding", "evidence behind product claims"],
        ["funnel", "Outcome funnel", "stage vocabulary"],
@@ -47,7 +48,7 @@
           <p class="muted">Save config applies changes to <strong><%= @agent.id %></strong>. Changes take effect on future turns.</p>
           <div class="config-group" data-config-group="model"<%== " hidden" unless @config_group == "model" %>>
     <fieldset class="subgroup">
-      <legend>Model &amp; memory</legend>
+      <legend>Model</legend>
     <div class="grid-2">
       <label>model <span class="muted">(blank = platform <code>default_model</code>)</span>
         <input type="text" name="model" value="<%= @agent.model %>" placeholder="inherit platform default">
@@ -56,10 +57,6 @@
         <input type="text" name="provider" value="<%= @agent.provider %>" placeholder="deepseek">
       </label>
     </div>
-    <label class="check">
-      <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
-      cross-session memory (the agent remembers across conversations)
-    </label>
     </fieldset>
 
     <fieldset class="subgroup">
@@ -129,6 +126,10 @@
       </div>
     </details>
 
+          </div>
+
+          <div class="config-group" data-config-group="retrieval"<%== " hidden" unless @config_group == "retrieval" %>>
+            <%== render("_agent_config_retrieval") %>
           </div>
 
           <div class="config-group" data-config-group="guardrails"<%== " hidden" unless @config_group == "guardrails" %>>
