@@ -46,6 +46,33 @@ RSpec.describe "Insika::Executor + media (WS9)" do
 
   before { session_store.create(id: "s1") }
 
+  it "sends DeepSeek image attachments through the default Chat Completions protocol" do
+    context = RubyLLM.context do |config|
+      config.deepseek_api_key = "spec-only"
+      config.deepseek_api_base = "https://api.deepseek.com"
+    end
+    executor = build_executor(llm: context)
+    selection = Insika::ModelSelection.new(model: "deepseek-v4-flash", provider: :deepseek)
+    t = task("photo", parts: [{ "type" => "image", "url" => "https://cdn.example.com/photo.jpeg" }])
+    state = Insika::TurnState.new(task: t, profile: profile, turn: 1, message: "photo")
+    chat = executor.send(:build_chat, selection, selection, state: state)
+    attachment = RubyLLM::Attachment.new(StringIO.new("\xFF\xD8\xFF\xE0".b), filename: "photo.jpeg")
+    sent = nil
+    chat.provider.connection.connection.adapter :test do |stub|
+      stub.post("/chat/completions") do |env|
+        sent = JSON.parse(env.body)
+        [200, { "Content-Type" => "application/json" }, JSON.generate(
+          id: "response-1", model: "deepseek-flash",
+          choices: [{ index: 0, message: { role: "assistant", content: "A photo" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 })]
+      end
+    end
+
+    expect(chat.ask("photo", with: [attachment]).content).to eq("A photo")
+    expect(sent.fetch("messages").last.fetch("content"))
+      .to include(hash_including("type" => "image_url", "image_url" => { "url" => attachment.for_llm }))
+  end
+
   it "an AUDIO part is transcribed — the text enters the message and the turn is marked source: voice" do
     executor = build_executor(media: ->(_url) { "quero saber do meu pedido" })
     chat = FakeChat.new
