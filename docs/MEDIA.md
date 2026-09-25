@@ -39,6 +39,8 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   the usage flows like any ask. The first image URL is also
   `{{ctx.image_url}}` for data tools — photo analysis outside the prompt, the
   tool's own egress applying when it fetches.
+  DeepSeek images require RubyLLM's [image-attachment fix](https://github.com/crmne/ruby_llm/pull/972),
+  included in this deployment's pinned revision, and a vision-capable model.
 - **Documents** (a prescription, a recipe, an invoice — most often a PDF)
   attach the same way images do; the first document URL is
   `{{ctx.document_url}}`. A model without document support fails the ask at
