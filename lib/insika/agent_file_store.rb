@@ -31,6 +31,13 @@ module Insika
       entry(agent_id, filename.to_s)&.fetch("content", nil)
     end
 
+    # -> { name => content } every file of the agent, from ONE read of its record
+    # (which also carries the version history). Callers that need several files
+    # use this instead of `read` per file.
+    def contents(agent_id)
+      files(agent_id).transform_values { |entry| entry["content"] }
+    end
+
     # -> [String] the agent's file names, lexicographic order.
     def list(agent_id)
       files(agent_id).keys.sort
