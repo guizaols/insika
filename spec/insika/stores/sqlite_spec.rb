@@ -37,6 +37,17 @@ RSpec.describe Insika::Stores::SQLite do
 
     # The only backend-specific tests allowed.
 
+    # Under Litestream the app must not checkpoint: its autocheckpoints race
+    # Litestream's own and the WAL grows (175 MB seen on staging).
+    it "turns off SQLite's autocheckpoint when asked, keeping the default otherwise" do
+      quiet = described_class.new(path: db_path, autocheckpoint: false)
+      pragma = ->(st) { st.instance_variable_get(:@db).get_first_value("PRAGMA wal_autocheckpoint") }
+
+      expect([pragma.call(quiet), pragma.call(store)]).to eq([0, 1000])
+    ensure
+      quiet&.close
+    end
+
     it "is durable: data survives close + reopen on the same file" do
       store.set("s", "k", { "a" => 1 })
       store.transaction { store.set("s", "t", "commitado") }
