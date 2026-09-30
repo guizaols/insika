@@ -48,6 +48,17 @@ RSpec.describe Insika::Stores::SQLite do
       quiet&.close
     end
 
+    # A prefix list used to SELECT the whole scope and filter in Ruby, holding
+    # the GVL: `list checkpoints` alone took 26 ms per call on a 166 MB database
+    # and starved the reactor under load. It must seek the primary key instead.
+    it "lists a prefix by seeking the primary key, not scanning the scope" do
+      plan = store.instance_variable_get(:@db)
+                  .execute("EXPLAIN QUERY PLAN #{described_class::LIST_PREFIX_SQL}", ["s", "a:", "a;"])
+                  .map(&:last).join(" ")
+
+      expect(plan).to match(/SEARCH kv USING PRIMARY KEY \(scope=\? AND key>\? AND key<\?\)/)
+    end
+
     it "is durable: data survives close + reopen on the same file" do
       store.set("s", "k", { "a" => 1 })
       store.transaction { store.set("s", "t", "commitado") }
