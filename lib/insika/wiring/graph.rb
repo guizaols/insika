@@ -36,18 +36,6 @@ module Insika
                                    slow_ms: slow && Float(slow))
       end
 
-      # A SEPARATE SQLite file for the traces when INSIKA_TRACE_DB is set, else
-      # `fallback` (the main backend). SQLite has one writer per file: with N
-      # workers, trace writes (several per turn) queued the domain writes (the
-      # task a new message creates, the session) behind them on the same lock.
-      def trace_backend_from_env(fallback:, env: ENV)
-        path = Insika::EnvSchema.read("INSIKA_TRACE_DB", env)
-        return fallback if path.nil? || path.empty?
-
-        slow = Insika::EnvSchema.read("INSIKA_SLOW_STORE_MS", env)
-        Insika::Stores::SQLite.new(path: path, slow_ms: slow && Float(slow))
-      end
-
       # On unless INSIKA_MODEL_VISIBLE_TRACES is set to a false value.
       def model_visible_traces?(env = ENV)
         value = Insika::EnvSchema.read("INSIKA_MODEL_VISIBLE_TRACES", env)
@@ -64,14 +52,9 @@ module Insika
       # the infra spine that is IDENTICAL across roots. `extra_policy_
       # builtins` covers the one real divergence (the minimal wiring also registers
       # :workflow_allowlist; the deployment does not expose workflows).
-      # trace_backend: where the self-contained traces live (default: `backend`) —
-      # the model-visible ones here; the deployment puts tool/context/cache-series
-      # traces there too.
-      def spine(backend:, trace_backend: backend, extra_policy_builtins: {})
+      def spine(backend:, extra_policy_builtins: {})
         session_store        = Insika::SessionStore.new(store: backend)
         task_store           = Insika::TaskStore.new(store: backend)
-        # llm_traces/model_metrics stay beside the tasks: they only record for a task
-        # that exists, and deleting a task purges them in the same store.
         llm_trace_store       = Insika::LLMTraceStore.new(store: backend)
         model_metrics_store  = Insika::ModelMetricsStore.new(store: backend)
         checkpoint_store     = Insika::CheckpointStore.new(store: backend)
@@ -152,7 +135,7 @@ module Insika
         extra_policy_builtins.each { |name, klass| policy_registry.register(name, klass) }
 
         Spine.new(
-          backend: backend, trace_backend: trace_backend, event_stream: Insika::EventStream.new,
+          backend: backend, event_stream: Insika::EventStream.new,
           session_store: session_store, task_store: task_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
@@ -248,7 +231,7 @@ module Insika
         # trace uses. INSIKA_MODEL_VISIBLE_TRACES=0 stops the WRITE only (nothing in
         # the product reads it back; it was ~80% of the bytes a turn wrote): the
         # purge paths below keep their own store, so old records still go.
-        model_visible_trace_store: model_visible_traces? ? Insika::ModelVisibleTraceStore.new(store: spine.trace_backend) : nil,
+        model_visible_trace_store: model_visible_traces? ? Insika::ModelVisibleTraceStore.new(store: spine.backend) : nil,
         # the per-turn extraction hook (nil = the loop is off,
         # parity). Gated per-agent by `profile.knowledge`.
         knowledge_store: spine.knowledge_store,
@@ -293,7 +276,7 @@ module Insika
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
             # the model-visible traces die with their checkpoints.
-            model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+            model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
             outbox_store: spine.outbox_store,
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
@@ -522,7 +505,7 @@ module Insika
                        context_trace_store: executor_extra[:context_trace_store],
                        # the model-visible traces die with the
                        # checkpoints (the same SessionPurge list).
-                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
@@ -546,7 +529,7 @@ module Insika
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
                        # the model-visible traces die with the tenant.
-                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        outcome_store: spine.outcome_store,
                        funnel_store: spine.funnel_store, # the fold dies with the tenant
                         followup_store: spine.followup_store,
@@ -666,7 +649,7 @@ module Insika
       # Infra spine (phase 1 output). Value object — the roots read these to promote
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
-        :backend, :trace_backend, :event_stream, :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store,
+        :backend, :event_stream, :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
         :harvest_store,
