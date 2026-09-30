@@ -246,7 +246,7 @@ RSpec.describe "RubyLLM boundary contract" do
 
   describe "the shared chat double" do
     it "exposes only real Chat methods and declared test controls" do
-      scaffolding = %i[asked completes instructions model= script script= final_content final_content=
+      scaffolding = %i[asked completes instructions turn_context model= script script= final_content final_content=
                        fire_tool_call fire_tool_result fire_tool_result_message fire_end_message
                        emit_chunk emit_thinking halt_with!]
       expect(FakeChat.public_instance_methods(false) - scaffolding - RubyLLM::Chat.public_instance_methods).to be_empty

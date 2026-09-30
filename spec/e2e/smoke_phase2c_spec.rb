@@ -89,14 +89,14 @@ RSpec.describe "smoke E2E: cross-session memory",:smoke do
     memory.put_fact(tenant: "acme", key: "plano", value: "premium") # written in a previous session
 
     _task, chat = run_turn(agent: "mem_on")
-    expect(chat.instructions).to include("<memory>", %(<fact key="plano">premium</fact>))
+    expect(chat.turn_context).to include("<memory>", %(<fact key="plano">premium</fact>))
   end
 
   it "note (remember without key) appears in the next session's context" do
     memory.add_note(tenant: "acme", text: "cliente prefere email", at: "2026-01-01T00:00:00Z")
 
     _task, chat = run_turn(agent: "mem_on")
-    expect(chat.instructions).to include("<note>cliente prefere email</note>")
+    expect(chat.turn_context).to include("<note>cliente prefere email</note>")
   end
 
   it "parity: a memory:nil agent gets neither <memory> nor the remember tool" do

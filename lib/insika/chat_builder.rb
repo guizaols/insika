@@ -57,6 +57,7 @@ module Insika
       state.native_approvals = defined?(RubyLLM::Chat) && chat.is_a?(RubyLLM::Chat)
       configure_chat(chat, state)
       seed_history(chat, Array(state.context.history))
+      add_turn_context(chat, state)
       wire_callbacks(chat, state, emit)
       chat
     end
@@ -287,7 +288,13 @@ module Insika
     # the breakpoint, so they never enter the cached prefix). An empty volatile
     # layer emits ONE block — byte-identical to the pre-split shape.
     # RubyLLM's native message cache marker places that boundary on the wire.
-    # Other providers keep the plain string and their existing caching behavior.
+    #
+    # Other providers (DeepSeek, OpenAI) cache by exact prefix, automatically.
+    # There a volatile layer inside the system message moves the prefix every
+    # turn it changes, and everything after it — tools and history — is billed
+    # uncached again. So the system carries the identity layer alone and the
+    # volatile layer rides as a message right before the turn's input
+    # (#add_turn_context): only the last exchange misses.
     #
     # What still breaks a read hit: a context provider that declares
     # `layer :identity` and emits per-turn bytes (a timestamp, request data).
@@ -298,9 +305,29 @@ module Insika
         identity, volatile = system_layers(context)
         chat.with_instructions(identity.empty? ? nil : identity, cache_until_here: !identity.empty?)
         chat.with_instructions(volatile, append: true) unless volatile.empty?
-      else
+      elsif (volatile = turn_volatile(chat, context)).empty?
         chat.with_instructions(context.system.to_s)
+      else
+        identity = system_layers(context).first
+        chat.with_instructions(identity) unless identity.empty?
       end
+    end
+
+    # Seeded AFTER the history and before the baseline, so the transcript never
+    # persists it: next turn the history stays byte-identical to what was cached.
+    # A user-role message, not a second system one: chat templates may hoist every
+    # system message to the top, which would put the volatile bytes back into the prefix.
+    def add_turn_context(chat, state)
+      volatile = turn_volatile(chat, state.context)
+      chat.add_message(role: :user, content: "<turn_context>\n#{volatile}\n</turn_context>") unless volatile.empty?
+    end
+
+    # The volatile layer that leaves the system message: outside Anthropic only
+    # (there the split blocks already keep it below the breakpoint, or caching is off).
+    def turn_volatile(chat, context)
+      return "" if context.system.to_s.empty? || anthropic_provider?(chat)
+
+      system_layers(context).last
     end
 
     # A hook rewriting only `system` wins over the original split layers.

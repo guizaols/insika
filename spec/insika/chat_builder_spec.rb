@@ -107,10 +107,25 @@ RSpec.describe Insika::ChatBuilder do
         expect(cache_blocks(c)).to eq([{ type: "text", text: "REPLACED", cache_control: { type: "ephemeral" } }])
       end
 
-      it "a split package on a NON-Anthropic provider stays a plain joined string" do
-        c = FakeChat.new.tap { |ch| ch.model = Struct.new(:provider).new("openai") }
-        builder.configure_chat(c, state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: true))
-        expect(c.instructions).to eq("SOUL\n\nmemory: ana")
+      # DeepSeek/OpenAI cache by exact prefix: the volatile layer leaves the
+      # system and sits after the history, so tools + history stay cached.
+      it "a split package on a NON-Anthropic provider keeps only the identity in the system" do
+        c = FakeChat.new.tap { |ch| ch.model = Struct.new(:provider).new("deepseek") }
+        st = state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: nil)
+        builder.configure_chat(c, st)
+        builder.seed_history(c, [{ role: "user", content: "oi" }, { role: "assistant", content: "olá" }])
+        builder.add_turn_context(c, st)
+        expect(c.instructions).to eq("SOUL")
+        expect(c.messages.map { _1[:role] }).to eq(%i[user assistant user])
+        expect(c.messages.last[:content]).to eq("<turn_context>\nmemory: ana\n</turn_context>")
+      end
+
+      it "adds no turn context on Anthropic (the split blocks already handle it)" do
+        c = anthropic_chat
+        st = state_with(package(identity: "SOUL", volatile: "memory: ana"), prompt_caching: true)
+        builder.configure_chat(c, st)
+        builder.add_turn_context(c, st)
+        expect(c.messages.map(&:role)).to eq(%i[system system])
       end
 
       it "uses a plain string when caching is on but the provider is NOT Anthropic" do

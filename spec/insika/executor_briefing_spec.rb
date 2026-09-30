@@ -70,20 +70,22 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
     expect(ev.data).to eq(kind: "field", field: "size", value: "M")
   end
 
-  it "turn 2: the head <briefing> renders in the system, the recitation LAST in the history" do
+  it "turn 2: the head <briefing> renders in the turn context, the recitation LAST in the history" do
     session_store.update_briefing("s1", field: "size", value: "M")
 
     chat = FakeChat.new
     chat.final_content = "ok"
     _task, chat = run_turn(chat, task_id: "t2")
 
-    expect(chat.instructions).to include("<briefing>")
-    expect(chat.instructions).to include("  size: M")
+    expect(chat.turn_context).to include("<briefing>")
+    expect(chat.turn_context).to include("  size: M")
     # the recitation MOVED out of the head — it is not duplicated there.
-    expect(chat.instructions).not_to include("still missing")
-    last = chat.messages.last
-    expect(last[:role]).to eq(:user)
-    expect(last[:content]).to include("<recitation>", "still missing: budget")
+    expect(chat.turn_context).not_to include("still missing")
+    # the turn context closes the seeded slice; the recitation is the history's last message.
+    context_at = chat.messages.index { |m| m[:content].to_s.start_with?("<turn_context>") }
+    recitation = chat.messages[context_at - 1]
+    expect(recitation[:role]).to eq(:user)
+    expect(recitation[:content]).to include("<recitation>", "still missing: budget")
   end
 
   it "the briefing survives beyond the transcript — a RESUME re-reads it from the store" do
@@ -110,8 +112,8 @@ RSpec.describe "Insika::Executor — briefing end-to-end " do
     end
 
     expect(task_store.find("t3").status).to eq(:completed)
-    expect(chat.instructions).to include("<briefing>", "  size: M")
-    expect(chat.messages.last[:content]).to include("<recitation>", "still missing: budget")
+    expect(chat.turn_context).to include("<briefing>", "  size: M")
+    expect(chat.messages.map { |m| m[:content].to_s }).to include(a_string_including("<recitation>", "still missing: budget"))
   end
 
   it "parity: an agent without briefing_fields gets neither the tools nor the block" do
