@@ -9,6 +9,7 @@ module Insika
   # has its own queue and `emit` only enqueues. No mutex: one reactor, cooperative
   # fibers — a plain Array is enough.
   class EventStream
+    EMPTY = [].freeze
     # One subscription = one queue. The consumer blocks on `each` (its own fiber),
     # never the emitter.
     class Subscription
@@ -19,6 +20,8 @@ module Insika
       # piles up in its OWN queue; on overflow, the subscription closes with a
       # local :error event — the turn never waits on transport.
       MAX_QUEUED = 1000
+
+      attr_reader :session_id
 
       def initialize(task_id: nil, session_id: nil, tenant: nil, types: nil, on_close: nil)
         @task_id = task_id
@@ -106,19 +109,24 @@ module Insika
       end
     end
 
+    # Subscriptions by the session they filter on (nil = any session). A session
+    # filter never changes after subscribe, so an event only needs the any-session
+    # list plus its own session's: emit does not walk every open conversation.
     def initialize
-      @subscriptions = []
+      @subscriptions = {}
     end
 
     # NEVER raises: an observer's exception is isolated — a
     # broken observer does not bring down the turn. Synchronous and cheap.
     #
-    # Iterates over a SNAPSHOT (`dup`): a subscription's cap may close it
+    # Iterates over a SNAPSHOT (a new array): a subscription's cap may close it
     # DURING the push (overflow -> close -> on_close removes from the array);
     # mutating the array in the middle of a plain Array#each would skip the next
     # subscriber.
     def emit(event)
-      @subscriptions.dup.each do |sub|
+      session_id = event.meta&.[](:session_id)
+      candidates = @subscriptions.fetch(nil, EMPTY) + (session_id.nil? ? EMPTY : @subscriptions.fetch(session_id, EMPTY))
+      candidates.each do |sub|
         sub.push(event) if sub.matches?(event)
       rescue StandardError
         # a broken observer does not bring down the turn; nothing to propagate
@@ -134,9 +142,17 @@ module Insika
     def subscribe(task_id: nil, session_id: nil, tenant: nil, types: nil)
       sub = Subscription.new(task_id: task_id, session_id: session_id, tenant: tenant,
                              types: types,
-                             on_close: ->(s) { @subscriptions.delete(s) })
-      @subscriptions << sub
+                             on_close: ->(s) { unsubscribe(s) })
+      (@subscriptions[session_id] ||= []) << sub
       sub
+    end
+
+    private
+
+    def unsubscribe(sub)
+      list = @subscriptions[sub.session_id] or return
+      list.delete(sub)
+      @subscriptions.delete(sub.session_id) if list.empty?
     end
   end
 end
