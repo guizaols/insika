@@ -37,14 +37,34 @@ module Insika
         end
       end
 
+      # A rowid table plus a (scope, key) index, not WITHOUT ROWID: values run to
+      # tens of KB, and a WITHOUT ROWID table keeps each row inside the key
+      # b-tree, so every key scan (list, the prefix ranges) read the values too.
+      # The index holds only the keys; a value is read when it is asked for.
+      # SQLite's own guidance: WITHOUT ROWID is for small rows.
       DDL = <<~SQL
         CREATE TABLE IF NOT EXISTS kv (
           scope      TEXT    NOT NULL,
           key        TEXT    NOT NULL,
           value      TEXT    NOT NULL,
-          updated_at TEXT    NOT NULL,
-          PRIMARY KEY (scope, key)
-        ) WITHOUT ROWID;
+          updated_at TEXT    NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS kv_scope_key ON kv (scope, key);
+      SQL
+
+      # The rebuild of a file still in the old layout: one transaction, so a crash
+      # leaves the old table whole.
+      REBUILD = <<~SQL
+        CREATE TABLE kv_rowid (
+          scope      TEXT    NOT NULL,
+          key        TEXT    NOT NULL,
+          value      TEXT    NOT NULL,
+          updated_at TEXT    NOT NULL
+        );
+        INSERT INTO kv_rowid (scope, key, value, updated_at)
+          SELECT scope, key, value, updated_at FROM kv ORDER BY scope, key;
+        DROP TABLE kv;
+        ALTER TABLE kv_rowid RENAME TO kv;
       SQL
 
       # JSON model types + Symbol (coerced to String on write).
@@ -98,10 +118,9 @@ module Insika
           @db.execute("PRAGMA journal_mode = WAL")
           @db.execute("PRAGMA synchronous = NORMAL")
           @db.execute("PRAGMA wal_autocheckpoint = 0") unless autocheckpoint
+          rebuild_without_rowid!
           @db.execute_batch(DDL)
         end
-        # The WITHOUT ROWID PRIMARY KEY (scope, key) is already the prefix index —
-        # there is no extra index to create.
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, "failed to open #{path}: #{e.message}"
       end
@@ -125,6 +144,26 @@ module Insika
         end
       end
       private :with_busy_retry
+
+      # Rebuilds a WITHOUT ROWID kv (the old layout) into the rowid one. Checked
+      # again under BEGIN IMMEDIATE: of N workers opening the file together only
+      # the first rebuilds; the rest find it done. On a big file this takes
+      # seconds, so a deployment should open the store once before its workers
+      # (deploy/entrypoint.sh does).
+      def rebuild_without_rowid!
+        return unless without_rowid?
+
+        @db.transaction(:immediate) do
+          @db.execute_batch(REBUILD) if without_rowid?
+        end
+      end
+      private :rebuild_without_rowid!
+
+      def without_rowid?
+        @db.get_first_value("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kv'")
+           .to_s.include?("WITHOUT ROWID")
+      end
+      private :without_rowid?
 
       def close
         @db&.close
