@@ -151,6 +151,27 @@ RSpec.describe "Insika::Executor guardrails" do
     end
   end
 
+  describe "prompt echo — the reply pasted the system prompt" do
+    let(:long_prompt) { "You are the Example Store assistant. #{'Keep every answer short and friendly. ' * 20}" }
+    let(:profile) { Insika::AgentProfile.build(id: "example-agent", model: "gpt", base_prompt: long_prompt) }
+
+    before { session_store.create(id: "s1") }
+
+    it "publishes and persists only the answer, and flags the cut" do
+      executor = build_executor
+      chat = FakeChat.new
+      chat.final_content = "We don't sell shoes, sorry.\n#{long_prompt}"
+      prompt = long_prompt
+      chat.script = proc { emit_chunk("We don't sell shoes, sorry.\n#{prompt}") }
+      run_turn(executor, make_task("do you sell shoes?"), fake_chat: chat)
+
+      deltas = event_stream.events.select { |e| e.type == :content }.map { |e| e.data[:delta] }.join
+      flag = event_stream.events.find { |e| e.type == :guardrail_flagged }
+      expect([deltas, session_store.find("s1").messages.last["content"]]).to eq(["We don't sell shoes, sorry."] * 2)
+      expect(flag.data).to include(category: "prompt_leak", action: "cut")
+    end
+  end
+
   describe "output validator — post-turn flag" do
     before { session_store.create(id: "s1") }
 
