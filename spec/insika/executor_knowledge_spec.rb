@@ -122,6 +122,22 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     executor.send(:finalize_knowledge_extraction, task_for, off_profile, long_messages)
   end
 
+  %w[sim-chat-1 eval-golden-1 acme:sim-chat-1].each do |session_id|
+    it "skips synthetic traffic (#{session_id}): it must not teach the production agent" do
+      expect(Insika::Knowledge::ExtractorFactory).not_to receive(:build)
+      build_executor.send(:finalize_knowledge_extraction, task_for(session_id: session_id), profile, long_messages)
+    end
+  end
+
+  it "gives the extractor the agent's identity so it reads the conversation in the right domain" do
+    extractor = stub_extractor(concepts: [], dropped: {}, cost: nil)
+    context = Insika::ContextPackage.new(system: "x", system_identity: "Você é a consultora de beleza da Época.",
+                                         history: [], tool_context: nil, fragments: [], budget: {})
+    build_executor.send(:finalize_knowledge_extraction, task_for, profile, long_messages, context)
+    expect(extractor).to have_received(:extract).with(prompt: a_string_including(
+      "## The agent", "consultora de beleza da Época", "## The conversation"))
+  end
+
   it "skips a trivially short turn without spending a model call" do
     executor = build_executor
     expect(Insika::Knowledge::ExtractorFactory).not_to receive(:build)

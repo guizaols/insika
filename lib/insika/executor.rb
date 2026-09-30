@@ -2676,7 +2676,7 @@ module Insika
       # path — the user already has the answer above. Same terminal hook,
       # next door to the other two, for the same reason: it fires for a fresh
       # turn and a recovered one.
-      finalize_knowledge_extraction(task, profile, new_messages)
+      finalize_knowledge_extraction(task, profile, new_messages, state.context)
 
       # in-session compaction (RFC-0044): when the uncompacted
       # transcript crossed the threshold this turn, summarize the old prefix
@@ -2752,8 +2752,9 @@ module Insika
     # boot sweep), a child of the turn supervisor when serving (survives the
     # request's own disconnect). Best-effort: any failure is swallowed here,
     # never re-fails an already-committed turn.
-    def finalize_knowledge_extraction(task, profile, new_messages)
+    def finalize_knowledge_extraction(task, profile, new_messages, context = nil)
       return unless @knowledge_store
+      return if simulated_session?(task.session_id)
 
       config = Coercion.deep_stringify(profile.knowledge)
       return unless config && Coercion.truthy?(config["extract"])
@@ -2767,7 +2768,8 @@ module Insika
       # still meaningful: write_concept's conservative default.
       consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model, llm: @llm)
 
-      run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator) }
+      agent_brief = context.respond_to?(:system_identity) ? context.system_identity : nil
+      run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator, agent_brief) }
       return run.call unless @supervised
 
       turn_parent.async do |t|
@@ -2776,8 +2778,8 @@ module Insika
       end
     end
 
-    def run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator)
-      prompt = knowledge_prompt(config, new_messages)
+    def run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator, agent_brief = nil)
+      prompt = knowledge_prompt(config, new_messages, agent_brief)
       result = extractor.extract(prompt: prompt)
       result[:concepts].each do |concept|
         outcome = Knowledge.write_concept(
@@ -2802,15 +2804,31 @@ module Insika
       end
     end
 
-    def knowledge_prompt(config, new_messages)
+    # Transcripts drop tool results (product cards, search hits), so without the
+    # agent's own identity the extractor guesses the domain: "pode ser importado"
+    # about a perfume became "imported vehicles" for a beauty store.
+    KNOWLEDGE_BRIEF_CHARS = 1500
+
+    def knowledge_prompt(config, new_messages, agent_brief = nil)
       base = Coercion.presence(config["prompt"]) || Knowledge::DEFAULT_PROMPT
+      # ponytail: the head of the identity prompt names the store in our packs; a pack whose prompt
+      # opens elsewhere needs a `knowledge.prompt` that states the domain.
+      brief = Coercion.presence(agent_brief.to_s[0, KNOWLEDGE_BRIEF_CHARS])
+      agent = brief ? "\n## The agent (read for its business domain only)\n\n#{brief}\n" : ""
       <<~PROMPT
         #{base.rstrip}
-
+        #{agent}
         ## The conversation
 
         #{knowledge_transcript(new_messages)}
       PROMPT
+    end
+
+    # Simulator (`sim-<chat>`) and eval (`eval-<id>`) sessions are synthetic
+    # traffic: they must not teach the production agent. A tenant-scoped id
+    # ("<tenant>:sim-…") is judged by its last segment.
+    def simulated_session?(session_id)
+      session_id.to_s.split(":").last.to_s.start_with?("sim-", "eval-")
     end
 
     # Only what people said, PII-redacted — a `role: tool` message is
