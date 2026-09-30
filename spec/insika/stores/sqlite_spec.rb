@@ -2,6 +2,8 @@
 
 require "tmpdir"
 require "fileutils"
+require "logger"
+require "stringio"
 require "sqlite3" # the spec may require the gem; only the CORE has the lazy require rule
 require_relative "../../../lib/insika/testing/store_contract"
 
@@ -56,7 +58,47 @@ RSpec.describe Insika::Stores::SQLite do
                   .execute("EXPLAIN QUERY PLAN #{described_class::LIST_PREFIX_SQL}", ["s", "a:", "a;"])
                   .map(&:last).join(" ")
 
-      expect(plan).to match(/SEARCH kv USING PRIMARY KEY \(scope=\? AND key>\? AND key<\?\)/)
+      expect(plan).to match(/SEARCH kv USING COVERING INDEX kv_scope_key \(scope=\? AND key>\? AND key<\?\)/)
+    end
+
+    # A store call holds the GVL for its whole duration, so a slow one stalls every
+    # fiber in the process. The log names the call, the scope and the caller.
+    it "logs store calls at or above slow_ms with the caller, and nothing when off" do
+      io = StringIO.new
+      slow = described_class.new(path: db_path, slow_ms: 0, logger: Logger.new(io))
+      slow.set("s", "k", 1)
+      slow.list("s", "k")
+      store.get("s", "k")
+
+      expect(io.string).to match(/slow store set scope=s \d+\.\d ms at .*sqlite_spec\.rb:\d+/)
+        .and match(/slow store list scope=s /)
+        .and satisfy { |log| !log.include?("store get") }
+    ensure
+      slow&.close
+    end
+
+    # The table used to be WITHOUT ROWID: every row carried its value inside the
+    # key b-tree, so listing keys read the values too. A file in that layout is
+    # rebuilt on open into a rowid table plus a (scope, key) index, data intact.
+    it "rebuilds a WITHOUT ROWID table into a rowid table with a key index" do
+      store.close
+      legacy = File.join(tmpdir, "legacy.db")
+      raw = SQLite3::Database.new(legacy)
+      raw.execute_batch(<<~SQL)
+        CREATE TABLE kv (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                         updated_at TEXT NOT NULL, PRIMARY KEY (scope, key)) WITHOUT ROWID;
+        INSERT INTO kv VALUES ('s', 'a', '1', 't'), ('s', 'b', '{"x":2}', 't'), ('o', 'a', '"z"', 't');
+      SQL
+      raw.close
+
+      reopened = described_class.new(path: legacy)
+      sql = reopened.instance_variable_get(:@db).get_first_value("SELECT sql FROM sqlite_master WHERE name = 'kv'")
+      index = reopened.instance_variable_get(:@db).get_first_value("SELECT name FROM sqlite_master WHERE name = 'kv_scope_key'")
+
+      expect([sql.include?("WITHOUT ROWID"), index, reopened.list("s"), reopened.get("s", "b"), reopened.get("o", "a")])
+        .to eq([false, "kv_scope_key", %w[a b], { "x" => 2 }, "z"])
+    ensure
+      reopened&.close
     end
 
     it "is durable: data survives close + reopen on the same file" do
