@@ -34,6 +34,12 @@ module Insika
         Insika::Stores::SQLite.new(path: db, autocheckpoint: env["LITESTREAM_REPLICA_URL"].to_s.empty?)
       end
 
+      # On unless INSIKA_MODEL_VISIBLE_TRACES is set to a false value.
+      def model_visible_traces?(env = ENV)
+        value = Insika::EnvSchema.read("INSIKA_MODEL_VISIBLE_TRACES", env)
+        value.nil? || Insika::EnvSchema.truthy?(value)
+      end
+
       # an integer tick knob from the env, nil when unset (the caller's
       # default wins). Dual-read honors the deprecated HARNESS_* alias.
       def tick_env(name, env = ENV)
@@ -220,8 +226,10 @@ module Insika
         # the model-visible trace rides executor_extra like the
         # context trace — a module graph that omits it still builds (nil =
         # parity). The base graph wires it over the same backend the context
-        # trace uses.
-        model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
+        # trace uses. INSIKA_MODEL_VISIBLE_TRACES=0 stops the WRITE only (nothing in
+        # the product reads it back; it was ~80% of the bytes a turn wrote): the
+        # purge paths below keep their own store, so old records still go.
+        model_visible_trace_store: model_visible_traces? ? Insika::ModelVisibleTraceStore.new(store: spine.backend) : nil,
         # the per-turn extraction hook (nil = the loop is off,
         # parity). Gated per-agent by `profile.knowledge`.
         knowledge_store: spine.knowledge_store,
