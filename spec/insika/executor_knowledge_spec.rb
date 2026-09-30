@@ -131,11 +131,30 @@ RSpec.describe "Insika::Executor knowledge extraction" do
 
   it "gives the extractor the agent's identity so it reads the conversation in the right domain" do
     extractor = stub_extractor(concepts: [], dropped: {}, cost: nil)
-    context = Insika::ContextPackage.new(system: "x", system_identity: "Você é a consultora de beleza da Época.",
-                                         history: [], tool_context: nil, fragments: [], budget: {})
-    build_executor.send(:finalize_knowledge_extraction, task_for, profile, long_messages, context)
+    state = Insika::TurnState.new(task: task_for, profile: profile, turn: 1, message: "oi")
+    state.context = Insika::ContextPackage.new(system: "x", system_identity: "Você é a consultora de beleza da Época.",
+                                               history: [], tool_context: nil, fragments: [], budget: {})
+    build_executor.send(:finalize_knowledge_extraction, state.task, profile, long_messages, state)
     expect(extractor).to have_received(:extract).with(prompt: a_string_including(
       "## The agent", "consultora de beleza da Época", "## The conversation"))
+  end
+
+  # The same model answers and learns: the Models page splits them by operation.
+  it "labels the extraction and consolidation calls in the task's model traces" do
+    llms = {}
+    allow(Insika::Knowledge::ExtractorFactory).to receive(:build) do |_c, **kw|
+      llms[:extract] = kw[:llm]
+      instance_double(Insika::Knowledge::Extractor, extract: { concepts: [], dropped: {}, cost: nil })
+    end
+    allow(Insika::Knowledge::ConsolidatorFactory).to receive(:build) { |_c, **kw| llms[:consolidate] = kw[:llm] and nil }
+    task = task_for
+    state = Insika::TurnState.new(task: task, profile: profile, turn: 3, message: "oi")
+    build_executor(llm: RubyLLM.context { |c| c.deepseek_api_key = "spec-only" })
+      .send(:finalize_knowledge_extraction, task, profile, long_messages, state)
+
+    llms.each_value { |llm| llm.config.instrumenter.instrument("request.ruby_llm", provider: "deepseek") { "ok" } }
+    ops = event_stream.events.select { |e| e.type == :llm_request }.map { |e| e.data["operation"] }
+    expect(ops).to contain_exactly("knowledge_extract", "knowledge_consolidate")
   end
 
   it "skips a trivially short turn without spending a model call" do

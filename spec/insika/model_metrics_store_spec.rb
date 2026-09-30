@@ -61,6 +61,20 @@ RSpec.describe "Durable model metrics" do
         expect(report["slowest"].map { |row| row["duration_ms"] }).to eq(205.downto(186).to_a)
       end
 
+      it "splits the same model's cost by operation (reply vs post-turn learning)" do
+        record("llm_usage", id: "a", operation: "chat", cost: 0.3, input_tokens: 10)
+        record("llm_request", id: "a", operation: "chat", duration_ms: 5, status: "succeeded")
+        record("llm_usage", id: "k", operation: "knowledge_extract", cost: 0.1, input_tokens: 4)
+        record("llm_request", id: "k", operation: "knowledge_extract", duration_ms: 7, status: "succeeded")
+        record("llm_request", id: "old", duration_ms: 1, status: "succeeded") # unlabeled history reads as chat
+        report = store.report(now: now)
+        expect(report["models"].size).to eq(1)
+        expect(report["operations"].map { |r| r.slice("operation", "requests", "cost", "input_tokens") }).to eq([
+          { "operation" => "chat", "requests" => 2, "cost" => 0.3, "input_tokens" => 10 },
+          { "operation" => "knowledge_extract", "requests" => 1, "cost" => 0.1, "input_tokens" => 4 }
+        ])
+      end
+
       it "filters UTC completion times and exact actual providers and models" do
         record("llm_usage", model: "fallback", cost: 0.1, cache_read_tokens: 2, cache_write_tokens: 3, thinking_tokens: 4)
         record("llm_request", model: "fallback", duration_ms: 9, status: "succeeded")

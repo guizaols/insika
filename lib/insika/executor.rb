@@ -2676,7 +2676,7 @@ module Insika
       # path — the user already has the answer above. Same terminal hook,
       # next door to the other two, for the same reason: it fires for a fresh
       # turn and a recovered one.
-      finalize_knowledge_extraction(task, profile, new_messages, state.context)
+      finalize_knowledge_extraction(task, profile, new_messages, state)
 
       # in-session compaction (RFC-0044): when the uncompacted
       # transcript crossed the threshold this turn, summarize the old prefix
@@ -2752,7 +2752,7 @@ module Insika
     # boot sweep), a child of the turn supervisor when serving (survives the
     # request's own disconnect). Best-effort: any failure is swallowed here,
     # never re-fails an already-committed turn.
-    def finalize_knowledge_extraction(task, profile, new_messages, context = nil)
+    def finalize_knowledge_extraction(task, profile, new_messages, state = nil)
       return unless @knowledge_store
       return if simulated_session?(task.session_id)
 
@@ -2760,14 +2760,17 @@ module Insika
       return unless config && Coercion.truthy?(config["extract"])
       return if knowledge_transcript(new_messages).length < KNOWLEDGE_MIN_CHARS
 
-      extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model, llm: @llm)
+      extractor = Knowledge::ExtractorFactory.build(config, utility_model: utility_model,
+                                                    llm: llm_operation_context(state, nil, operation: "knowledge_extract"))
       return unless extractor
 
       # Same resolved model as the extractor — a deployment names one
       # knowledge model, not two. nil consolidator (no model resolvable) is
       # still meaningful: write_concept's conservative default.
-      consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model, llm: @llm)
+      consolidator = Knowledge::ConsolidatorFactory.build(config, utility_model: utility_model,
+                                                          llm: llm_operation_context(state, nil, operation: "knowledge_consolidate"))
 
+      context = state&.context
       agent_brief = context.respond_to?(:system_identity) ? context.system_identity : nil
       run = lambda { run_knowledge_extraction(task, profile, config, new_messages, extractor, consolidator, agent_brief) }
       return run.call unless @supervised
@@ -3089,7 +3092,10 @@ module Insika
       chat
     end
 
-    def llm_operation_context(state, model)
+    # `operation` labels every request this context makes in the task's traces and
+    # model metrics: "chat" for the answer, knowledge_* for the post-turn calls, so
+    # the Models page can tell the reply's cost from the learning's.
+    def llm_operation_context(state, model, operation: "chat")
       source = @llm || RubyLLM
       return source unless state.respond_to?(:task) && state.task && source.respond_to?(:config)
 
@@ -3097,7 +3103,7 @@ module Insika
       config = source.config.dup
       task, turn = state.task, state.turn
       config.instrumenter = Telemetry::RubyLLMInstrumenter.new(
-        delegate: config.instrumenter, operation: "chat", model: model,
+        delegate: config.instrumenter, operation: operation, model: model,
         emit: ->(type, data) { emit(type, data.merge("turn" => turn), task: task) }
       )
       RubyLLM::Context.new(config)

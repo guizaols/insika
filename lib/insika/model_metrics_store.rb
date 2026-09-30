@@ -74,6 +74,11 @@ module Insika
           .sort_by { |key, _| key.map(&:to_s) }.map do |(name, model_name), group|
             summarize(group).merge("provider" => name, "model" => model_name)
           end,
+        # The same model serves the reply and the post-turn learning: this splits
+        # their cost ("chat" vs knowledge_*). Rows from before labeling read as "chat".
+        "operations" => rows.group_by { |row| row["operation"] || "chat" }.sort.map do |operation, group|
+          summarize(group).merge("operation" => operation)
+        end,
         "slowest" => rows.select { |row| row["duration_ms"] }.sort_by { |row| -row["duration_ms"] }
           .first(20).map { |row| row.reject { |key, _| key == "reported" }.merge(summarize([row])) },
         "history_note" => "History starts with deployment. Deleting a task removes its model history."
