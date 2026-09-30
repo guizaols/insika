@@ -33,4 +33,21 @@ RSpec.describe Insika::Safety::PromptEcho do
   it "leaves the reply alone when there is no prompt" do
     expect(described_class.cut("hi", nil)).to eq(["hi", 0])
   end
+
+  # The prompt is the same on every turn of an agent; squeezing its whitespace
+  # again for every reply was a regex pass over the whole prompt per turn.
+  it "squeezes a given prompt once, not on every reply" do
+    allow(described_class).to receive(:squeeze).and_call_original
+    long = "#{'An ordinary reply without any echo. ' * 20}"
+
+    2.times { described_class.cut(long, "#{prompt} (variant squeezed once)") }
+    expect(described_class).to have_received(:squeeze).once
+  end
+
+  it "leaves a reply shorter than an echo alone without reading the prompt" do
+    allow(described_class).to receive(:squeeze).and_call_original
+
+    expect(described_class.cut("Short answer.", prompt)).to eq(["Short answer.", 0])
+    expect(described_class).not_to have_received(:squeeze)
+  end
 end

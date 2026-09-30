@@ -86,7 +86,9 @@ module Insika
           # NO identity at all, and a chatty model answered plausibly enough to hide
           # it. Additive to prompt_files, not exclusive: an agent may carry both.
           parts << profile&.base_prompt.to_s
-          Array(profile&.prompt_files).each { |src| parts << read_source(profile&.id, src.to_s) }
+          sources = Array(profile&.prompt_files)
+          stored = stored_files(profile, sources)
+          sources.each { |src| parts << read_source(stored, src.to_s) }
           identity = parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
           # Discipline rides an EXISTING identity, never substitutes one: an
           # empty identity here is fatal (`call` raises), not silently patched
@@ -112,10 +114,18 @@ module Insika
           @system_files.list.map { |name| @system_files.read(name).to_s }
         end
 
+        # The agent's files from ONE store read (`contents`); an agent_files object
+        # that only answers `read(agent_id, name)` is read per file, as before.
+        def stored_files(profile, sources)
+          return {} if sources.empty? || profile.id.nil? || @agent_files.nil?
+          return @agent_files.contents(profile.id) if @agent_files.respond_to?(:contents)
+
+          sources.to_h { |src| [src.to_s, @agent_files.read(profile.id, src.to_s)] }.compact
+        end
+
         # Per-agent store first, disk second (compat/seed).
-        def read_source(agent_id, src)
-          stored = agent_id && @agent_files&.read(agent_id, src)
-          return stored if stored
+        def read_source(stored, src)
+          return stored[src] if stored[src]
           return File.read(src, encoding: "UTF-8") if File.exist?(src)
 
           ""
