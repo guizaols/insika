@@ -167,6 +167,14 @@ RSpec.describe Insika::Context::Providers::Prompt do
       expect(config_store).to have_received(:get).once
     end
 
+    it "still works with an agent_files object that only answers read(agent_id, name)" do
+      reader = Class.new { def read(_agent, name) = "from #{name}" }.new
+      provider = described_class.new(base: "", agent_files: reader)
+
+      frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md SOUL.md]))).first
+      expect(frag.content).to eq(with_discipline("from IDENTITY.md\n\nfrom SOUL.md"))
+    end
+
     it "prompt_files as a disk path: falls back to File.read (compat/seed)" do
       disk = File.join(@dir, "IDENTITY.md")
       File.write(disk, "do disco")
