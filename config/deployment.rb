@@ -9,6 +9,7 @@
 
 require_relative "../lib/insika"
 require "ruby_llm"
+require_relative "../lib/insika/llm_http_adapter"
 require_relative "../deploy/tools"
 
 module Deploy
@@ -45,6 +46,7 @@ module Deploy
     c.deepseek_api_base = ENV.fetch("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
     c.request_timeout = 120
     c.max_retries = 2
+    c.faraday_adapter = :insika_net_http # one CA store per process, not one per chat
   end
   LLM_CONTEXT = RubyLLM::Context.new(RubyLLM.config.dup)
 
