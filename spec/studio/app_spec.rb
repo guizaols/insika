@@ -3527,6 +3527,16 @@ RSpec.describe Studio::App do
       expect(body).not_to include("bad<provider", "model&one")
     end
 
+    it "splits the reply from the post-turn learning by operation" do
+      metrics["operations"] = [
+        { "operation" => "chat", "requests" => 3, "cost" => 0.5, "input_tokens" => 30 },
+        { "operation" => "knowledge_extract", "requests" => 2, "cost" => 0.125, "input_tokens" => 7 }
+      ]
+      app, = build_app(model_metrics_store: double(report: metrics))
+      body = login(app).get("/models").body
+      expect(body).to include("By operation", "<td>knowledge_extract</td>", "0.125000", "<td>chat</td>")
+    end
+
     it "renders an empty state without a metrics store" do
       app, = build_app
       body = login(app).get("/models").body
