@@ -117,6 +117,12 @@ RSpec.shared_examples "an Insika store" do
       expect(store.list("s", "task:")).to eq(%w[task:1 task:2])
     end
 
+    it "keeps the prefix boundary exact, ASCII or not" do
+      %w[task task: task:1 task:é task; tasks sessão:1 sessão:2 sessãoX run9 run9a run: taz taz1 ta{].each { |k| store.set("s", k, 1) }
+      expect([store.list("s", "task:"), store.list("s", "sessão:"), store.list("s", "run9"), store.list("s", "taz")])
+        .to eq([%w[task: task:1 task:é], %w[sessão:1 sessão:2], %w[run9 run9a], %w[taz taz1]])
+    end
+
     it " returns [] for an empty scope" do #
       expect(store.list("s")).to eq([])
     end
