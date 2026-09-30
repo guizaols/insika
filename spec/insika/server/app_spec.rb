@@ -738,7 +738,8 @@ RSpec.describe Insika::Server::App do
 
     # Under load, other sessions' turns stream deltas while this request is
     # still dispatching (before `bind`). An unfiltered subscription filled its
-    # 1000-event cap with THEIR events and closed — the load test's `sse_cortado`.
+    # 1000-event cap with THEIR events and closed: the stream ended with no
+    # terminal event.
     it "does not overflow on other sessions' events emitted during the dispatch" do
       stream = Insika::EventStream.new
       ev = ->(type, data, task, session) { Insika::Event.new(type: type, data: data, meta: { task_id: task, session_id: session }) }
