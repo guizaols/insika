@@ -124,14 +124,31 @@ module Insika
         end
       end
 
+      # A prefix is a primary-key RANGE [prefix, next): SQLite seeks straight to
+      # it. Filtering the whole scope in Ruby read every row of it (values of tens
+      # of KB in a WITHOUT ROWID table) while holding the GVL — `list checkpoints`
+      # took 26 ms per call on a 166 MB database and starved the reactor.
+      LIST_PREFIX_SQL = "SELECT key FROM kv WHERE scope = ? AND key >= ? AND key < ? ORDER BY key"
+
       def list(scope, prefix = nil)
-        keys = @db.execute(
-          "SELECT key FROM kv WHERE scope = ? ORDER BY key", [scope]
-        ).map(&:first)
+        upper = prefix && range_end(prefix)
+        return @db.execute(LIST_PREFIX_SQL, [scope, prefix, upper]).map(&:first) if upper
+
+        keys = @db.execute("SELECT key FROM kv WHERE scope = ? ORDER BY key", [scope]).map(&:first)
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
+
+      # The smallest key above every key starting with `prefix`: its last byte + 1.
+      # ASCII only (every prefix the stores use), so the bound stays valid UTF-8 and
+      # compares byte-wise under BINARY; anything else falls back to the scan.
+      def range_end(prefix)
+        return nil if prefix.empty? || !prefix.ascii_only? || prefix.end_with?("\x7F")
+
+        prefix[0...-1] + (prefix[-1].ord + 1).chr
+      end
+      private :range_end
 
       def scopes(prefix = nil)
         names = @db.execute("SELECT DISTINCT scope FROM kv ORDER BY scope").map(&:first)
