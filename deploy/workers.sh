@@ -48,7 +48,7 @@ INSIKA_ROUTER_HOST=0.0.0.0 \
 INSIKA_ROUTER_PORT="${PORT:-9292}" \
 INSIKA_ROUTER_BACKENDS="${backends}" \
 INSIKA_ROUTER_BACKEND_TIMEOUT="${INSIKA_ROUTER_BACKEND_TIMEOUT:-1300}" \
-  bundle exec insika-router &
+  bundle exec ruby bin/insika-router &
 pids+=($!)
 
 # Poll instead of `wait -n` so the script also runs on bash 3 (macOS).
