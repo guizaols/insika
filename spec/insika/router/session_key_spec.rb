@@ -14,9 +14,19 @@ RSpec.describe Insika::Router::SessionKey do
     expect(key).to eq("sess-1")
   end
 
-  it "extracts `user` from POST /v1/messages" do
-    key = described_class.extract("POST", %w[v1 messages], body: body_for({ "user" => "sess-2" }))
+  it "extracts `session_id` from POST /v1/messages (what Server::App reads)" do
+    key = described_class.extract("POST", %w[v1 messages], body: body_for({ "session_id" => "sess-2", "user" => "x" }))
     expect(key).to eq("sess-2")
+  end
+
+  it "extracts `session_id` from POST /v1/commands/:type (steer, interrupt, cancel…)" do
+    key = described_class.extract("POST", %w[v1 commands steer], body: body_for({ "session_id" => "sess-7" }))
+    expect(key).to eq("sess-7")
+  end
+
+  it "extracts `session_id` from the query of GET /v1/events (the SSE watch)" do
+    key = described_class.extract("GET", %w[v1 events], body: -> { raise "no body read" }, query: { "session_id" => "sess-8" })
+    expect(key).to eq("sess-8")
   end
 
   it "extracts `session_id` from POST /channels/:id/messages" do

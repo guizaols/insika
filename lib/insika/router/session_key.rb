@@ -9,13 +9,18 @@ module Insika
     # widget/relay surface is `POST /channels/:id/messages` (and `/events`),
     # with the session id as `session_id` in the JSON body, not a path
     # segment. `/v1/responses` and `/v1/messages` carry it as `user`. Every
+    # segment. `/v1/responses` carries it as `user`; `/v1/messages` and
+    # `/v1/commands/:type` (send_message, steer, interrupt, cancel…) as
+    # `session_id`, like `Server::App` reads them. `GET /v1/events` (the SSE
+    # watch) carries it in the query — the event stream lives in the worker's
+    # memory, so the watch must land where the session runs. Every
     # other route (health checks, `/studio/*`, onboarding) has no session key
     # and round-robins — none of them depend on a worker's in-memory
     # `SessionActor` (§3.1 point 3).
     module SessionKey
       BODY_FIELD_BY_ROUTE = {
         %w[v1 responses] => "user",
-        %w[v1 messages] => "user"
+        %w[v1 messages] => "session_id"
       }.freeze
 
       module_function
@@ -26,11 +31,14 @@ module Insika
       # actually matches, so a GET or an unrelated POST never pays for a
       # parse. A malformed body yields no key (the backend's own parser is
       # what answers the client's 400/422), never a router-level error.
-      def extract(method, segments, body:)
+      def extract(method, segments, body:, query: {})
+        return Insika::Coercion.presence(query["session_id"]) if method == "GET" && segments == %w[v1 events]
         return nil unless method == "POST"
 
         field =
           if segments.length == 3 && segments[0] == "channels" && %w[messages events].include?(segments[2])
+            "session_id"
+          elsif segments.length == 3 && segments[0..1] == %w[v1 commands]
             "session_id"
           else
             BODY_FIELD_BY_ROUTE[segments]

@@ -143,7 +143,11 @@ module Insika
 
         @write_semaphore.acquire do
           begin
-            @db.transaction(:immediate)
+            # N workers on one file: BEGIN IMMEDIATE can fail at once, with no
+            # busy-handler wait, when this shared connection has a read open
+            # (another fiber) and a sibling process just committed. Nothing is
+            # written yet, so retrying the BEGIN alone is safe (~5s ceiling).
+            with_busy_retry(attempts: 100, backoff: 0.05) { @db.transaction(:immediate) }
             @tx_owner = Fiber.current
             result = yield
             @db.commit
