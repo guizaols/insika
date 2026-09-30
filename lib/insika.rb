@@ -85,6 +85,7 @@ require_relative "insika/tool_output_compressor"
 # lazily, like the Executor's create_chat.
 require_relative "insika/safety/corpus"
 require_relative "insika/safety/detectors"
+require_relative "insika/safety/prompt_echo"
 require_relative "insika/safety/safe_responses"
 require_relative "insika/safety/config"
 require_relative "insika/safety/moderator"

@@ -1369,8 +1369,21 @@ module Insika
         # holding a completed answer for an operator would strand it unpublished.
         state.actor&.drain!
 
-        output.publish(turn_answer(response, asked, output, filter))
+        output.publish(without_prompt_echo(state, turn_answer(response, asked, output, filter)))
       end
+    end
+
+    # The last gate before the customer reads the answer: a reply that pasted the
+    # system prompt keeps only what came before it (or the safe refusal when that is
+    # nothing). The cut rides :guardrail_flagged like any other, with action "cut".
+    def without_prompt_echo(state, answer)
+      text, echoed = Insika::Safety::PromptEcho.cut(answer, Insika::ModelVisible.instructions_of(state.chat))
+      return answer if echoed.zero?
+
+      state.guardrail_flags = Array(state.guardrail_flags) +
+                              [{ category: "prompt_leak", source: :deterministic, action: "cut",
+                                 detail: "#{echoed} chars of the system prompt removed" }]
+      text.empty? ? Insika::Safety::SafeResponses.for(:injection) : text
     end
 
     # stage 6, plain path: the single ask on the assembled chat. Fresh TurnOutput
