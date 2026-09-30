@@ -69,9 +69,27 @@ RSpec.describe "the model-visible conformance suite " do
   # never serializes (the transcript keeps it for the operator; the wire never
   # had it). Anything ELSE a path needs is a "gap becomes a fix" — the
   # fix lands in the engine, never in this helper.
+  #
+  # The turn context (the volatile layer seeded after the history on non-Anthropic
+  # providers) is the other half the checkpoint lacks BY DESIGN: it is never
+  # persisted, so the next turn's history stays byte-identical to the cached
+  # prefix. The trace carries it at the position it was sent.
   def reconstruct(trace, checkpoint)
     messages = checkpoint.messages.map { |m| m.reject { |k, _| k == "origin" } }
+    at = trace.messages.index { |m| turn_context?(m) }
+    messages = messages.dup.insert(at, trace.messages[at]) if at
     Insika::ModelVisible.new(instructions: trace.instructions, tools: trace.tools, messages: messages)
+  end
+
+  def turn_context?(message)
+    (message["content"] || message[:content]).to_s.start_with?("<turn_context>")
+  end
+
+  def transcript(trace) = trace.messages.reject { |m| turn_context?(m) }
+
+  # The system text plus the turn context: everything the context providers wrote.
+  def context_text(trace)
+    [trace.instructions, *trace.messages.select { |m| turn_context?(m) }.map { |m| m["content"] || m[:content] }].join("\n")
   end
 
   # The one assertion shape: what the provider received == what the trace and
@@ -84,7 +102,7 @@ RSpec.describe "the model-visible conformance suite " do
 
     expect(trace.instructions).to eq(oracle.instructions), "system text not logged"
     expect(trace.tools).to eq(oracle.tools), "tool schemas not logged"
-    expect(trace.messages).to eq(cp.messages), "transcript identity broken (chat vs checkpoint)"
+    expect(transcript(trace)).to eq(cp.messages), "transcript identity broken (chat vs checkpoint)"
     expect(reconstruct(trace, cp).to_h).to eq(oracle.to_h), "payload not reconstructable from the two stores"
   end
 
@@ -148,7 +166,7 @@ RSpec.describe "the model-visible conformance suite " do
 
       cp = checkpoint_store.latest(task.id)
       trace = trace_store.find(task.id, turn: cp.turn)
-      system = trace.instructions.to_s
+      system = context_text(trace) # the system text + the turn context
       expect(system).to include("SOUL")                              # the base prompt
       expect(system).to include("Measure. 2. Act.")                  # the eager body (SkillTrigger)
       expect(system).to include("lazy-one")                          # the lazy table (Skill)
@@ -172,7 +190,7 @@ RSpec.describe "the model-visible conformance suite " do
 
       # the seeded history occupies the pre-baseline slice — the trace carries it
       # byte-for-byte and the reader rebuilds the full provider stream
-      expect(trace.messages).to eq(cp.messages)
+      expect(transcript(trace)).to eq(cp.messages)
       expect(reconstruct(trace, cp).to_h).to eq(oracle.to_h)
       expect(trace.messages.length).to be > 2 # history + this turn
     end
@@ -276,7 +294,7 @@ RSpec.describe "the model-visible conformance suite " do
       expect(trace).not_to be_nil
       expect(trace.instructions).to include("CHILD-SOUL")
       expect(trace.instructions).to eq(Insika::ModelVisible.capture(child_chat).instructions)
-      expect(trace.messages).to eq(cp.messages) # the child's transcript identity holds too
+      expect(transcript(trace)).to eq(cp.messages) # the child's transcript identity holds too
     end
   end
 

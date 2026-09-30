@@ -88,7 +88,7 @@ RSpec.describe "Executor retrieval admission and accounting" do
     expect(ledger.count("chat", "s", window: 60)).to eq(1)
     expect(seen.size).to eq(1)
     expect(seen.first).to include("<knowledge>", "<memory>", "[budget:")
-    expect(chat.instructions).to include("[budget:")
+    expect(chat.turn_context).to include("[budget:")
   end
 
   it "records each reported rerank attempt once even when policy then rejects the turn" do

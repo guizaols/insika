@@ -54,6 +54,12 @@ class FakeChat
     self
   end
 
+  # The volatile layer (memory, knowledge, briefing, request) the ChatBuilder
+  # seeds after the history on non-Anthropic providers; "" when none.
+  def turn_context
+    @messages.find { |m| m[:content].to_s.start_with?("<turn_context>") }&.dig(:content).to_s
+  end
+
   def with_tools(*tools)
     @tools.concat(tools)
     self
