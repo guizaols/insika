@@ -736,6 +736,25 @@ RSpec.describe Insika::Server::App do
       expect(body["error"]["class"]).to eq("Insika::CancelledError")
     end
 
+    # Under load, other sessions' turns stream deltas while this request is
+    # still dispatching (before `bind`). An unfiltered subscription filled its
+    # 1000-event cap with THEIR events and closed — the load test's `sse_cortado`.
+    it "does not overflow on other sessions' events emitted during the dispatch" do
+      stream = Insika::EventStream.new
+      ev = ->(type, data, task, session) { Insika::Event.new(type: type, data: data, meta: { task_id: task, session_id: session }) }
+      bus = ServerBusDouble.new do
+        1_001.times { |i| stream.emit(ev.call(:content, { delta: "x" }, "other-#{i}", "s-other")) }
+        stream.emit(ev.call(:content, { delta: "oi" }, "t-1", "s-1"))
+        stream.emit(ev.call(:task_completed, { output: "oi" }, "t-1", "s-1"))
+        { task_id: "t-1" }
+      end
+      app = build_app(bus: bus, event_stream: stream)
+
+      _status, _h, resp = call(app, "POST", "/v1/messages?stream=false", body: '{"session_id":"s-1"}')
+
+      expect(json_body(resp)["content"]).to eq("oi")
+    end
+
     it "reports :error overflow as error (not a truncated 200 success)" do
       events = [event(:content, { delta: "a" }), event(:error, { message: "subscription overflow" })]
       app = build_app(bus: ServerBusDouble.new { { task_id: "t-1" } },

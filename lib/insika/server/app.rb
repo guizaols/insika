@@ -1051,7 +1051,11 @@ TENANT_SURFACES = [
           payload[:session_id] = scoped_session_id(tenant, payload[:session_id]) if payload[:session_id]
         end
         command = Insika::Command.build(:send_message, payload, transport: transport, tenant: tenant)
-        subscription = @event_stream.subscribe
+        # Filtered by session from the start: until `bind` below, an unfiltered
+        # subscription takes EVERY turn's events, and under load the other
+        # sessions' deltas fill its 1000-event cap during the dispatch — the
+        # stream then ends with no terminal event. nil session = unfiltered, as before.
+        subscription = @event_stream.subscribe(session_id: payload[:session_id])
         result =
           begin
             @command_bus.dispatch(command)
