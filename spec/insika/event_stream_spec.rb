@@ -48,6 +48,32 @@ RSpec.describe Insika::EventStream do
     end
   end
 
+  # Every streamed delta is an emit, and a busy process holds one subscription per
+  # open conversation: walking all of them per delta grew with the traffic.
+  it "does not look at the subscriptions of other sessions" do
+    Sync do
+      other = stream.subscribe(session_id: "s2")
+      mine = stream.subscribe(session_id: "s1")
+      allow(other).to receive(:matches?).and_call_original
+      allow(mine).to receive(:matches?).and_call_original
+
+      stream.emit(evt(meta: { session_id: "s1" }))
+      expect(other).not_to have_received(:matches?)
+      expect(mine).to have_received(:matches?).once
+    end
+  end
+
+  it "a session subscription removed on close stops being looked at" do
+    Sync do
+      sub = stream.subscribe(session_id: "s1")
+      sub.close
+      allow(sub).to receive(:matches?).and_call_original
+
+      stream.emit(evt(meta: { session_id: "s1" }))
+      expect(sub).not_to have_received(:matches?)
+    end
+  end
+
   it "filters by session_id" do
     Sync do |task|
       sub = stream.subscribe(session_id: "s1")
@@ -76,8 +102,8 @@ RSpec.describe Insika::EventStream do
       typed = stream.subscribe(types: %i[alert])
       unfiltered = stream.subscribe # control: a full-traffic subscriber DOES get overflow-closed
       1005.times { stream.emit(evt(type: :content, meta: {})) } # would blow the 1000 cap
-      expect(stream.instance_variable_get(:@subscriptions)).to include(typed)
-      expect(stream.instance_variable_get(:@subscriptions)).not_to include(unfiltered)
+      expect(stream.instance_variable_get(:@subscriptions).values.flatten).to include(typed)
+      expect(stream.instance_variable_get(:@subscriptions).values.flatten).not_to include(unfiltered)
 
       got = collect(task, typed) { stream.emit(evt(type: :alert, meta: {})) }
       expect(got.map(&:type)).to eq([:alert])

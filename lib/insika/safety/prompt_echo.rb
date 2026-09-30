@@ -15,6 +15,10 @@ module Insika
       WINDOW = 80
       STRIDE = 40
       MIN_ECHO = 400
+      # Squeezed prompts kept, keyed by the prompt text: an agent's prompt is the
+      # same on every turn, so squeezing it again per reply was wasted work.
+      CACHE_MAX = 64
+      SQUEEZED = {}
 
       module_function
 
@@ -23,7 +27,9 @@ module Insika
       # Everything from the echo on goes: text after a pasted prompt is suspect too.
       def cut(reply, prompt)
         reply = reply.to_s
-        haystack = squeeze(prompt.to_s)
+        return [reply, 0] if reply.size < MIN_ECHO # squeezing never lengthens it
+
+        haystack = squeezed_prompt(prompt.to_s)
         return [reply, 0] if haystack.size < MIN_ECHO
 
         norm, map = squeeze_with_map(reply)
@@ -54,6 +60,14 @@ module Insika
       end
 
       def squeeze(text) = text.gsub(/\s+/, " ")
+
+      # Plain Hash, cleared when full: a miss only costs the squeeze again.
+      def squeezed_prompt(prompt)
+        SQUEEZED.fetch(prompt) do
+          SQUEEZED.clear if SQUEEZED.size >= CACHE_MAX
+          SQUEEZED[prompt] = squeeze(prompt)
+        end
+      end
 
       # The squeezed text plus, for each of its chars, the index in the original.
       def squeeze_with_map(text)

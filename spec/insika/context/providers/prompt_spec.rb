@@ -154,6 +154,27 @@ RSpec.describe Insika::Context::Providers::Prompt do
       expect(frag.content).to eq(with_discipline("B\n\nIDENT\n\nALMA"))
     end
 
+    # The record carries every file plus its version history, so reading it once
+    # per prompt file multiplied the store read and the JSON parse by the file count.
+    it "reads the agent's record once per build, however many prompt_files it declares" do
+      config_store = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+      files = Insika::AgentFileStore.new(config_store: config_store)
+      %w[IDENTITY.md SOUL.md TOOLS.md].each { |name| files.write("chef", name, name) }
+      allow(config_store).to receive(:get).and_call_original
+      provider = described_class.new(base: "", agent_files: files)
+
+      provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md SOUL.md TOOLS.md])))
+      expect(config_store).to have_received(:get).once
+    end
+
+    it "still works with an agent_files object that only answers read(agent_id, name)" do
+      reader = Class.new { def read(_agent, name) = "from #{name}" }.new
+      provider = described_class.new(base: "", agent_files: reader)
+
+      frag = provider.call(request(profile(id: "chef", prompt_files: %w[IDENTITY.md SOUL.md]))).first
+      expect(frag.content).to eq(with_discipline("from IDENTITY.md\n\nfrom SOUL.md"))
+    end
+
     it "prompt_files as a disk path: falls back to File.read (compat/seed)" do
       disk = File.join(@dir, "IDENTITY.md")
       File.write(disk, "do disco")
