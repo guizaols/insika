@@ -139,6 +139,8 @@ module Insika
       spec(name: "INSIKA_ROUTER_BACKEND_PORT", type: :integer, description: "the engine port on every DNS-resolved backend pod (required with INSIKA_ROUTER_BACKENDS_DNS)."),
       spec(name: "INSIKA_ROUTER_DNS_INTERVAL", type: :integer, description: "seconds between `insika-router` DNS re-resolves (default 15)."),
       spec(name: "INSIKA_ROUTER_BODY_MAX_BYTES", type: :integer, description: "size cap `insika-router` will parse looking for a session key before falling back to round-robin (default 262144; never bounds what is forwarded)."),
+      spec(name: "INSIKA_WORKERS", type: :integer, description: "Engine processes behind the session-sticky `insika-router` in one container (deploy/workers.sh). Unset or 1 = one process, no router."),
+      spec(name: "INSIKA_WORKER_BASE_PORT", type: :integer, description: "First local port for the INSIKA_WORKERS processes (default 9300)."),
       spec(name: "INSIKA_ROUTER_BACKEND_TIMEOUT", type: :integer, description: "`insika-router`'s connect/read timeout to a backend, in seconds (default 10)."),
       spec(name: "INSIKA_ROUTER_HOST", description: "bind address for `insika-router` itself (default 0.0.0.0)."),
       spec(name: "INSIKA_ROUTER_PORT", type: :integer, description: "listen port for `insika-router` itself (default 9090)."),
