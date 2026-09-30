@@ -75,6 +75,18 @@ RSpec.describe "Durable model metrics" do
         ])
       end
 
+      it "reports a custom range with buckets sized to its span" do
+        record("llm_request", id: "in", at: (now - 3 * 86_400).iso8601, duration_ms: 4, status: "succeeded")
+        record("llm_request", id: "out", at: (now - 40 * 86_400).iso8601, duration_ms: 4, status: "succeeded")
+        report = store.report(from: now - 10 * 86_400, to: now)
+        expect(report).to include("period" => "custom", "step_seconds" => 6 * 3600)
+        expect(report["series"].size).to eq(40)
+        expect(report["totals"]["requests"]).to eq(1)
+        expect(store.report(from: now - 86_400, to: now)["series"].size).to eq(24)            # hourly
+        expect(store.report(from: now - 60 * 86_400, to: now)["series"].size).to eq(60)       # daily
+        expect(store.report(from: now - 365 * 86_400, to: now)["series"].size).to eq(92)      # capped
+      end
+
       it "filters UTC completion times and exact actual providers and models" do
         record("llm_usage", model: "fallback", cost: 0.1, cache_read_tokens: 2, cache_write_tokens: 3, thinking_tokens: 4)
         record("llm_request", model: "fallback", duration_ms: 9, status: "succeeded")

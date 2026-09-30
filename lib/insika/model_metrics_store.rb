@@ -49,9 +49,15 @@ module Insika
       nil
     end
 
-    def report(period: "7d", provider: nil, model: nil, now: Time.now.utc)
-      period = "7d" unless PERIODS.key?(period)
-      from = now - PERIODS.fetch(period)
+    # `from`/`to` (Time) pick a custom range and win over `period`; the bucket size
+    # follows the span (see #bucket_count).
+    def report(period: "7d", provider: nil, model: nil, now: Time.now.utc, from: nil, to: nil)
+      if from && to
+        period, now = "custom", to
+      else
+        period = "7d" unless PERIODS.key?(period)
+        from = now - PERIODS.fetch(period)
+      end
       # ponytail: whole-scope scan suits a single node; index completion time when history grows.
       rows = @store.list(SCOPE).filter_map do |key|
         row = @store.get(SCOPE, key)
@@ -67,6 +73,7 @@ module Insika
       end
       {
         "period" => period, "from" => from.utc.iso8601, "to" => now.utc.iso8601,
+        "step_seconds" => ((now - from) / bucket_count(period, now - from)).round,
         "providers" => providers, "model_options" => model_options,
         "totals" => summarize(rows),
         "series" => time_series(rows, from: from, to: now, period: period),
@@ -87,8 +94,21 @@ module Insika
 
     private
 
+    HOUR = 3600
+    MAX_BUCKETS = 92
+
+    # Fixed periods keep their buckets; a custom range goes hourly up to 2 days,
+    # 6-hourly up to 14, daily beyond (capped, so a year stays a readable chart).
+    def bucket_count(period, span)
+      fixed = { "24h" => 24, "7d" => 28, "30d" => 30 }[period]
+      return fixed if fixed
+
+      base = if span <= 48 * HOUR then HOUR elsif span <= 14 * 24 * HOUR then 6 * HOUR else 24 * HOUR end
+      (span / base).ceil.clamp(1, MAX_BUCKETS)
+    end
+
     def time_series(rows, from:, to:, period:)
-      count = { "24h" => 24, "7d" => 28, "30d" => 30 }.fetch(period)
+      count = bucket_count(period, to - from)
       step = (to - from) / count
       buckets = Array.new(count) { [] }
       rows.each do |row|

@@ -2467,9 +2467,37 @@ end
       @period = request.params["period"]
       @provider = presence(request.params["provider"])
       @model = presence(request.params["model"])
-      @report = insika[:model_metrics_store]&.report(period: @period || "7d", provider: @provider, model: @model)
+      # Dates count only for "Custom range" (or a bare ?from&to link): picking a fixed period wins.
+      range = model_custom_range(request.params["from"], request.params["to"]) if [nil, "custom"].include?(@period)
+      @range_from, @range_to = range&.map { |t| t.strftime("%Y-%m-%d") }
+      args = { period: @period || "7d", provider: @provider, model: @model }
+      args.merge!(from: range[0], to: range[1] + 86_400) if range # `to` is inclusive: through the end of that day
+      @report = insika[:model_metrics_store]&.report(**args)
       @period = @report ? @report["period"] : (%w[24h 7d 30d].include?(@period) ? @period : "7d")
       view("models")
+    end
+
+    MODEL_RANGE_MAX_DAYS = 366
+
+    # [from, to] as UTC midnights from two YYYY-MM-DD fields; nil when either is
+    # missing or malformed, reversed, or wider than a year (the fixed period applies).
+    def model_custom_range(from, to)
+      first, last = [from, to].map { |d| Time.strptime("#{d} UTC", "%Y-%m-%d %Z").utc }
+      return nil if first > last || (last - first) / 86_400 > MODEL_RANGE_MAX_DAYS
+
+      [first, last]
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    # The x-axis/table label follows the bucket size, custom ranges included.
+    def model_interval_label(step)
+      step = step.to_i
+      return "Hourly" if step <= 3600
+      return "6-hour intervals" if step <= 6 * 3600
+      return "Daily" if step <= 86_400
+
+      "#{(step / 86_400.0).round}-day intervals"
     end
 
     def model_chart_value(value, unit)
