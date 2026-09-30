@@ -67,8 +67,17 @@ fi
 # docs/DEPLOY.md "The process model".
 export INSIKA_BOOT_ID="${INSIKA_BOOT_ID:-$(date +%s)-$$}"
 
+# Open the store once, alone, before any worker: a file in an older table layout
+# is rebuilt here (seconds on a large file) instead of under N workers racing for
+# the lock at boot. A no-op on an up-to-date file.
+prepare_db() {
+  echo "[entrypoint] preparing ${DB}…"
+  bundle exec ruby -Ilib -rinsika -e 'Insika::Stores::SQLite.new(path: ARGV[0]).close' "${DB}"
+}
+
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
   echo "[entrypoint] Litestream disabled (LITESTREAM_REPLICA_URL unset) — booting app directly."
+  prepare_db
   exec sh -c "${APP_CMD}"
 fi
 
@@ -85,6 +94,8 @@ if [ ! -f "${DB}" ]; then
 else
   echo "[entrypoint] ${DB} present — skipping restore (volume survived)."
 fi
+
+prepare_db
 
 # Supervise: Litestream replicates the WAL and forwards signals to the child.
 # When the app exits, Litestream final-syncs and exits too (Railway restarts the
