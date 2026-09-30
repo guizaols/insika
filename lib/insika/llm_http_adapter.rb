@@ -12,13 +12,17 @@ module Insika
   # the whole bundle again to verify the provider's certificate — CPU paid on
   # every turn. This one verifies against OpenSSL's default store (the same
   # system paths, the store Net::HTTP already shares). A cert_store passed in
-  # the connection's ssl options still wins.
+  # the connection's ssl options still wins, and a ca_file/ca_path gets the stock
+  # private store: OpenSSL loads those INTO the store it is given, which would
+  # make one connection's CA trusted by every HTTPS call in the process.
   #
   # Select it with `RubyLLM.configure { |c| c.faraday_adapter = :insika_net_http }`.
   class LLMHTTPAdapter < Faraday::Adapter::NetHttp
     private
 
     def ssl_cert_store(ssl)
+      return super if ssl[:ca_file] || ssl[:ca_path]
+
       ssl[:cert_store] || OpenSSL::SSL::SSLContext::DEFAULT_CERT_STORE
     end
   end
