@@ -56,10 +56,13 @@ FROM ruby:4.0.6-slim AS runtime
 # RUBY_YJIT_ENABLE=1 turns YJIT on at Ruby process startup (falcon inherits it) —
 # equivalent to `ruby --yjit`; confirm with RubyVM::YJIT.enabled?. Measured in
 # docs/BENCHMARKS.md: the CPU work per turn (serialization/SSE/context).
+# MALLOC_ARENA_MAX=2 caps glibc malloc arenas: under the engine load test the
+# peak fell from 2.42 GB to 1.82 GB (6 workers) with the same latency.
 ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_WITHOUT=development:test \
     BUNDLE_PATH=/usr/local/bundle \
     RUBY_YJIT_ENABLE=1 \
+    MALLOC_ARENA_MAX=2 \
     PORT=9292 \
     INSIKA_DB=/data/insika.db
 
