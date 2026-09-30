@@ -25,9 +25,13 @@ module Insika
       # Backend by config: INSIKA_DB set → durable SQLite (survives restart, the
       # prerequisite for Recovery); missing → ephemeral Memory (dev/demo). The same
       # rule lived verbatim in both roots. Dual-read honors the legacy HARNESS_DB alias.
+      # LITESTREAM_REPLICA_URL is the same switch deploy/entrypoint.sh uses: set, and
+      # Litestream owns the checkpoints.
       def backend_from_env(env = ENV)
         db = Insika::EnvSchema.read("INSIKA_DB", env)
-        db && !db.empty? ? Insika::Stores::SQLite.new(path: db) : Insika::Stores::Memory.new
+        return Insika::Stores::Memory.new unless db && !db.empty?
+
+        Insika::Stores::SQLite.new(path: db, autocheckpoint: env["LITESTREAM_REPLICA_URL"].to_s.empty?)
       end
 
       # an integer tick knob from the env, nil when unset (the caller's
