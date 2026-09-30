@@ -38,7 +38,7 @@ RSpec.describe Insika::Stores::SQLite do
     # The only backend-specific tests allowed.
 
     # Under Litestream the app must not checkpoint: its autocheckpoints race
-    # Litestream's own and the WAL grows (175 MB seen on staging).
+    # Litestream's own and the WAL grows without bound.
     it "turns off SQLite's autocheckpoint when asked, keeping the default otherwise" do
       quiet = described_class.new(path: db_path, autocheckpoint: false)
       pragma = ->(st) { st.instance_variable_get(:@db).get_first_value("PRAGMA wal_autocheckpoint") }
@@ -49,8 +49,8 @@ RSpec.describe Insika::Stores::SQLite do
     end
 
     # A prefix list used to SELECT the whole scope and filter in Ruby, holding
-    # the GVL: `list checkpoints` alone took 26 ms per call on a 166 MB database
-    # and starved the reactor under load. It must seek the primary key instead.
+    # the GVL, so its cost grew with the database and starved the reactor under
+    # load. It must seek the primary key instead.
     it "lists a prefix by seeking the primary key, not scanning the scope" do
       plan = store.instance_variable_get(:@db)
                   .execute("EXPLAIN QUERY PLAN #{described_class::LIST_PREFIX_SQL}", ["s", "a:", "a;"])

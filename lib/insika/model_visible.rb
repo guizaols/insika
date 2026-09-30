@@ -22,17 +22,20 @@ module Insika
     def self.capture(chat)
       messages = chat.respond_to?(:messages) ? Array(chat.messages) : []
       tools = chat.respond_to?(:tools) ? chat.tools : []
-      instructions = if chat.respond_to?(:instructions)
-                       chat.instructions
-                     else
-                       system = messages.select { |m| m.respond_to?(:role) && m.role.to_s == "system" }
-                       Coercion.presence(system.map(&:content).join("\n\n"))
-                     end
       new(
-        instructions: instructions,
+        instructions: instructions_of(chat, messages),
         tools: (tools.is_a?(Hash) ? tools.values : Array(tools)).map { |t| tool_schema(t) },
         messages: messages
       )
+    end
+
+    # -> String | nil: the system text the chat sends (the instructions reader, else
+    # its system messages). Also what Safety::PromptEcho compares a reply against.
+    def self.instructions_of(chat, messages = chat.respond_to?(:messages) ? Array(chat.messages) : [])
+      return chat.instructions if chat.respond_to?(:instructions)
+
+      system = messages.select { |m| m.respond_to?(:role) && m.role.to_s == "system" }
+      Coercion.presence(system.map(&:content).join("\n\n"))
     end
 
     # -> Hash: the JSON-safe schema of ONE tool. Reads `parameters_schema` then

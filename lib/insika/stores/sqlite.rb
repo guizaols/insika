@@ -34,8 +34,8 @@ module Insika
       # when only Memory is used.
       # autocheckpoint: false when Litestream replicates this file — it owns the
       # checkpoints, and the app's own (every 1000 pages, per connection, N
-      # workers) race it: the WAL grew to 175 MB on staging with Litestream's
-      # checkpoint failing "database is locked". litestream.io/tips.
+      # workers) race it: the WAL grows past the database itself while Litestream's
+      # checkpoint fails "database is locked". litestream.io/tips.
       def initialize(path:, serializer: JSON, autocheckpoint: true)
         require "sqlite3"
 
@@ -126,8 +126,8 @@ module Insika
 
       # A prefix is a primary-key RANGE [prefix, next): SQLite seeks straight to
       # it. Filtering the whole scope in Ruby read every row of it (values of tens
-      # of KB in a WITHOUT ROWID table) while holding the GVL — `list checkpoints`
-      # took 26 ms per call on a 166 MB database and starved the reactor.
+      # of KB in a WITHOUT ROWID table) while holding the GVL, so its cost grew with
+      # the database and, called on every turn, starved the reactor.
       LIST_PREFIX_SQL = "SELECT key FROM kv WHERE scope = ? AND key >= ? AND key < ? ORDER BY key"
 
       def list(scope, prefix = nil)
