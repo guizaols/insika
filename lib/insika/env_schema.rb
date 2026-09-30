@@ -107,6 +107,7 @@ module Insika
       spec(name: "INSIKA_EGRESS_HOSTS", type: :csv, description: "Comma-separated host allowlist for data-tool egress (media fetches are NOT pinned by it)."),
       spec(name: "INSIKA_OTEL", type: :boolean, description: "Turn on OpenTelemetry export (opt-in)."),
       spec(name: "INSIKA_MODEL_PRICING", description: "JSON rates table (USD per million tokens) for the estimated-cost attribute; unset -> no cost reported."),
+      spec(name: "INSIKA_MODEL_VISIBLE_TRACES", type: :boolean, description: "Record the full model request per turn (model_visible_traces). Default on; 0 stops the write (heavy on SQLite)."),
       spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in)."),
       spec(name: "INSIKA_SUBAGENT_DEPTH_CAP", type: :integer, description: "Max delegation depth in the subagent graph (default 5)."),
       spec(name: "INSIKA_SUBAGENT_FANOUT_CAP", type: :integer, description: "Max parallel children in spawn_subagents (default 8)."),
