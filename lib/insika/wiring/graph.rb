@@ -31,7 +31,9 @@ module Insika
         db = Insika::EnvSchema.read("INSIKA_DB", env)
         return Insika::Stores::Memory.new unless db && !db.empty?
 
-        Insika::Stores::SQLite.new(path: db, autocheckpoint: env["LITESTREAM_REPLICA_URL"].to_s.empty?)
+        slow = Insika::EnvSchema.read("INSIKA_SLOW_STORE_MS", env)
+        Insika::Stores::SQLite.new(path: db, autocheckpoint: env["LITESTREAM_REPLICA_URL"].to_s.empty?,
+                                   slow_ms: slow && Float(slow))
       end
 
       # On unless INSIKA_MODEL_VISIBLE_TRACES is set to a false value.

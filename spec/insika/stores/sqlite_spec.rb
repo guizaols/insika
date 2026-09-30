@@ -2,6 +2,8 @@
 
 require "tmpdir"
 require "fileutils"
+require "logger"
+require "stringio"
 require "sqlite3" # the spec may require the gem; only the CORE has the lazy require rule
 require_relative "../../../lib/insika/testing/store_contract"
 
@@ -57,6 +59,22 @@ RSpec.describe Insika::Stores::SQLite do
                   .map(&:last).join(" ")
 
       expect(plan).to match(/SEARCH kv USING PRIMARY KEY \(scope=\? AND key>\? AND key<\?\)/)
+    end
+
+    # A store call holds the GVL for its whole duration, so a slow one stalls every
+    # fiber in the process. The log names the call, the scope and the caller.
+    it "logs store calls at or above slow_ms with the caller, and nothing when off" do
+      io = StringIO.new
+      slow = described_class.new(path: db_path, slow_ms: 0, logger: Logger.new(io))
+      slow.set("s", "k", 1)
+      slow.list("s", "k")
+      store.get("s", "k")
+
+      expect(io.string).to match(/slow store set scope=s \d+\.\d ms at .*sqlite_spec\.rb:\d+/)
+        .and match(/slow store list scope=s /)
+        .and satisfy { |log| !log.include?("store get") }
+    ensure
+      slow&.close
     end
 
     it "is durable: data survives close + reopen on the same file" do

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "logger"
 require "time"
 require "async/semaphore"
 
@@ -11,6 +12,30 @@ module Insika
     # writes in a transaction serialized by an Async::Semaphore.
     class SQLite
       include Store
+
+      # Prepended per instance when slow_ms is set; see #initialize.
+      module SlowLog
+        %i[get set delete list scopes].each do |name|
+          define_method(name) do |*args, &blk|
+            t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            result = super(*args, &blk)
+            ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000
+            report_slow(name, args.first, ms) if ms >= @slow_ms
+            result
+          end
+        end
+
+        private
+
+        def report_slow(name, scope, ms)
+          # up to 3 frames of the caller chain (the store method alone rarely says
+          # which duty called it), innermost first
+          chain = caller_locations(2, 40).reject { |l| l.path.end_with?("stores/sqlite.rb") }
+                                        .select { |l| l.path.include?("/insika/") }.first(3)
+          @slow_logger.warn(format("slow store %s scope=%s %.1f ms at %s", name, scope, ms,
+                                   chain.map { |l| "#{File.basename(l.path)}:#{l.lineno}" }.join(" < ")))
+        end
+      end
 
       DDL = <<~SQL
         CREATE TABLE IF NOT EXISTS kv (
@@ -36,8 +61,18 @@ module Insika
       # checkpoints, and the app's own (every 1000 pages, per connection, N
       # workers) race it: the WAL grows past the database itself while Litestream's
       # checkpoint fails "database is locked". litestream.io/tips.
-      def initialize(path:, serializer: JSON, autocheckpoint: true)
+      # slow_ms: log every call that takes at least this long (nil = off, zero
+      # cost). A call holds the GVL for its whole duration, so under a fiber
+      # server a slow one stalls every turn in the process; the line names the
+      # method, scope and Insika caller so the offender is found, not guessed.
+      def initialize(path:, serializer: JSON, autocheckpoint: true, slow_ms: nil, logger: nil)
         require "sqlite3"
+
+        if slow_ms
+          @slow_ms = slow_ms
+          @slow_logger = logger || Logger.new($stderr)
+          singleton_class.prepend(SlowLog)
+        end
 
         @serializer = serializer
         @db = SQLite3::Database.new(path)
