@@ -42,7 +42,7 @@ module Deploy
   # REAL LLM (same model as OpenClaw production).
   RubyLLM.configure do |c|
     c.deepseek_api_key = DEEPSEEK_KEY
-    c.deepseek_api_base = "https://api.deepseek.com/v1"
+    c.deepseek_api_base = ENV.fetch("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
     c.request_timeout = 120
     c.max_retries = 2
   end

@@ -49,7 +49,7 @@ module Insika
         return health_response if req.request_method == "GET" && segments == ["up"]
 
         raw_body = read_body(env)
-        backend = pick_backend(req.request_method, segments, raw_body)
+        backend = pick_backend(req, segments, raw_body)
         return unavailable_response if backend.nil?
 
         proxy(req, backend, raw_body)
@@ -57,18 +57,20 @@ module Insika
 
       private
 
-      def pick_backend(method, segments, raw_body)
+      def pick_backend(req, segments, raw_body)
         backends = @pool.backends
         return nil if backends.empty?
 
-        key = session_key(method, segments, raw_body)
+        key = session_key(req, segments, raw_body)
         return @pool.ring.backend_for(key) if key
 
         @rr_index = (@rr_index + 1) % backends.size
         backends[@rr_index]
       end
 
-      def session_key(method, segments, raw_body)
+      def session_key(req, segments, raw_body)
+        method = req.request_method
+        return SessionKey.extract(method, segments, body: -> {}, query: req.GET) if method == "GET"
         return nil if raw_body.nil?
 
         if raw_body.bytesize > @body_max_bytes

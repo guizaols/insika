@@ -49,6 +49,17 @@ fi
 DRAIN="${INSIKA_DRAIN_TIMEOUT:-20}"
 APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-1} --graceful-stop $((DRAIN + 5))"
 
+# INSIKA_WORKERS > 1 is the safe way to use more cores: N single-worker
+# processes behind the session-sticky insika-router (deploy/workers.sh). It
+# replaces WEB_CONCURRENCY, so both at once is refused.
+if [ "${INSIKA_WORKERS:-1}" -gt 1 ]; then
+  if [ "${WEB_CONCURRENCY:-1}" -gt 1 ]; then
+    echo "[entrypoint] INSIKA_WORKERS and WEB_CONCURRENCY>1 are exclusive — set WEB_CONCURRENCY=1" >&2
+    exit 1
+  fi
+  APP_CMD="bash /app/deploy/workers.sh"
+fi
+
 # Boot generation for the recovery task sweep: one id per
 # container start, inherited by every Falcon worker. The first worker to claim
 # it runs the sweep; the others (and any worker respawned mid-generation) skip,
