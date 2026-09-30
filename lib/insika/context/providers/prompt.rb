@@ -86,7 +86,9 @@ module Insika
           # NO identity at all, and a chatty model answered plausibly enough to hide
           # it. Additive to prompt_files, not exclusive: an agent may carry both.
           parts << profile&.base_prompt.to_s
-          Array(profile&.prompt_files).each { |src| parts << read_source(profile&.id, src.to_s) }
+          sources = Array(profile&.prompt_files)
+          stored = sources.any? && profile.id && @agent_files ? @agent_files.contents(profile.id) : {}
+          sources.each { |src| parts << read_source(stored, src.to_s) }
           identity = parts.reject { |p| p.nil? || p.strip.empty? }.join("\n\n")
           # Discipline rides an EXISTING identity, never substitutes one: an
           # empty identity here is fatal (`call` raises), not silently patched
@@ -113,9 +115,8 @@ module Insika
         end
 
         # Per-agent store first, disk second (compat/seed).
-        def read_source(agent_id, src)
-          stored = agent_id && @agent_files&.read(agent_id, src)
-          return stored if stored
+        def read_source(stored, src)
+          return stored[src] if stored[src]
           return File.read(src, encoding: "UTF-8") if File.exist?(src)
 
           ""
