@@ -32,7 +32,11 @@ module Insika
 
       # lazy require: the core installs without the sqlite3 gem
       # when only Memory is used.
-      def initialize(path:, serializer: JSON)
+      # autocheckpoint: false when Litestream replicates this file — it owns the
+      # checkpoints, and the app's own (every 1000 pages, per connection, N
+      # workers) race it: the WAL grew to 175 MB on staging with Litestream's
+      # checkpoint failing "database is locked". litestream.io/tips.
+      def initialize(path:, serializer: JSON, autocheckpoint: true)
         require "sqlite3"
 
         @serializer = serializer
@@ -58,6 +62,7 @@ module Insika
         with_busy_retry do
           @db.execute("PRAGMA journal_mode = WAL")
           @db.execute("PRAGMA synchronous = NORMAL")
+          @db.execute("PRAGMA wal_autocheckpoint = 0") unless autocheckpoint
           @db.execute_batch(DDL)
         end
         # The WITHOUT ROWID PRIMARY KEY (scope, key) is already the prefix index —
