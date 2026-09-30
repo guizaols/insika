@@ -106,6 +106,13 @@ INSIKA_ROUTER_BACKENDS=http://127.0.0.1:9292,http://127.0.0.1:9293,http://127.0.
   bundle exec insika-router
 ```
 
+The image does this for you: set `INSIKA_WORKERS=N` (and keep
+`WEB_CONCURRENCY=1`) and `deploy/entrypoint.sh` runs `deploy/workers.sh`, which
+starts the N workers on ports from `INSIKA_WORKER_BASE_PORT` (default 9300),
+waits until each accepts connections, then binds the router on `$PORT` with a
+backend timeout of `INSIKA_ROUTER_BACKEND_TIMEOUT` (default 1300s there, so a
+long turn is never cut). Unset or `1` boots exactly as before.
+
 `insika doctor` treats `WEB_CONCURRENCY>1` as `ok` (not `error`/`warn`) once
 it sees `INSIKA_ROUTER_BACKENDS` or `INSIKA_ROUTER_BACKENDS_DNS` set — it
 cannot verify a router process is actually running at those addresses, only

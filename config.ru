@@ -77,7 +77,8 @@ APP = Insika::Server::App.new(
   # WS1: only multi_tenant hands the token store to the edge.
   token_store: (W::SPINE.token_store if TENANCY == "multi_tenant"),
   # GET /v1/vitals: in-flight count + SQLite bytes.
-  executor: W::EXECUTOR, db_path: Insika::EnvSchema.read("INSIKA_DB")
+  executor: W::EXECUTOR, db_path: Insika::EnvSchema.read("INSIKA_DB"),
+  logger: $stdout # a 500's error_ref must be findable in the service logs
 )
 
 PERSISTENCE = Insika::EnvSchema.read("INSIKA_DB").to_s.empty? ? "ephemeral (memory)" : "durable (sqlite)"
