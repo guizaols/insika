@@ -59,9 +59,7 @@ module Deploy
     # configuration. Policy builtins: tool/skill allowlist + approval_required (no
     # :workflow_allowlist — the deployment does not expose workflows).
     BACKEND = Insika::Wiring::Graph.backend_from_env
-    # INSIKA_TRACE_DB set -> traces in their own file (own write lock); else BACKEND.
-    TRACE_BACKEND = Insika::Wiring::Graph.trace_backend_from_env(fallback: BACKEND)
-    SPINE   = Insika::Wiring::Graph.spine(backend: BACKEND, trace_backend: TRACE_BACKEND)
+    SPINE   = Insika::Wiring::Graph.spine(backend: BACKEND)
 
     # Promote the spine to the historic public constants (read shortcuts; the Studio,
     # serve_real, and the smoke consume Deploy::Wiring::SESSION_STORE etc.).
@@ -95,14 +93,14 @@ module Deploy
     TOOL_STORE    = Insika::ToolStore.new(config_store: CONFIG_STORE)
     # Per-session tool-call trace (debug in the Studio). Durable in the
     # same backend; masking/truncation in the store itself.
-    TOOL_TRACE_STORE = Insika::ToolTraceStore.new(store: TRACE_BACKEND)
+    TOOL_TRACE_STORE = Insika::ToolTraceStore.new(store: BACKEND)
     # Per-session context breakdown (tokens by category + budget) for the
     # Studio session card. Counts and provider ids only — no content, no masking.
-    CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: TRACE_BACKEND)
+    CONTEXT_TRACE_STORE = Insika::ContextTraceStore.new(store: BACKEND)
     # per-AGENT cache-hit series (Studio agent-detail card). Sessions
     # do not stamp their agent, so this capped list is the only way to answer
     # "cache-hit over time for THIS agent". Percentages and counts — no content.
-    CACHE_SERIES_STORE = Insika::CacheSeriesStore.new(store: TRACE_BACKEND)
+    CACHE_SERIES_STORE = Insika::CacheSeriesStore.new(store: BACKEND)
     # Egress of the data-tools (SSRF guard). Default = strict (public https only).
     # For the engine to CALL BACK the consumer's internal API (its
     # /api/internal/*), which is http/loopback locally, enable via env — preferably
