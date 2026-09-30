@@ -3527,6 +3527,39 @@ RSpec.describe Studio::App do
       expect(body).not_to include("bad<provider", "model&one")
     end
 
+    it "passes a custom date range (inclusive end day) and keeps the dates in the form" do
+      store = double
+      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil,
+        from: Time.utc(2026, 9, 1), to: Time.utc(2026, 9, 16)).and_return(metrics.merge("period" => "custom"))
+      app, = build_app(model_metrics_store: store)
+      body = login(app).get("/models?period=custom&from=2026-09-01&to=2026-09-15").body
+      expect(body).to include('value="custom" selected', 'name="from" value="2026-09-01"', 'name="to" value="2026-09-15"')
+    end
+
+    it "ignores a reversed, malformed or year-plus range, and dates under a fixed period" do
+      store = double
+      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "24h", provider: nil, model: nil).and_return(metrics)
+      app, = build_app(model_metrics_store: store)
+      client = login(app)
+      client.get("/models?period=custom&from=2026-09-15&to=2026-09-01")
+      client.get("/models?period=custom&from=nope&to=2026-09-01")
+      client.get("/models?period=custom&from=2024-01-01&to=2026-09-01")
+      client.get("/models?period=24h&from=2026-09-01&to=2026-09-15")
+    end
+
+    it "wires the interactive layer: tips, cursor and indexed points" do
+      metrics["series"] = [{ "at" => "2026-09-24T00:00:00Z", "requests" => 2, "cost" => 0.5, "unknown_cost_requests" => 0,
+        "p50_ms" => 10, "p90_ms" => 20, "p95_ms" => 30 }]
+      metrics["step_seconds"] = 3600
+      app, = build_app(model_metrics_store: double(report: metrics))
+      body = login(app).get("/models").body
+      expect(body).to include('data-controller="model-chart"', 'data-model-chart-target="cursor"', 'data-model-chart-target="tip"',
+        'data-index="0"', "model-area", "Hourly · UTC", "&quot;requests&quot;:2")
+    end
+
     it "splits the reply from the post-turn learning by operation" do
       metrics["operations"] = [
         { "operation" => "chat", "requests" => 3, "cost" => 0.5, "input_tokens" => 30 },

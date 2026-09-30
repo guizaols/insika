@@ -15,9 +15,11 @@
         <% (Array(@report && @report["model_options"]) + [@model]).compact.uniq.sort.each do |model| %><option value="<%= model %>"<%== ' selected' if @model == model %>><%= model %></option><% end %>
       </select></label>
     </div>
-    <div class="model-filter-group">
+    <div class="model-filter-group" data-controller="model-filters">
       <label class="sr-only" for="model-period">Period</label>
-      <select id="model-period" name="period"><% { "24h" => "Last 24 hours", "7d" => "Last 7 days", "30d" => "Last 30 days" }.each do |value, label| %><option value="<%= value %>"<%== ' selected' if @period == value %>><%= label %></option><% end %></select>
+      <select id="model-period" name="period" data-model-filters-target="period" data-action="change->model-filters#pickPeriod"><% { "24h" => "Last 24 hours", "7d" => "Last 7 days", "30d" => "Last 30 days", "custom" => "Custom range" }.each do |value, label| %><option value="<%= value %>"<%== ' selected' if @period == value %>><%= label %></option><% end %></select>
+      <label class="model-date"><span>From</span><input type="date" name="from" value="<%= @range_from %>" max="<%= Time.now.utc.strftime('%Y-%m-%d') %>" data-model-filters-target="date" data-action="change->model-filters#pickDate"></label>
+      <label class="model-date"><span>To</span><input type="date" name="to" value="<%= @range_to %>" max="<%= Time.now.utc.strftime('%Y-%m-%d') %>" data-model-filters-target="date" data-action="change->model-filters#pickDate"></label>
       <button type="submit" class="primary">Apply filters <span aria-hidden="true">↗</span></button>
     </div>
   </form>

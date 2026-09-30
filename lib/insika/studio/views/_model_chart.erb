@@ -3,49 +3,73 @@
 <% has_values = !values.empty? && (unit != "requests" || values.sum.positive?) %>
 <% ceiling = [values.max || 0, unit == "USD" ? 0.000001 : 1].max.to_f %>
 <% count = [series.size, 1].max; slot = 600.0 / count %>
-<div class="model-plot-shell">
+<% chart_id = "chart-#{title.downcase.gsub(/[^a-z0-9]+/, '-')}" %>
+<% step = @report ? @report["step_seconds"].to_i : 0 %>
+<% stamp_format = step < 86_400 ? "%b %-d · %H:%M UTC" : "%b %-d, %Y" %>
+<%# the tooltip rows, formatted here so the chart and the table read the same %>
+<% tips = series.map do |bucket|
+     rows = fields.map { |field, label| { "label" => label, "key" => field.delete_suffix("_ms"), "value" => bucket[field].nil? ? "No value" : model_chart_value(bucket[field], unit) } }
+     note = (fields.any? { |f, _| f == "cost" } && bucket["unknown_cost_requests"].to_i.positive?) ? "#{bucket['unknown_cost_requests']} requests with unknown cost" : nil
+     { "at" => Time.iso8601(bucket["at"]).utc.strftime(stamp_format), "requests" => (unit == "requests" ? nil : bucket["requests"].to_i), "rows" => rows, "note" => note }
+   end %>
+<div class="model-plot-shell" data-controller="model-chart" data-model-chart-tips-value="<%= JSON.generate(tips) %>" data-model-chart-count-value="<%= series.size %>">
   <div class="model-axis-y" aria-hidden="true">
     <% [ceiling, ceiling / 2, 0].each do |tick| %><span><%= has_values ? model_chart_tick(tick, unit) : "—" %></span><% end %>
   </div>
-  <div class="model-plot-body">
+  <div class="model-plot-body" data-model-chart-target="body" data-action="pointermove->model-chart#track pointerleave->model-chart#hide focusin->model-chart#focus focusout->model-chart#hide">
     <svg class="model-plot" viewBox="0 0 600 180" preserveAspectRatio="none" role="img" aria-label="<%= title %>">
       <title><%= title %></title>
       <desc><%= unit %> by time interval. Missing measurements remain gaps. Exact values are available in the chart data table below.</desc>
+      <defs>
+        <% fields.each do |field, _label| %>
+          <linearGradient id="<%= chart_id %>-<%= field %>" class="model-gradient <%= unit == 'requests' ? 'requests' : field.delete_suffix('_ms') %>" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="currentColor" stop-opacity="<%= unit == 'requests' ? '.95' : '.28' %>"/>
+            <stop offset="1" stop-color="currentColor" stop-opacity="<%= unit == 'requests' ? '.45' : '0' %>"/>
+          </linearGradient>
+        <% end %>
+      </defs>
       <% [0, 90, 180].each do |y| %><line class="model-gridline" x1="0" x2="600" y1="<%= y %>" y2="<%= y %>"/><% end %>
+      <line class="model-cursor" x1="0" x2="0" y1="0" y2="180" data-model-chart-target="cursor" vector-effect="non-scaling-stroke"/>
       <% if has_values %>
-        <% fields.each do |field, label| %>
+        <% fields.each_with_index do |(field, label), field_index| %>
           <% color = field.delete_suffix("_ms") %>
           <% points = series.each_with_index.map { |bucket, i| bucket[field].nil? ? nil : [(i + 0.5) * slot, 180 - bucket[field] / ceiling * 180] } %>
           <% if unit != "requests" %>
-            <% model_chart_paths(points).each do |path| %><path class="model-line <%= color %>" d="<%= path %>" vector-effect="non-scaling-stroke"/><% end %>
+            <% model_chart_paths(points).each do |path| %>
+              <% if field_index == fields.size - 1 %><%# one area per chart, under the lowest line, so stacked latency stays readable %>
+                <% xs = path.scan(/[ML]([\d.]+) /).flatten %>
+                <path class="model-area" d="<%= path %> L<%= xs.last %> 180 L<%= xs.first %> 180 Z" fill="url(#<%= chart_id %>-<%= field %>)"/>
+              <% end %>
+              <path class="model-line <%= color %>" d="<%= path %>" vector-effect="non-scaling-stroke"/>
+            <% end %>
           <% end %>
           <% points.each_with_index do |point, i| %>
             <% next unless point %>
             <% x, y = point; bucket = series[i] %>
-            <% stamp = Time.iso8601(bucket["at"]).utc.strftime("%Y-%m-%d %H:%M UTC") %>
-            <% description = "#{stamp} · #{label}: #{model_chart_value(bucket[field], unit)}" %>
-            <% description += " · #{bucket['unknown_cost_requests']} requests have unknown cost" if field == "cost" && bucket["unknown_cost_requests"].to_i.positive? %>
+            <% description = "#{tips[i]['at']} · #{label}: #{model_chart_value(bucket[field], unit)}" %>
+            <% description += " · #{tips[i]['note']}" if tips[i]["note"] && field == "cost" %>
             <% if unit == "requests" %>
-              <rect class="model-bar requests" x="<%= x - slot * 0.31 %>" y="<%= y %>" width="<%= slot * 0.62 %>" height="<%= 180 - y %>" rx="3" tabindex="0" aria-label="<%= description %>"><title><%= description %></title></rect>
+              <rect class="model-bar requests" x="<%= x - slot * 0.31 %>" y="<%= y %>" width="<%= slot * 0.62 %>" height="<%= 180 - y %>" rx="3" fill="url(#<%= chart_id %>-<%= field %>)" tabindex="0" data-index="<%= i %>" aria-label="<%= description %>"><title><%= description %></title></rect>
             <% else %>
-              <circle class="model-point <%= color %>" cx="<%= x %>" cy="<%= y %>" r="3.5" tabindex="0" aria-label="<%= description %>"><title><%= description %></title></circle>
+              <circle class="model-point <%= color %>" cx="<%= x %>" cy="<%= y %>" r="3.5" tabindex="0" data-index="<%= i %>" aria-label="<%= description %>"><title><%= description %></title></circle>
             <% end %>
           <% end %>
         <% end %>
       <% end %>
     </svg>
+    <div class="model-tip" role="status" aria-live="polite" hidden data-model-chart-target="tip"></div>
     <% unless has_values %><div class="model-chart-empty"><strong><%= empty %></strong><span><%= series.sum { |b| b["requests"].to_i }.zero? ? "New requests will appear here." : "This provider has not reported these values." %></span></div><% end %>
   </div>
   <div class="model-axis-x" aria-hidden="true">
     <% unless series.empty? %>
       <% [0, series.size / 2, series.size - 1].uniq.each do |i| %>
-        <span><%= Time.iso8601(series[i]["at"]).utc.strftime(@period == "24h" ? "%H:%M" : "%b %-d · %H:%M") %></span>
+        <span><%= Time.iso8601(series[i]["at"]).utc.strftime(step < 86_400 ? (step <= 3600 ? "%H:%M" : "%b %-d · %H:%M") : "%b %-d") %></span>
       <% end %>
     <% end %>
   </div>
 </div>
 <details class="model-chart-data">
-  <summary>View chart data<span><%= @period == "24h" ? "Hourly" : @period == "7d" ? "6-hour intervals" : "Daily" %> · UTC</span></summary>
+  <summary>View chart data<span><%= model_interval_label(step) %> · UTC</span></summary>
   <div class="model-table-scroll"><table class="grid">
     <caption class="sr-only"><%= title %> — exact values</caption>
     <thead><tr><th scope="col">Interval starts (UTC)</th><% fields.each do |_field, label| %><th scope="col" class="num"><%= label %> (<%= unit %>)</th><% end %><% if unit == "USD" %><th scope="col">Unknown cost</th><% end %></tr></thead>
