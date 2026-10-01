@@ -36,24 +36,6 @@ module Insika
                                    slow_ms: slow && Float(slow))
       end
 
-      # The scopes that only diagnose a turn (traces, metrics, the cache series):
-      # their writes can wait for a background flush instead of the turn.
-      TRACE_SCOPES = [Insika::ToolTraceStore::SCOPE, Insika::ContextTraceStore::SCOPE,
-                      Insika::LLMTraceStore::SCOPE, Insika::ModelMetricsStore::SCOPE,
-                      Insika::CacheSeriesStore::SCOPE, Insika::ModelVisibleTraceStore::SCOPE].freeze
-
-      # The store the trace stores write through: on SQLite, a WriteBehind that
-      # flushes every INSIKA_TRACE_FLUSH_MS (default 200; 0 = write in the turn,
-      # as before). Memory has no lock to wait for, so it is used as is.
-      def trace_backend_for(backend, env = ENV)
-        raw = Insika::EnvSchema.read("INSIKA_TRACE_FLUSH_MS", env)
-        ms = raw.nil? || raw.empty? ? 200 : Integer(raw)
-        return backend if ms <= 0 || !backend.is_a?(Insika::Stores::SQLite)
-
-        Insika::Stores::WriteBehind.new(backend, scopes: TRACE_SCOPES, interval: ms / 1000.0,
-                                                 logger: Logger.new($stderr))
-      end
-
       # On unless INSIKA_MODEL_VISIBLE_TRACES is set to a false value.
       def model_visible_traces?(env = ENV)
         value = Insika::EnvSchema.read("INSIKA_MODEL_VISIBLE_TRACES", env)
@@ -73,9 +55,8 @@ module Insika
       def spine(backend:, extra_policy_builtins: {})
         session_store        = Insika::SessionStore.new(store: backend)
         task_store           = Insika::TaskStore.new(store: backend)
-        trace_backend        = trace_backend_for(backend)
-        llm_trace_store       = Insika::LLMTraceStore.new(store: trace_backend)
-        model_metrics_store  = Insika::ModelMetricsStore.new(store: trace_backend)
+        llm_trace_store       = Insika::LLMTraceStore.new(store: backend)
+        model_metrics_store  = Insika::ModelMetricsStore.new(store: backend)
         checkpoint_store     = Insika::CheckpointStore.new(store: backend)
         pending_action_store = Insika::PendingActionStore.new(store: backend)
         delegation_store     = Insika::DelegationStore.new(store: backend)
@@ -154,7 +135,7 @@ module Insika
         extra_policy_builtins.each { |name, klass| policy_registry.register(name, klass) }
 
         Spine.new(
-          backend: backend, trace_backend: trace_backend, event_stream: Insika::EventStream.new,
+          backend: backend, event_stream: Insika::EventStream.new,
           session_store: session_store, task_store: task_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store,
           checkpoint_store: checkpoint_store, pending_action_store: pending_action_store,
           delegation_store: delegation_store,
@@ -250,7 +231,7 @@ module Insika
         # trace uses. INSIKA_MODEL_VISIBLE_TRACES=0 stops the WRITE only (nothing in
         # the product reads it back; it was ~80% of the bytes a turn wrote): the
         # purge paths below keep their own store, so old records still go.
-        model_visible_trace_store: model_visible_traces? ? Insika::ModelVisibleTraceStore.new(store: spine.trace_backend) : nil,
+        model_visible_trace_store: model_visible_traces? ? Insika::ModelVisibleTraceStore.new(store: spine.backend) : nil,
         # the per-turn extraction hook (nil = the loop is off,
         # parity). Gated per-agent by `profile.knowledge`.
         knowledge_store: spine.knowledge_store,
@@ -295,7 +276,7 @@ module Insika
             tool_trace_store: executor_extra[:tool_trace_store],
             context_trace_store: executor_extra[:context_trace_store],
             # the model-visible traces die with their checkpoints.
-            model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+            model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
             outbox_store: spine.outbox_store,
             shadow_pair_store: spine.shadow_pair_store,
             settings_store: executor_extra[:settings_store],
@@ -524,7 +505,7 @@ module Insika
                        context_trace_store: executor_extra[:context_trace_store],
                        # the model-visible traces die with the
                        # checkpoints (the same SessionPurge list).
-                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        task_store: spine.task_store, checkpoint_store: spine.checkpoint_store,
                        outbox_store: spine.outbox_store,
                        shadow_pairs: spine.shadow_pair_store,
@@ -548,7 +529,7 @@ module Insika
                        tool_trace_store: executor_extra[:tool_trace_store],
                        context_trace_store: executor_extra[:context_trace_store],
                        # the model-visible traces die with the tenant.
-                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.trace_backend),
+                       model_visible_trace_store: Insika::ModelVisibleTraceStore.new(store: spine.backend),
                        outcome_store: spine.outcome_store,
                        funnel_store: spine.funnel_store, # the fold dies with the tenant
                         followup_store: spine.followup_store,
@@ -668,7 +649,7 @@ module Insika
       # Infra spine (phase 1 output). Value object — the roots read these to promote
       # them to their historic public constants (SESSION_STORE, REGISTRY, ...).
       Spine = Struct.new(
-        :backend, :trace_backend, :event_stream, :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store,
+        :backend, :event_stream, :session_store, :task_store, :llm_trace_store, :model_metrics_store, :checkpoint_store,
         :pending_action_store, :delegation_store, :memory_store, :memory_audit_store,
         :refinement_store,
         :harvest_store,
