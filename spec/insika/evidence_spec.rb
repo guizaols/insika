@@ -194,6 +194,14 @@ RSpec.describe Insika::EvidenceLedger do
     expect(Insika::EvidenceLedger.merge_cards(many).first["id"]).to eq("P4")
   end
 
+  # A turn that found no evidence used to rewrite the whole session record anyway.
+  it "a flush with nothing to append writes nothing" do
+    allow(store).to receive(:append_evidence).and_call_original
+    ledger.flush!
+
+    expect(store).not_to have_received(:append_evidence)
+  end
+
   it "records ids (stringified, empties dropped); the ids reader dedupes" do
     l = ledger
     l.record(%w[SKU-1 SKU-1 123])
