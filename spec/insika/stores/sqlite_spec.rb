@@ -77,6 +77,17 @@ RSpec.describe Insika::Stores::SQLite do
       slow&.close
     end
 
+    # A release once stored large values deflated (a BLOB). Those rows must stay
+    # readable: JSON is always text, so a BLOB is inflated before parsing.
+    it "reads a value stored deflated as a BLOB" do
+      store # creates the table
+      value = { "messages" => ["hello"] * 50 }
+      SQLite3::Database.new(db_path).execute("INSERT INTO kv (scope, key, value, updated_at) VALUES (?, ?, ?, ?)",
+                                             ["sessions", "z", SQLite3::Blob.new(Zlib::Deflate.deflate(JSON.generate(value))), "t"])
+
+      expect(store.get("sessions", "z")).to eq(value)
+    end
+
     # A slow write is either waiting for the file's lock or holding it: the batch
     # line splits the two and says how much each batch wrote, and from which scopes.
     it "logs a slow write batch with its size, bytes, lock wait and commit time" do
