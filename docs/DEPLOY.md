@@ -364,8 +364,8 @@ scripts/litestream-restore-drill.sh      # needs docker, sqlite3, curl
 
 ```bash
 # a. with the service live and replicating, generate some config/conversation and
-#    confirm the replica has generations:
-litestream snapshots -config deploy/litestream.yml "$INSIKA_DB"
+#    confirm the replica has files (Litestream 0.5 lists them as LTX files):
+litestream ltx -config deploy/litestream.yml "$INSIKA_DB"
 
 # b. boot a NEW box (empty volume) with the same LITESTREAM_* vars → the entrypoint
 #    restores on boot. Verify manually in /studio that conversations and config came

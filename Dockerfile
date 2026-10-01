@@ -29,10 +29,12 @@ RUN apt-get update -qq && \
 # Litestream binary (opt-in continuous SQLite replication → S3/R2 for backup/DR;
 # see deploy/entrypoint.sh + docs/DEPLOY.md). Fetched here in the builder and
 # copied into the slim runtime so no download tooling lingers in the final image.
-# TARGETARCH is provided by BuildKit (amd64 / arm64) and matches the asset names.
+# TARGETARCH is provided by BuildKit (amd64 / arm64); the 0.5 assets name amd64
+# "x86_64".
 ARG TARGETARCH
-ARG LITESTREAM_VERSION=0.3.13
-RUN wget -q "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.tar.gz" -O /tmp/litestream.tar.gz && \
+ARG LITESTREAM_VERSION=0.5.17
+RUN arch="$([ "${TARGETARCH}" = amd64 ] && echo x86_64 || echo "${TARGETARCH}")" && \
+    wget -q "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${arch}.tar.gz" -O /tmp/litestream.tar.gz && \
     tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream && \
     rm /tmp/litestream.tar.gz && \
     /usr/local/bin/litestream version

@@ -14,16 +14,15 @@
 #   local FS   file:///replica/insika        (used by the restore drill)
 dbs:
   - path: ${INSIKA_DB}
-    # Above this many WAL pages Litestream forces a RESTART checkpoint, which
-    # holds the write lock while it copies the WAL: every worker's writes wait.
-    # The default (10000 pages, ~40 MB) is reached in seconds under a burst of
-    # turns, so those stalls repeat; ~400 MB keeps them out of a burst. The
-    # regular checkpoints (min-checkpoint-page-count) are unchanged.
-    max-checkpoint-page-count: 100000
-    replicas:
-      - url: ${LITESTREAM_REPLICA_URL}
-        # S3-compatible endpoint (R2/MinIO/Backblaze…). Leave unset for AWS S3;
-        # an empty value expands to "" and Litestream falls back to the default.
-        endpoint: ${LITESTREAM_ENDPOINT}
-        # Region: required by AWS S3 (e.g. us-east-1); "auto" for Cloudflare R2.
-        region: ${LITESTREAM_REGION}
+    # 0 turns off Litestream's forced TRUNCATE checkpoint. That checkpoint holds
+    # the write lock while it runs, so under a burst of turns every worker's
+    # writes waited on it; the regular (non-blocking) checkpoints still keep the
+    # WAL in check. litestream.io/guides/wal-truncate-threshold
+    truncate-page-n: 0
+    replica:
+      url: ${LITESTREAM_REPLICA_URL}
+      # S3-compatible endpoint (R2/MinIO/Backblaze…). Leave unset for AWS S3;
+      # an empty value expands to "" and Litestream falls back to the default.
+      endpoint: ${LITESTREAM_ENDPOINT}
+      # Region: required by AWS S3 (e.g. us-east-1); "auto" for Cloudflare R2.
+      region: ${LITESTREAM_REGION}
