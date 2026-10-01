@@ -33,6 +33,13 @@ module Insika
 
       GET = "SELECT value FROM insika_kv WHERE scope = $1 AND key = $2"
 
+      # Inside a transaction a read first takes the key's advisory lock (held to
+      # COMMIT/ROLLBACK), in its OWN statement: under READ COMMITTED a statement
+      # reads the snapshot it started with, so a SELECT that waited on the lock
+      # would still see the value from before the holder committed. The read that
+      # follows starts after the lock is ours and sees the committed value.
+      KEY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))"
+
       # pool: connections this process may open (lazily, on first use).
       def initialize(url:, pool: 5)
         require "pg" # lazy: the core installs without libpq
@@ -44,7 +51,10 @@ module Insika
       end
 
       def get(scope, key)
-        row = with_conn { |c| c.exec_params(GET, [scope, key]).first }
+        row = with_conn do |c|
+          c.exec_params(KEY_LOCK, [scope, key]) if @tx[Fiber.current]
+          c.exec_params(GET, [scope, key]).first
+        end
         row && JSON.parse(row["value"])
       end
 
@@ -85,8 +95,35 @@ module Insika
         prefix ? names.select { |s| s.start_with?(prefix) } : names
       end
 
+      # Read-check-write is atomic: every key READ inside the transaction is locked
+      # first (see KEY_LOCK), so a second transaction reading the same key waits —
+      # the role BEGIN IMMEDIATE plays on SQLite, but per key instead of per file.
+      # It covers keys that do not exist yet, which a row lock cannot. Different
+      # keys never wait on each other; a hash collision only over-serializes.
+      # A nested transaction reuses the outer one.
       def transaction
-        raise NotImplementedError, "#{self.class}#transaction"
+        return yield if @tx[Fiber.current]
+
+        conn = checkout
+        begin
+          conn.exec("BEGIN")
+          @tx[Fiber.current] = conn
+          result = yield
+          conn.exec("COMMIT")
+          result
+        rescue Exception # roll back on anything (a stopped fiber too), then re-raise it
+          begin
+            conn.exec("ROLLBACK") if conn.status == PG::CONNECTION_OK && conn.transaction_status != PG::PQTRANS_IDLE
+          rescue PG::Error
+            nil # a dead connection was rolled back by the server; keep the original error
+          end
+          raise
+        ensure
+          @tx.delete(Fiber.current)
+          checkin(conn)
+        end
+      rescue PG::Error => e
+        raise Insika::StoreError, e.message
       end
 
       def close
@@ -114,14 +151,27 @@ module Insika
         pinned = @tx[Fiber.current]
         return yield(pinned) if pinned
 
-        conn = @pool.pop || connect
+        conn = checkout
         begin
           yield conn
         ensure
-          @pool << conn
+          checkin(conn)
         end
       rescue PG::Error => e
         raise Insika::StoreError, e.message
+      end
+
+      def checkout = @pool.pop || connect
+
+      # A connection the server dropped is not returned: its slot comes back empty
+      # and the next borrower connects afresh.
+      def checkin(conn)
+        if conn && conn.status == PG::CONNECTION_OK
+          @pool << conn
+        else
+          conn&.close
+          @pool << nil
+        end
       end
 
       def connect = PG.connect(@url)
