@@ -167,6 +167,83 @@ RSpec.describe Insika::Stores::SQLite do
       expect(store.list("scope-0").length).to eq(20)
     end
 
+    # Group commit: writes that arrive while the process waits for the file's
+    # write lock share the transaction that gets it, so N workers on one file
+    # take the lock once per batch instead of once per write.
+    describe "group commit" do
+      def with_lock_held_elsewhere
+        blocker = SQLite3::Database.new(db_path)
+        blocker.execute("BEGIN IMMEDIATE")
+        Async do |task|
+          yield task
+          task.sleep(0.05) # the writers are now queued behind the lock
+          blocker.commit
+        end
+      ensure
+        blocker&.close
+      end
+
+      it "commits the writes queued behind a held lock together, each one durable" do
+        require "async"
+        store.set("g", "warm", 0) # opens the connection's schema before the lock is taken
+        db = store.instance_variable_get(:@db)
+        allow(db).to receive(:commit).and_call_original
+        writers = nil
+
+        with_lock_held_elsewhere do |task|
+          writers = 5.times.map { |i| task.async { store.set("g", "k#{i}", i) } }
+        end
+
+        expect(writers.map(&:wait)).to eq([0, 1, 2, 3, 4])
+        expect(db).to have_received(:commit).once
+        expect(described_class.new(path: db_path).get("g", "k4")).to eq(4)
+      end
+
+      it "fails only the write that failed, not the others in its batch" do
+        require "async"
+        store.set("g", "warm", 0)
+        ok = bad = nil
+
+        with_lock_held_elsewhere do |task|
+          ok = task.async { store.set("g", "fine", 1) }
+          bad = task.async { store.set(nil, "broken", 2) } # scope is NOT NULL
+        end
+
+        expect(ok.wait).to eq(1)
+        expect { bad.wait }.to raise_error(Insika::StoreError)
+        expect(store.get("g", "fine")).to eq(1)
+      end
+
+      it "a leader stopped while waiting for the lock does not strand the writes queued behind it" do
+        require "async"
+        store.set("g", "warm", 0)
+        follower = nil
+
+        with_lock_held_elsewhere do |task|
+          leader = task.async { store.set("g", "leader", 1) }
+          follower = task.async { store.set("g", "follower", 2) }
+          task.sleep(0.01)
+          leader.stop
+        end
+
+        expect(follower.wait).to eq(2)
+        expect(store.get("g", "follower")).to eq(2)
+      end
+
+      it "answers each delete in a batch on its own" do
+        require "async"
+        store.set("g", "there", 1)
+        here = gone = nil
+
+        with_lock_held_elsewhere do |task|
+          here = task.async { store.delete("g", "there") }
+          gone = task.async { store.delete("g", "never") }
+        end
+
+        expect([here.wait, gone.wait]).to eq([true, false])
+      end
+    end
+
     it "serializes two concurrent transactions on the same scope (no failed BEGIN IMMEDIATE)" do
       require "async"
 
