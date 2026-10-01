@@ -184,7 +184,7 @@ module Insika
 
       def set(scope, key, value)
         serialized = serialize(value)               # fail-fast BEFORE writing
-        group_write do
+        group_write(scope, serialized.bytesize) do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
             "VALUES (?, ?, ?, ?)",
@@ -195,7 +195,7 @@ module Insika
       end
 
       def delete(scope, key)
-        group_write do
+        group_write(scope, 0) do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
           @db.changes.positive?
         end
@@ -277,14 +277,14 @@ module Insika
       LeaderStopped = Class.new(StandardError)
       private_constant :LeaderStopped
 
-      def group_write(&op)
+      def group_write(scope, bytes, &op)
         return op.call if @tx_owner == Fiber.current # inside an explicit transaction
 
         begin
-          write = [op, Async::Promise.new]
+          write = [op, Async::Promise.new, scope, bytes]
           @pending_writes << write
           flush_writes unless @flushing
-          write.last.wait
+          write[1].wait
         rescue LeaderStopped
           retry
         end
@@ -296,12 +296,18 @@ module Insika
           batch = nil
           results = nil
           begin
+            clock = [monotonic]
             transaction do
+              clock << monotonic # the lock is ours
               batch = @pending_writes
               @pending_writes = []
               results = batch.map { |(op, _)| run_write(op) }
               raise Insika::StoreError, "the batch's transaction was rolled back" unless @db.transaction_active?
+
+              clock << monotonic
             end
+            clock << monotonic
+            report_slow_batch(batch, clock) if @slow_ms
             batch.zip(results) { |(_, promise), (ok, value)| ok ? promise.resolve(value) : promise.reject(value) }
           rescue StandardError => e
             (batch || @pending_writes.slice!(0..)).each { |(_, promise)| promise.reject(e) unless promise.completed? }
@@ -313,6 +319,22 @@ module Insika
         (Array(batch) + @pending_writes.slice!(0..)).each do |(_, promise)|
           promise.reject(LeaderStopped.new) unless promise.completed?
         end
+      end
+
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # One line per slow batch: wait = until the write lock was ours (this
+      # process's semaphore and other processes holding the file), exec = the
+      # statements, commit = COMMIT. A long wait with a short commit means
+      # someone else holds the lock; a long commit means the batch itself is heavy.
+      def report_slow_batch(batch, clock)
+        start, locked, executed, committed = clock
+        return if (committed - start) * 1000 < @slow_ms
+
+        scopes = batch.map { |w| w[2].to_s.sub(/:.*/, ":*") }.tally.map { |name, n| "#{name}:#{n}" }.join(",")
+        @slow_logger.warn(format("slow store batch writes=%d bytes=%d wait=%.1f ms exec=%.1f ms commit=%.1f ms scopes=%s",
+                                 batch.size, batch.sum { |w| w[3] }, (locked - start) * 1000,
+                                 (executed - locked) * 1000, (committed - executed) * 1000, scopes))
       end
 
       def run_write(op)
