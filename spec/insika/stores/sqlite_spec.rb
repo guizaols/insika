@@ -77,6 +77,31 @@ RSpec.describe Insika::Stores::SQLite do
       slow&.close
     end
 
+    # A slow write is either waiting for the file's lock or holding it: the batch
+    # line splits the two and says how much each batch wrote, and from which scopes.
+    it "logs a slow write batch with its size, bytes, lock wait and commit time" do
+      io = StringIO.new
+      slow = described_class.new(path: db_path, slow_ms: 0, logger: Logger.new(io))
+      slow.set("tasks", "k", { "v" => "x" * 100 })
+      slow.delete("tasks", "k")
+
+      expect(io.string).to match(
+        /slow store batch writes=1 bytes=1\d\d wait=\d+\.\d ms exec=\d+\.\d ms commit=\d+\.\d ms scopes=tasks:1/
+      ).and match(/slow store batch writes=1 bytes=0 /)
+    ensure
+      slow&.close
+    end
+
+    it "logs no batch line when slow_ms is off" do
+      io = StringIO.new
+      quiet = described_class.new(path: db_path, logger: Logger.new(io))
+      quiet.set("tasks", "k", 1)
+
+      expect(io.string).to be_empty
+    ensure
+      quiet&.close
+    end
+
     # The table used to be WITHOUT ROWID: every row carried its value inside the
     # key b-tree, so listing keys read the values too. A file in that layout is
     # rebuilt on open into a rowid table plus a (scope, key) index, data intact.
