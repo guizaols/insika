@@ -11,6 +11,7 @@ module Insika
     # operation.
     class Memory
       include Store
+      include JsonValue
 
       def initialize
         @data = new_store
@@ -71,44 +72,10 @@ module Insika
         end
       end
 
-      # JSON model types + Symbol (coerced to String on write).
-      # Any other type is "garbage" and must be rejected.
-      JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
-                  String, Symbol].freeze
-      private_constant :JSONABLE
-
       private
 
       def new_store
         Hash.new { |h, scope| h[scope] = {} }
-      end
-
-      # Enforces the contract's type model at the boundary:
-      # Symbol/symbol-key become String; a type outside the JSON model ->
-      # StoreError on WRITE (fail-fast; never writes garbage).
-      #
-      # Does not use `JSON.generate(strict: true)`: under json 2.7.1 (the pinned
-      # version) `strict` rejects Symbol, which would violate the Symbol coercion.
-      # The explicit validation is independent of the json version and gives the
-      # SAME semantics as SQLite.
-      # The transaction block's exception (from the caller) propagates without
-      # wrapping; only a backend error becomes StoreError.
-      def serialize(value)
-        ensure_jsonable!(value)
-        JSON.generate(value)
-      rescue JSON::GeneratorError => e
-        raise Insika::StoreError, "value not serializable: #{e.message}"
-      end
-
-      def ensure_jsonable!(value)
-        case value
-        when *JSONABLE then nil
-        when Array then value.each { |v| ensure_jsonable!(v) }
-        when Hash then value.each { |k, v| ensure_jsonable!(k); ensure_jsonable!(v) }
-        else
-          raise Insika::StoreError,
-                "value not serializable: #{value.class} not allowed in JSON"
-        end
       end
 
       # Deep dup: the values are already JSON strings (immutable in practice),
