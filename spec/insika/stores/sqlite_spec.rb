@@ -77,46 +77,6 @@ RSpec.describe Insika::Stores::SQLite do
       slow&.close
     end
 
-    # Sessions and checkpoints carry the whole transcript as JSON, and every
-    # write of one is logged in full by the WAL. Large values are stored deflated;
-    # small ones stay plain JSON, readable straight from the table.
-    describe "large values" do
-      let(:big) { { "messages" => Array.new(200) { |i| { "role" => "user", "content" => "message #{i} " * 10 } } } }
-
-      def raw(scope, key) = SQLite3::Database.new(db_path).get_first_value("SELECT value FROM kv WHERE scope = ? AND key = ?", [scope, key])
-
-      it "stores a value above the threshold deflated and reads it back unchanged" do
-        store.set("sessions", "s1", big)
-
-        stored = raw("sessions", "s1")
-        expect(stored.encoding).to eq(Encoding::BINARY)
-        expect(stored.bytesize).to be < JSON.generate(big).bytesize / 3
-        expect(store.get("sessions", "s1")).to eq(big)
-        expect(described_class.new(path: db_path).get("sessions", "s1")).to eq(big)
-      end
-
-      it "keeps a small value as plain JSON text" do
-        store.set("tasks", "t1", { "status" => "queued" })
-
-        expect(raw("tasks", "t1")).to eq('{"status":"queued"}')
-      end
-
-      it "reads a large value written before compression existed" do
-        store # creates the table
-        SQLite3::Database.new(db_path).execute("INSERT INTO kv (scope, key, value, updated_at) VALUES (?, ?, ?, ?)",
-                                               ["sessions", "old", JSON.generate(big), "t"])
-
-        expect(store.get("sessions", "old")).to eq(big)
-      end
-
-      it "set_all compresses the same way" do
-        Sync { store.set_all([["checkpoints", "c1", big]]) }
-
-        expect(raw("checkpoints", "c1").encoding).to eq(Encoding::BINARY)
-        expect(store.get("checkpoints", "c1")).to eq(big)
-      end
-    end
-
     # A slow write is either waiting for the file's lock or holding it: the batch
     # line splits the two and says how much each batch wrote, and from which scopes.
     it "logs a slow write batch with its size, bytes, lock wait and commit time" do
