@@ -60,12 +60,7 @@ module Insika
 
         batch = @pending
         @pending = {}
-        entries = batch.map { |(scope, key), raw| [scope, key, JSON.parse(raw)] }
-        if @inner.respond_to?(:set_all)
-          @inner.set_all(entries) # rides the backend's group commit: no lock taken just for traces
-        else
-          @inner.transaction { entries.each { |scope, key, value| @inner.set(scope, key, value) } }
-        end
+        @inner.transaction { batch.each { |(scope, key), raw| @inner.set(scope, key, JSON.parse(raw)) } }
         batch.size
       rescue StandardError => e
         @pending = batch.merge(@pending)
