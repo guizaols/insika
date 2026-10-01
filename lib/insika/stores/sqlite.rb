@@ -4,6 +4,7 @@ require "json"
 require "logger"
 require "time"
 require "async/semaphore"
+require "zlib"
 require "async/promise"
 
 module Insika
@@ -177,7 +178,11 @@ module Insika
         row = @db.get_first_value(
           "SELECT value FROM kv WHERE scope = ? AND key = ?", [scope, key]
         )
-        row.nil? ? nil : @serializer.parse(row)
+        return nil if row.nil?
+
+        # A BLOB is a value an earlier release stored deflated; JSON is always text.
+        row = Zlib::Inflate.inflate(row).force_encoding(Encoding::UTF_8) if row.encoding == Encoding::BINARY
+        @serializer.parse(row)
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
