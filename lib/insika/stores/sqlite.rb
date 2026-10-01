@@ -14,6 +14,7 @@ module Insika
     # writes in a transaction serialized by an Async::Semaphore.
     class SQLite
       include Store
+      include JsonValue
 
       # Prepended per instance when slow_ms is set; see #initialize.
       module SlowLog
@@ -68,14 +69,6 @@ module Insika
         DROP TABLE kv;
         ALTER TABLE kv_rowid RENAME TO kv;
       SQL
-
-      # JSON model types + Symbol (coerced to String on write).
-      # Any other type is "garbage" and must be rejected. Identical to
-      # Stores::Memory — both backends share the SAME type model
-      # (the contract suite is honest).
-      JSONABLE = [NilClass, TrueClass, FalseClass, Integer, Float,
-                  String, Symbol].freeze
-      private_constant :JSONABLE
 
       # lazy require: the core installs without the sqlite3 gem
       # when only Memory is used.
@@ -346,32 +339,6 @@ module Insika
         [true, op.call]
       rescue ::SQLite3::Exception => e
         [false, Insika::StoreError.new(e.message)]
-      end
-
-      # Enforces the contract's type model at the boundary:
-      # Symbol/symbol-key become String; a type outside the JSON model ->
-      # StoreError on WRITE (fail-fast; never writes garbage).
-      #
-      # Does NOT use `generate(strict: true)`: under json 2.7.1 (the version that
-      # ships with ruby 3.3.5 pinned in Gemfile.lock) `strict` REJECTS Symbol,
-      # which would violate the Symbol coercion. The explicit validation
-      # is independent of the json version and gives the SAME semantics as Memory.
-      def serialize(value)
-        ensure_jsonable!(value)
-        @serializer.generate(value)
-      rescue JSON::GeneratorError => e
-        raise Insika::StoreError, "value not serializable: #{e.message}"
-      end
-
-      def ensure_jsonable!(value)
-        case value
-        when *JSONABLE then nil
-        when Array then value.each { |v| ensure_jsonable!(v) }
-        when Hash then value.each { |k, v| ensure_jsonable!(k); ensure_jsonable!(v) }
-        else
-          raise Insika::StoreError,
-                "value not serializable: #{value.class} not allowed in JSON"
-        end
       end
     end
   end
