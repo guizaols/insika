@@ -4,6 +4,7 @@ require "json"
 require "logger"
 require "time"
 require "async/semaphore"
+require "async/promise"
 
 module Insika
   module Stores
@@ -98,6 +99,8 @@ module Insika
         @db = SQLite3::Database.new(path)
         @write_semaphore = Async::Semaphore.new(1)
         @tx_owner = nil
+        @pending_writes = []
+        @flushing = false
 
         # Multi-process boot (N Falcon workers opening the SAME file at the
         # same time): `PRAGMA journal_mode = WAL` on a new file needs an
@@ -181,7 +184,7 @@ module Insika
 
       def set(scope, key, value)
         serialized = serialize(value)               # fail-fast BEFORE writing
-        transaction do
+        group_write do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
             "VALUES (?, ?, ?, ?)",
@@ -192,7 +195,7 @@ module Insika
       end
 
       def delete(scope, key)
-        transaction do
+        group_write do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
           @db.changes.positive?
         end
@@ -260,6 +263,63 @@ module Insika
       end
 
       private
+
+      # Group commit for the single-statement writes (set/delete). The first one
+      # becomes the leader and takes the write lock; every write that arrives while
+      # it waits (on the semaphore, or on another PROCESS holding the file) joins
+      # the same transaction and one COMMIT. Each caller still returns only after
+      # its write is committed, so durability and per-fiber order are unchanged;
+      # what drops is how often N workers fight over the file's one write lock.
+      # A statement that fails fails only its own caller; one that leaves no
+      # transaction behind (SQLite rolled it back) fails the whole batch. A leader
+      # stopped before it committed hands the queue back: each write re-queues and
+      # one of them leads.
+      LeaderStopped = Class.new(StandardError)
+      private_constant :LeaderStopped
+
+      def group_write(&op)
+        return op.call if @tx_owner == Fiber.current # inside an explicit transaction
+
+        begin
+          write = [op, Async::Promise.new]
+          @pending_writes << write
+          flush_writes unless @flushing
+          write.last.wait
+        rescue LeaderStopped
+          retry
+        end
+      end
+
+      def flush_writes
+        @flushing = true
+        until @pending_writes.empty?
+          batch = nil
+          results = nil
+          begin
+            transaction do
+              batch = @pending_writes
+              @pending_writes = []
+              results = batch.map { |(op, _)| run_write(op) }
+              raise Insika::StoreError, "the batch's transaction was rolled back" unless @db.transaction_active?
+            end
+            batch.zip(results) { |(_, promise), (ok, value)| ok ? promise.resolve(value) : promise.reject(value) }
+          rescue StandardError => e
+            (batch || @pending_writes.slice!(0..)).each { |(_, promise)| promise.reject(e) unless promise.completed? }
+          end
+        end
+      ensure
+        @flushing = false
+        # only non-empty when the leader stopped mid-flush (e.g. its task was cancelled)
+        (Array(batch) + @pending_writes.slice!(0..)).each do |(_, promise)|
+          promise.reject(LeaderStopped.new) unless promise.completed?
+        end
+      end
+
+      def run_write(op)
+        [true, op.call]
+      rescue ::SQLite3::Exception => e
+        [false, Insika::StoreError.new(e.message)]
+      end
 
       # Enforces the contract's type model at the boundary:
       # Symbol/symbol-key become String; a type outside the JSON model ->
