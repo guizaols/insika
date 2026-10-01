@@ -255,6 +255,50 @@ RSpec.describe Insika::Stores::SQLite do
         expect(store.get("g", "follower")).to eq(2)
       end
 
+      # A write-behind flush must ride the same batch as the turn's writes: a
+      # transaction of its own would take the file's lock once more per flush.
+      it "set_all joins the writes queued behind the lock instead of opening its own transaction" do
+        require "async"
+        store.set("g", "warm", 0)
+        db = store.instance_variable_get(:@db)
+        allow(db).to receive(:commit).and_call_original
+        turn = flush = nil
+
+        with_lock_held_elsewhere do |task|
+          turn = task.async { store.set("tasks", "t1", 1) }
+          flush = task.async { store.set_all([["traces", "a", [1]], ["traces", "b", [2]]]) }
+        end
+
+        expect([turn.wait, flush.wait]).to eq([1, 2])
+        expect(db).to have_received(:commit).once
+        expect([store.get("traces", "a"), store.get("traces", "b")]).to eq([[1], [2]])
+      end
+
+      it "set_all inside an explicit transaction writes in that transaction" do
+        require "async"
+        Sync do
+          store.transaction { store.set_all([["traces", "a", [1]]]) }
+        end
+
+        expect(store.get("traces", "a")).to eq([1])
+      end
+
+      it "set_all inside a transaction does not wait on a leader that waits on that transaction" do
+        require "async"
+        other = nil
+        Sync do |task|
+          Async::Task.current.with_timeout(2) do
+            store.transaction do
+              other = task.async { store.set("x", "b", 1) } # leads, then waits for this transaction
+              store.set_all([["traces", "a", [1]]])
+            end
+            other.wait
+          end
+        end
+
+        expect([store.get("traces", "a"), store.get("x", "b")]).to eq([[1], 1])
+      end
+
       it "answers each delete in a batch on its own" do
         require "async"
         store.set("g", "there", 1)
