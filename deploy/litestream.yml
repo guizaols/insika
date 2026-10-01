@@ -14,6 +14,12 @@
 #   local FS   file:///replica/insika        (used by the restore drill)
 dbs:
   - path: ${INSIKA_DB}
+    # Above this many WAL pages Litestream forces a RESTART checkpoint, which
+    # holds the write lock while it copies the WAL: every worker's writes wait.
+    # The default (10000 pages, ~40 MB) is reached in seconds under a burst of
+    # turns, so those stalls repeat; ~400 MB keeps them out of a burst. The
+    # regular checkpoints (min-checkpoint-page-count) are unchanged.
+    max-checkpoint-page-count: 100000
     replicas:
       - url: ${LITESTREAM_REPLICA_URL}
         # S3-compatible endpoint (R2/MinIO/Backblaze…). Leave unset for AWS S3;
