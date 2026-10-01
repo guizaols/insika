@@ -301,4 +301,55 @@ RSpec.describe Insika::TaskStore do
       sqlite&.close
     end
   end
+
+  # A turn opened its Execution and moved to :running in two writes, and closed
+  # it and moved to its outcome in two more. One write each, in one transaction.
+  describe "start_execution / complete_execution" do
+    it "opens the attempt and moves a queued task to running in one write" do
+      task = tasks.create(command: command)
+      allow(backend).to receive(:set).and_call_original
+
+      started = tasks.start_execution(task.id)
+      expect(backend).to have_received(:set).once
+      expect(started.status).to eq(:running)
+      expect(started.executions.size).to eq(1)
+      expect(started.executions.last.finished_at).to be_nil
+    end
+
+    it "leaves a task already running (a recovered orphan) running" do
+      task = tasks.create(command: command)
+      tasks.transition(task.id, to: :running)
+
+      expect(tasks.start_execution(task.id).status).to eq(:running)
+    end
+
+    it "refuses a second open attempt, writing nothing" do
+      task = tasks.create(command: command)
+      tasks.start_execution(task.id)
+      allow(backend).to receive(:set).and_call_original
+
+      expect { tasks.start_execution(task.id) }.to raise_error(ArgumentError, /open Execution/)
+      expect(backend).not_to have_received(:set)
+    end
+
+    it "closes the attempt and moves to the outcome in one write" do
+      task = tasks.create(command: command)
+      tasks.start_execution(task.id)
+      allow(backend).to receive(:set).and_call_original
+
+      done = tasks.complete_execution(task.id, outcome: :completed)
+      expect(backend).to have_received(:set).once
+      expect(done.status).to eq(:completed)
+      expect(done.executions.last.outcome).to eq("completed")
+      expect(done.executions.last.finished_at).not_to be_nil
+    end
+
+    it "refuses an invalid transition without closing the attempt" do
+      task = tasks.create(command: command)
+      tasks.start_execution(task.id)
+      tasks.complete_execution(task.id, outcome: :completed)
+
+      expect { tasks.complete_execution(task.id, outcome: :cancelled) }.to raise_error(ArgumentError)
+    end
+  end
 end
