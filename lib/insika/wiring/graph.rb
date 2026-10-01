@@ -28,6 +28,12 @@ module Insika
       # LITESTREAM_REPLICA_URL is the same switch deploy/entrypoint.sh uses: set, and
       # Litestream owns the checkpoints.
       def backend_from_env(env = ENV)
+        url = Insika::EnvSchema.read("INSIKA_DATABASE_URL", env)
+        if url && !url.empty?
+          pool = Insika::EnvSchema.read("INSIKA_DATABASE_POOL", env)
+          return Insika::Stores::Postgres.new(url: url, pool: pool && !pool.empty? ? Integer(pool) : 5)
+        end
+
         db = Insika::EnvSchema.read("INSIKA_DB", env)
         return Insika::Stores::Memory.new unless db && !db.empty?
 
@@ -684,7 +690,7 @@ module Insika
         :profiles, :executor, :bus,
         keyword_init: true
       ) do
-        def durable? = backend.is_a?(Insika::Stores::SQLite)
+        def durable? = Insika::Stores.durable?(backend)
       end
 
       # The save_artifact tool, registered OPTIONAL on the shared code registry
