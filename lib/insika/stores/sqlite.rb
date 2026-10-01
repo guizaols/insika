@@ -5,7 +5,6 @@ require "logger"
 require "time"
 require "async/semaphore"
 require "async/promise"
-require "zlib"
 
 module Insika
   module Stores
@@ -178,13 +177,13 @@ module Insika
         row = @db.get_first_value(
           "SELECT value FROM kv WHERE scope = ? AND key = ?", [scope, key]
         )
-        row.nil? ? nil : @serializer.parse(decode(row))
+        row.nil? ? nil : @serializer.parse(row)
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
 
       def set(scope, key, value)
-        serialized = encode(serialize(value))       # fail-fast BEFORE writing
+        serialized = serialize(value)               # fail-fast BEFORE writing
         group_write(scope, serialized.bytesize) do
           @db.execute(
             "INSERT OR REPLACE INTO kv (scope, key, value, updated_at) " \
@@ -204,7 +203,7 @@ module Insika
         return entries.each { |scope, key, value| set(scope, key, value) }.size if @tx_owner == Fiber.current
 
         writes = entries.map do |scope, key, value|
-          serialized = encode(serialize(value))
+          serialized = serialize(value)
           group_write_async(scope, serialized.bytesize) do
             @db.execute("INSERT OR REPLACE INTO kv (scope, key, value, updated_at) VALUES (?, ?, ?, ?)",
                         [scope, key, serialized, Time.now.utc.iso8601])
@@ -291,25 +290,6 @@ module Insika
       end
 
       private
-
-      # Values from this size up are stored deflated. Sessions and checkpoints carry
-      # the whole transcript, and the WAL logs every write of one in full, so the
-      # bytes each turn makes the database (and its replica) write shrink several
-      # times for a fraction of a millisecond of CPU. A deflated value is a BLOB and
-      # JSON is always text, so a read tells them apart without a marker, and rows
-      # written before this stay readable as they are. Outside the store, a value
-      # read straight from the table is inflated with any zlib (Zlib::Inflate.inflate).
-      COMPRESS_FROM = 4096
-
-      def encode(json)
-        return json if json.bytesize < COMPRESS_FROM
-
-        SQLite3::Blob.new(Zlib::Deflate.deflate(json, Zlib::BEST_SPEED))
-      end
-
-      def decode(row)
-        row.encoding == Encoding::BINARY ? Zlib::Inflate.inflate(row).force_encoding(Encoding::UTF_8) : row
-      end
 
       # Group commit for the single-statement writes (set/delete). The first one
       # becomes the leader and takes the write lock; every write that arrives while
