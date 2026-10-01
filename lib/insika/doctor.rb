@@ -316,16 +316,18 @@ module Insika
       [Finding.new(check: "default-model", severity: :warn, message: msg, fix: fix)]
     end
 
+    def backend_name = @backend.class.name.split("::").last
+
     def check_db
-      unless @backend.is_a?(Insika::Stores::SQLite)
+      unless Insika::Stores.durable?(@backend)
         return [Finding.new(check: "db", severity: :info,
                             message: "ephemeral backend (INSIKA_DB unset) — config and state do NOT survive a restart", fix: nil)]
       end
 
       @backend.get("__doctor__", "probe") # a read round-trips the handle; raises if the file is broken
-      [ok("db", "durable backend: SQLite (readable)")]
+      [ok("db", "durable backend: #{backend_name} (readable)")]
     rescue StandardError => e
-      [Finding.new(check: "db", severity: :error, message: "SQLite backend not usable: #{e.class}: #{e.message}", fix: nil)]
+      [Finding.new(check: "db", severity: :error, message: "#{backend_name} backend not usable: #{e.class}: #{e.message}", fix: nil)]
     end
 
     def check_llm_provider

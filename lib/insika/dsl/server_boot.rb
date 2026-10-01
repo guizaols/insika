@@ -168,7 +168,7 @@ module Insika
       end
 
       def persistence
-        @graph.durable? ? "durable (sqlite)" : "ephemeral (memory)"
+        @graph.durable? ? "durable (#{@graph.backend.class.name.split("::").last.downcase})" : "ephemeral (memory)"
       end
 
       def banner(telemetry = nil)

@@ -92,5 +92,8 @@ module Insika
         @snapshot.each { |scope, kv| @data[scope] = kv }
       end
     end
-  end
+  
+    # Survives a restart? Every backend except Memory does.
+    def self.durable?(backend) = !backend.is_a?(Memory)
+end
 end
