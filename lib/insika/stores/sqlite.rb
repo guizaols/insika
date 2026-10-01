@@ -194,33 +194,6 @@ module Insika
         value
       end
 
-      # Many sets at once, riding the group commit like any other write: they join
-      # the batch queued behind the lock instead of taking it once more.
-      # entries: [[scope, key, value], ...] -> count written. Raises the first
-      # failure, after every write has settled.
-      def set_all(entries)
-        # inside this fiber's own transaction: write there, never queue behind it
-        return entries.each { |scope, key, value| set(scope, key, value) }.size if @tx_owner == Fiber.current
-
-        writes = entries.map do |scope, key, value|
-          serialized = serialize(value)
-          group_write_async(scope, serialized.bytesize) do
-            @db.execute("INSERT OR REPLACE INTO kv (scope, key, value, updated_at) VALUES (?, ?, ?, ?)",
-                        [scope, key, serialized, Time.now.utc.iso8601])
-          end
-        end
-        flush_writes unless @flushing || writes.empty?
-        errors = writes.filter_map do |promise|
-          promise.wait
-          nil
-        rescue StandardError => e # a stopped leader too: the caller keeps the entries and retries
-          e
-        end
-        raise errors.first if errors.any?
-
-        writes.size
-      end
-
       def delete(scope, key)
         group_write(scope, 0) do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
@@ -315,13 +288,6 @@ module Insika
         rescue LeaderStopped
           retry
         end
-      end
-
-      # Queues a write without waiting for it. -> its promise
-      def group_write_async(scope, bytes, &op)
-        promise = Async::Promise.new
-        @pending_writes << [op, promise, scope, bytes]
-        promise
       end
 
       def flush_writes

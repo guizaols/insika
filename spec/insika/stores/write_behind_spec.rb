@@ -39,21 +39,6 @@ RSpec.describe Insika::Stores::WriteBehind do
     end
   end
 
-  it "hands a backend that batches its own writes everything pending in one call" do
-    batching = Class.new(Insika::Stores::Memory) { def set_all(entries) = entries.each { |s, k, v| set(s, k, v) }.size }.new
-    behind = described_class.new(batching, scopes: %w[traces], interval: 60)
-    Sync do
-      allow(batching).to receive(:set_all).and_call_original
-      allow(batching).to receive(:transaction).and_call_original
-      behind.set("traces", "a", 1)
-      behind.set("traces", "b", 2)
-      behind.flush
-
-      expect(batching).to have_received(:set_all).with([["traces", "a", 1], ["traces", "b", 2]]).once
-      expect(batching).not_to have_received(:transaction)
-    end
-  end
-
   it "flushes everything pending in one transaction" do
     Sync do
       allow(inner).to receive(:transaction).and_call_original
