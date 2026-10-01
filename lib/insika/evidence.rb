@@ -237,6 +237,7 @@ module Insika
     # "nothing to append", never an explosion).
     def flush!
       return self unless @store && @session_id
+      return self if @ids.empty? && @cards.empty? && @ungrounded.zero? # nothing new: no session rewrite
 
       @store.append_evidence(@session_id, ids: @ids, ungrounded: @ungrounded, cards: @cards)
       @ids = []

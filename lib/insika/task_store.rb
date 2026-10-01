@@ -117,6 +117,48 @@ module Insika
       to_task(record)
     end
 
+    # -> Task; begin_execution + the move to :running in ONE write and one
+    # transaction (the dispatch claim, like transition). Only queued, paused and
+    # waiting move to :running; any other status (a recovered orphan already
+    # :running) keeps its own, exactly as the two separate calls did.
+    def start_execution(id)
+      @store.transaction do
+        record = fetch!(id)
+        raise ArgumentError, "an open Execution already exists on task #{id}" if open_execution(record)
+
+        record["status"] = "running" if %w[queued paused waiting].include?(record["status"])
+        record["executions"] += [{ "attempt" => record["executions"].size + 1, "started_at" => timestamp,
+                                   "finished_at" => nil, "outcome" => nil, "error" => nil }]
+        record["updated_at"] = timestamp
+        @store.set(SCOPE, key_for(id), record)
+        to_task(record)
+      end
+    end
+
+    # -> Task; finish_execution + transition(to: outcome) in ONE write and one
+    # transaction. ArgumentError (nothing written) for no open Execution or an
+    # invalid transition.
+    def complete_execution(id, outcome:)
+      target = outcome.to_sym
+      raise ArgumentError, "invalid status: #{outcome}" unless STATUSES.include?(target)
+
+      @store.transaction do
+        record = fetch!(id)
+        open = open_execution(record)
+        raise ArgumentError, "no open Execution on task #{id}" if open.nil?
+
+        from = record["status"].to_sym
+        raise ArgumentError, "invalid transition: #{from} -> #{target}" unless TRANSITIONS.fetch(from).include?(target)
+
+        open["finished_at"] = timestamp
+        open["outcome"] = target.to_s
+        record["status"] = target.to_s
+        record["updated_at"] = timestamp
+        @store.set(SCOPE, key_for(id), record)
+        to_task(record)
+      end
+    end
+
     # -> Task; closes the current Execution. ArgumentError if none is open.
     # Does NOT touch status (that is transition's job).
     def finish_execution(id, outcome:)

@@ -130,17 +130,16 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       order = []
       allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a| order << :checkpoint; m.call(*a) }
       allow(session_store).to receive(:append_messages).and_wrap_original { |m, *a| order << :session; m.call(*a) }
-      allow(task_store).to receive(:finish_execution).and_wrap_original { |m, *a, **kw| order << :finish; m.call(*a, **kw) }
-      allow(task_store).to receive(:transition).and_wrap_original do |m, id, **kw|
-        order << [:transition, kw[:to]]; m.call(id, **kw)
+      allow(task_store).to receive(:start_execution).and_wrap_original { |m, id| order << :start; m.call(id) }
+      allow(task_store).to receive(:complete_execution).and_wrap_original do |m, id, **kw|
+        order << [:complete, kw[:outcome]]; m.call(id, **kw)
       end
 
       run_turn(executor, make_task)
 
       # 1st:checkpoint = turn's initial one (crash resumability);
-      # then stage 8's order: checkpoint -> session -> finish -> transition
-      expect(order).to eq([[:transition, :running], :checkpoint, :checkpoint, :session, :finish,
-                           [:transition, :completed]])
+      # then stage 8's order: checkpoint -> session -> close + :completed (one write)
+      expect(order).to eq([:start, :checkpoint, :checkpoint, :session, [:complete, :completed]])
       # turn events. The chunk rides :intermediate as it arrives and the SAME text
       # is published as :content when the message ends — one is the live stream, the
       # other is the answer, and only the second crosses /v1/responses.
