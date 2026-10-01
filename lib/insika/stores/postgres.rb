@@ -181,6 +181,7 @@ module Insika
       # shared by every child.
       def migrate
         conn = connect
+        conn.exec("SET client_min_messages TO warning") # no "already exists, skipping" on every boot
         conn.transaction do
           conn.exec_params("SELECT pg_advisory_xact_lock($1)", [DDL_LOCK])
           conn.exec(DDL)
