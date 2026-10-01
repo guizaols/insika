@@ -624,11 +624,9 @@ module Insika
       # open -> close the orphan as :interrupted before opening the N+1 (a new
       # entry, never overwrites).
       close_orphan_execution(task) if resume_from
-      @task_store.begin_execution(task.id) # attempt N+1
-      # queued (normal spawn) and paused/waiting (resume) -> running. An orphan is
-      # already :running (running->running is invalid) -> no transition.
-      status = @task_store.find(task.id).status
-      @task_store.transition(task.id, to: :running) if %i[queued paused waiting].include?(status)
+      # attempt N+1, and queued (normal spawn) or paused/waiting (resume) ->
+      # running, in one write. An orphan is already :running and stays so.
+      @task_store.start_execution(task.id)
       emit(:task_started, started_data(task, profile), task: task)
 
       actor.drain!
@@ -2660,10 +2658,8 @@ module Insika
       # the edge-blocked halt (see complete_with_halt).
       @session_store.append_messages(task.session_id, new_messages) if session && task.session_id
 
-      # finish_execution (closes the Execution) BEFORE transition(:completed) —
-      # transition without error: does not close, so the finish is needed here.
-      @task_store.finish_execution(task.id, outcome: :completed)
-      @task_store.transition(task.id, to: :completed)
+      # closes the Execution and moves to :completed in one write.
+      @task_store.complete_execution(task.id, outcome: :completed)
       # prune is best-effort cleanup: a failure here must NOT re-fail an
       # already-committed turn (the task is already :completed and durable).
       # Swallow.
