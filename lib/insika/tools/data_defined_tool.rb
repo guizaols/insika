@@ -63,11 +63,14 @@ module Insika
           return { error: bad }
         end
 
+        t0 = monotonic
         req = build_request(kwargs)
         reason = @egress.violation(req[:url], **@egress_options)
         return { error: "destination blocked: #{reason}" } if reason
 
+        t1 = monotonic
         result = @http.request(**req)
+        record_timing(t0, t1, result)
         emit(result[:status])
         payload = extract(result)
         # The RESPONSE says the turn is over (`halt_when`): the backend already
@@ -211,6 +214,20 @@ module Insika
 
       # No task correlation (registry tool does not receive TurnState) -> meta {}.
       # Emits only name + status: NEVER body/headers (0 secret leakage, R2).
+      def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      # Where the call's time went, for the ToolEnvelope's trace (same fiber): the
+      # request build + egress check, the HTTP round trip as this process saw it, and
+      # the server's own runtime when it reports one. A wide gap between http_ms and
+      # server_ms is network or this process being slow to resume the call.
+      def record_timing(t0, t1, result)
+        Thread.current[Insika::ToolEnvelope::TIMING_KEY] = {
+          "pre_ms" => ((t1 - t0) * 1000).round,
+          "http_ms" => ((monotonic - t1) * 1000).round,
+          "server_ms" => result[:server_ms]
+        }.compact
+      end
+
       def emit(status)
         @event_stream&.emit(Insika::Event.new(
                               type: :data_tool_call, data: { tool: @definition.name, status: status }, meta: {}

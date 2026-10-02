@@ -20,6 +20,13 @@ RSpec.describe Insika::ToolTraceStore do
     expect(got.first).to include("tool" => "search_products", "turn" => 1, "ms" => 42, "ok" => true)
   end
 
+  it "keeps a data-tool's integer timing breakdown and drops anything else under those keys" do
+    store.record(session_id: "s1", entry: entry.merge("pre_ms" => 1, "http_ms" => 30, "server_ms" => "x"))
+    got = store.for_session("s1").first
+    expect(got).to include("pre_ms" => 1, "http_ms" => 30)
+    expect(got).not_to have_key("server_ms")
+  end
+
   it "session without a trace -> []" do
     expect(store.for_session("nada")).to eq([])
   end

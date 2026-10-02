@@ -16,14 +16,14 @@ RSpec.describe Insika::HttpClient do
   # Minimal HTTP/1.1 server on an ephemeral port. `chunks` are written raw, one
   # write per element, so a multi-byte character can be SPLIT across two socket
   # reads — exactly the case that byte-level accumulation has to survive.
-  def with_server(chunks:, status: "200 OK", location: nil)
+  def with_server(chunks:, status: "200 OK", location: nil, extra: "")
     server = TCPServer.new("127.0.0.1", 0)
     thread = Thread.new do
       socket = server.accept
       while (line = socket.gets) && !line.strip.empty?; end # request line + headers
       body = chunks.join.b
       socket.write("HTTP/1.1 #{status}\r\nContent-Type: application/json\r\n" \
-                   "#{location ? "Location: #{location}\r\n" : ''}" \
+                   "#{location ? "Location: #{location}\r\n" : ''}#{extra}" \
                    "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n")
       chunks.each { |c| socket.write(c) }
       socket.close
@@ -93,6 +93,18 @@ RSpec.describe Insika::HttpClient do
     result = with_server(chunks: ["{}"]) { |url| get(url) }
 
     expect(result).not_to have_key(:location)
+  end
+
+  it "reports the server's own runtime from X-Runtime" do
+    result = with_server(chunks: ["{}"], extra: "X-Runtime: 0.123456\r\n") { |url| get(url) }
+
+    expect(result[:server_ms]).to eq(123)
+  end
+
+  it "omits server_ms when the server does not send X-Runtime" do
+    result = with_server(chunks: ["{}"]) { |url| get(url) }
+
+    expect(result).not_to have_key(:server_ms)
   end
 
   it "caps the response size by bytes" do

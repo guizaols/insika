@@ -32,6 +32,18 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       response: { extract: "json_path", path: "localidade" } }
   end
 
+  it "leaves its timing breakdown for the envelope's trace" do
+    Thread.current[Insika::ToolEnvelope::TIMING_KEY] = nil
+    tool(cep_def, result: { status: 200, body: '{"localidade":"X"}', server_ms: 12 }).execute(cep: "1")
+
+    timing = Thread.current[Insika::ToolEnvelope::TIMING_KEY]
+    expect(timing).to include("server_ms" => 12)
+    expect(timing["http_ms"]).to be_a(Integer)
+    expect(timing["pre_ms"]).to be_a(Integer)
+  ensure
+    Thread.current[Insika::ToolEnvelope::TIMING_KEY] = nil
+  end
+
   it "name/description/parameters per instance; parameters_schema is derived" do
     t = tool(cep_def, result: { status: 200, body: "{}" })
     expect(t.name).to eq("cep")
