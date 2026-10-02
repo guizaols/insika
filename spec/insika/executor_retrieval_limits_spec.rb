@@ -118,7 +118,7 @@ RSpec.describe "Executor retrieval admission and accounting" do
     it "adds both retrieval calls to spend while preserving chat totals and unknown fields" do
       requests = 0
       allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-        original.receiver.connection.adapter :test do |stub|
+        stub_llm_http do |stub|
           stub.post("/v2/rerank") do
             requests += 1
             [200, { "Content-Type" => "application/json" }, JSON.generate(
