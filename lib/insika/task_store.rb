@@ -244,6 +244,9 @@ module Insika
     # be deleted under its own fiber).
     def delete(id)
       @store.transaction do
+        # Read the task first: the trace recorders read it before writing, so on a
+        # backend that locks per key read this orders a purge against them.
+        @store.get(SCOPE, key_for(id))
         @store.list(ModelMetricsStore::SCOPE, ModelMetricsStore.task_prefix(id)).each do |key|
           @store.delete(ModelMetricsStore::SCOPE, key)
         end
