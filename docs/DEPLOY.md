@@ -129,7 +129,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_WIDGET_ORIGINS` | — | exact-match origins allowed to embed the [web widget](CHANNELS.md#the-web-widget), comma-separated. No wildcards. **Half the switch**: with `INSIKA_WIDGET_AGENTS` unset, nothing is mounted (`404`) |
 | `INSIKA_WIDGET_AGENTS` | — | agent ids a widget visitor may address, comma-separated. The other half of the switch. **A chat rate limit is also required** or the widget answers `503` |
 | `INSIKA_DATABASE_URL` | — | **Postgres store** (`postgres://…`, Postgres 13+). Set, it replaces `INSIKA_DB` and Litestream is skipped. Needs the `pg` gem. See [Postgres store](#postgres-store-optional) |
-| `INSIKA_DATABASE_POOL` | `5` | Postgres connections per process |
+| `INSIKA_DATABASE_POOL` | `10` | Postgres connections per process |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |
 | `LITESTREAM_ENDPOINT` | — | S3-compatible endpoint (R2/MinIO). Empty = AWS S3 |
 | `LITESTREAM_REGION` | — | bucket region (AWS: `us-east-1`; R2: `auto`) |
@@ -385,8 +385,10 @@ meet on the keys they share.
 1. Add `gem "pg"` to your Gemfile (the reference image already has it and libpq).
 2. Set `INSIKA_DATABASE_URL=postgres://user:pass@host:5432/db` (Postgres 13+).
    It replaces `INSIKA_DB`; Litestream is skipped. `INSIKA_DATABASE_POOL` sets the
-   connections per process (default 5) — keep workers × pool under the server's
-   `max_connections`.
+   connections per process (default 10). A transaction keeps its connection while
+   its turn waits for the reactor, so under many concurrent turns a small pool is
+   where calls queue; raise it, keeping workers × pool under the server's
+   `max_connections` (100 by default).
 3. The table (`insika_kv`) is created on first boot.
 4. Moving an existing SQLite store into an **empty** database (the copy adds and
    overwrites keys, it does not remove extra ones): stop the app, then
