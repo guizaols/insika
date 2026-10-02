@@ -39,7 +39,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
   it "makes exactly two physical transport attempts for one native retry" do
     transport = RubyLLM::Transport::Connection.new(chat.provider, context.config)
     attempts = 0
-    transport.connection.adapter :test do |stub|
+    stub_llm_http do |stub|
       stub.post("/probe") do
         attempts += 1
         raise Faraday::ConnectionFailed, "offline" if attempts == 1
@@ -54,7 +54,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
   it "does not retry a transport failure after streamed output was delivered" do
     transport = RubyLLM::Transport::Connection.new(chat.provider, context.config)
     attempts = 0
-    transport.connection.adapter :test do |stub|
+    stub_llm_http do |stub|
       stub.post("/probe") do
         attempts += 1
         raise Faraday::ConnectionFailed, "stream interrupted"
@@ -80,7 +80,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     context.config.instrumenter = instrumenter
     attempts = 0
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/chat/completions") do
           attempts += 1
           raise Faraday::ConnectionFailed, "offline" if attempts == 1
@@ -107,7 +107,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
       emit: ->(type, data) { events << [type, data] }, operation: "chat", model: "deepseek-chat")
     attempts = 0
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/chat/completions") do
           attempts += 1
           raise Faraday::TimeoutError, "private provider detail" if attempts == 1
@@ -140,7 +140,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     context.config.instrumenter = bridge
     chat.with_fallbacks(RubyLLM::Model.new(id: "deepseek-reasoner", provider: "deepseek"))
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/chat/completions") do |env|
           model = JSON.parse(env.body).fetch("model")
           raise RubyLLM::ServerError, "private" if model == "deepseek-chat"
@@ -184,7 +184,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
   it "counts multiplied physical attempts when native retries run inside Reliability" do
     transport = RubyLLM::Transport::Connection.new(chat.provider, context.config)
     attempts = 0
-    transport.connection.adapter :test do |stub|
+    stub_llm_http do |stub|
       stub.post("/probe") do
         attempts += 1
         raise RubyLLM::ServerError, "offline"
@@ -259,7 +259,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
   it "limits Insika reliable turns to their configured physical attempts without changing shared configuration" do
     attempts = 0
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/chat/completions") do
           attempts += 1
           raise RubyLLM::ServerError, "offline"
@@ -306,7 +306,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
   it "does not add an Insika retry after native transport has delivered stream data" do
     attempts = 0
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/chat/completions") do |env|
           attempts += 1
           env.request.context ||= {}

@@ -58,7 +58,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
     chat = executor.send(:build_chat, selection, selection, state: state)
     attachment = RubyLLM::Attachment.new(StringIO.new("\xFF\xD8\xFF\xE0".b), filename: "photo.jpeg")
     sent = nil
-    chat.provider.connection.connection.adapter :test do |stub|
+    stub_llm_http do |stub|
       stub.post("/chat/completions") do |env|
         sent = JSON.parse(env.body)
         [200, { "Content-Type" => "application/json" }, JSON.generate(
