@@ -1831,9 +1831,8 @@ end
       idle_hours = positive_int(config["idle_hours"]) || 6
       min_messages = positive_int(config["min_messages"]) || 3
       cutoff = Time.now.utc - idle_hours * 3600
-      store.each_id.filter_map do |sid|
-        session = store.find(sid)
-        next unless session
+      every_record(store).filter_map do |session|
+        sid = session.id
         next unless session.vars.is_a?(Hash) && session.vars["agent"] == agent_id
         next if Insika::Coercion.blank?(session.vars["customer"])
         next unless aged?(session.updated_at, cutoff)
@@ -2201,11 +2200,17 @@ end
       view("home")
     end
 
+    # Every record of a session/task store: one bulk read when the store offers
+    # `all`, otherwise (an injected store with only each_id/find) one read per id.
+    def every_record(store)
+      store.respond_to?(:all) ? store.all : store.each_id.filter_map { |id| store.find(id) }
+    end
+
     def all_sessions
       store = insika[:session_store]
       return [] unless store
 
-      store.each_id.filter_map { |sid| store.find(sid) }
+      every_record(store)
     end
 
     def parse_time(str)
@@ -2274,8 +2279,7 @@ end
       store = insika[:session_store]
       return [] unless store
 
-      store.each_id.filter_map { |sid| store.find(sid) }
-           .sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
+      every_record(store).sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
     end
 
     # Compact relative age ("just now", "9min", "3h", "2d") for a timestamp string.
@@ -2533,7 +2537,7 @@ end
     def render_tasks
       store = insika[:task_store]
       @agent = presence(request.params["agent"])
-      @tasks = store ? store.each_id.filter_map { |id| store.find(id) } : []
+      @tasks = store ? every_record(store) : []
       @tasks = @tasks.select { |t| task_agent(t) == @agent } if @agent
       @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
       view("tasks")

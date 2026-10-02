@@ -122,6 +122,24 @@ module Insika
         rows.map { |r| r["key"] }
       end
 
+      # One query for the pairs (see Store#entries): one round trip instead of one
+      # per key. No lock, like #list.
+      def entries(scope, prefix = nil)
+        upper = prefix && range_end(prefix)
+        rows = with_conn do |c|
+          if upper
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND key >= $2 AND key < $3 ORDER BY key",
+                          [scope, prefix, upper])
+          elsif prefix
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND left(key, length($2)) = $2 ORDER BY key",
+                          [scope, prefix])
+          else
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 ORDER BY key", [scope])
+          end
+        end
+        rows.map { |r| [r["key"], JSON.parse(r["value"])] }
+      end
+
       def scopes(prefix = nil)
         names = with_conn { |c| c.exec("SELECT DISTINCT scope FROM insika_kv ORDER BY scope") }.map { |r| r["scope"] }
         prefix ? names.select { |s| s.start_with?(prefix) } : names

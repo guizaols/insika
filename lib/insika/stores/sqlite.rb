@@ -30,6 +30,7 @@ module Insika
 
         private
 
+
         def report_slow(name, scope, ms)
           # up to 3 frames of the caller chain (the store method alone rarely says
           # which duty called it), innermost first
@@ -171,11 +172,7 @@ module Insika
         row = @db.get_first_value(
           "SELECT value FROM kv WHERE scope = ? AND key = ?", [scope, key]
         )
-        return nil if row.nil?
-
-        # A BLOB is a value an earlier release stored deflated; JSON is always text.
-        row = Zlib::Inflate.inflate(row).force_encoding(Encoding::UTF_8) if row.encoding == Encoding::BINARY
-        @serializer.parse(row)
+        row.nil? ? nil : @serializer.parse(decode(row))
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
@@ -211,6 +208,22 @@ module Insika
 
         keys = @db.execute("SELECT key FROM kv WHERE scope = ? ORDER BY key", [scope]).map(&:first)
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
+      rescue ::SQLite3::Exception => e
+        raise Insika::StoreError, e.message
+      end
+
+      # One query for the pairs: a caller listing and reading a whole scope pays
+      # one statement instead of one per key.
+      def entries(scope, prefix = nil)
+        upper = prefix && range_end(prefix)
+        rows =
+          if upper
+            @db.execute("SELECT key, value FROM kv WHERE scope = ? AND key >= ? AND key < ? ORDER BY key", [scope, prefix, upper])
+          else
+            @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY key", [scope])
+          end
+        rows = rows.select { |key, _| key.start_with?(prefix) } if prefix && !upper
+        rows.map { |key, raw| [key, @serializer.parse(decode(raw))] }
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
@@ -261,6 +274,11 @@ module Insika
       end
 
       private
+
+      # A BLOB is a value an earlier release stored deflated; JSON is always text.
+      def decode(raw)
+        raw.encoding == Encoding::BINARY ? Zlib::Inflate.inflate(raw).force_encoding(Encoding::UTF_8) : raw
+      end
 
       # Group commit for the single-statement writes (set/delete). The first one
       # becomes the leader and takes the write lock; every write that arrives while
