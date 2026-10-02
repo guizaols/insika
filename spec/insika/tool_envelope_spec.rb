@@ -459,6 +459,27 @@ RSpec.describe Insika::ToolEnvelope do
       expect(recorder.entries.first["result"].to_s).not_to include("__insika_body")
     end
 
+    it "the trace carries the timing breakdown the tool left, and only for that call" do
+      recorder = Class.new do
+        attr_reader :entries
+        def initialize = (@entries = [])
+        def record(session_id:, entry:) = @entries << entry
+      end.new
+      timed = Class.new(EnvEchoTool) do
+        def call(args)
+          Thread.current[Insika::ToolEnvelope::TIMING_KEY] = { "http_ms" => 5, "server_ms" => 3 }
+          super
+        end
+      end
+      Sync do
+        envelope(timed.new, state_for(session_id: "s1"), trace_recorder: recorder).call({})
+        envelope(EnvEchoTool.new, state_for(session_id: "s1"), trace_recorder: recorder).call({})
+      end
+
+      expect(recorder.entries.first).to include("http_ms" => 5, "server_ms" => 3)
+      expect(recorder.entries.last).not_to have_key("http_ms")
+    end
+
     it "state without a ledger is fine (duck-typed no-op)" do
       env = envelope(EnvEvidenceTool.new, state_for)
       result = Sync { env.call({}) }
