@@ -196,4 +196,19 @@ RSpec.describe "Insika::Stores::Postgres", if: ENV["PG_TEST_URL"] do
 
     expect(seen.first).to eq([:get, "tasks"])
   end
+
+  # Two rotations for one tenant at once must end with ONE active token: each
+  # revokes what it saw, so they have to run one after the other.
+  it "two concurrent rotations leave the tenant a single active token" do
+    require "async"
+    tokens = Insika::TokenStore.new(store: store)
+    tokens.issue(tenant_id: "acme")
+    Sync do |task|
+      2.times.map { task.async { tokens.rotate(tenant_id: "acme") } }.each(&:wait)
+    end
+    active = tokens.active_token_ids.count do |id|
+      store.get(Insika::TokenStore::SCOPE, tokens.send(:record_key, id))["tenant_id"] == "acme"
+    end
+    expect(active).to eq(1)
+  end
 end
