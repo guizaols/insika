@@ -8,9 +8,9 @@ module Insika
   # Faraday's net_http adapter with ONE certificate store per process.
   #
   # The stock adapter builds a store from the system CA bundle for each
-  # connection, and RubyLLM builds a connection per chat, so every chat parsed
-  # the whole bundle again to verify the provider's certificate — CPU paid on
-  # every turn. This one verifies against OpenSSL's default store (the same
+  # connection. RubyLLM used to build a connection per chat, so every chat
+  # parsed the whole bundle again; it now shares one connection per process and
+  # settings, which leaves only a few stores to build. This one verifies against OpenSSL's default store (the same
   # system paths, the store Net::HTTP already shares). A cert_store passed in
   # the connection's ssl options still wins, and a ca_file/ca_path gets the stock
   # private store: OpenSSL loads those INTO the store it is given, which would

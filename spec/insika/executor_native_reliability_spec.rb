@@ -75,7 +75,7 @@ RSpec.describe "Executor native chat reliability" do
           else
             if settings["retries"].positive?
               transport = provider.connection
-              transport.connection.adapter :test do |stub|
+              stub_llm_http do |stub|
                 stub.post("/probe") do
                   transport_attempts += 1
                   raise Faraday::ConnectionFailed, "interrupted after write" if transport_attempts == 1
