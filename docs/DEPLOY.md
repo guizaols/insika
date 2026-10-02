@@ -377,10 +377,16 @@ litestream restore -config deploy/litestream.yml -o /tmp/restored.db "$INSIKA_DB
 
 ## Postgres store (optional)
 
-SQLite is the default and fits one process well. With several worker processes
-(`INSIKA_WORKERS` > 1) every write in every process takes the same file lock, so
-under load the workers queue behind each other. Postgres removes that: writers only
-meet on the keys they share.
+SQLite is the default and the right choice for one box, including several worker
+processes (`INSIKA_WORKERS` > 1): their writes share commits (group commit), so
+they only queue behind the file's single write lock under sustained bursts of
+writes. Postgres removes that lock — writers only meet on the keys they share — but
+every store call becomes a network round trip, and a turn makes many store calls,
+so on one box it is usually slower per turn, not faster.
+
+Choose Postgres when the store must be shared: several nodes or replicas running
+the engine, or other systems that query the data directly. Measure your own load
+before switching for speed alone.
 
 1. Add `gem "pg"` to your Gemfile (the reference image already has it and libpq).
 2. Set `INSIKA_DATABASE_URL=postgres://user:pass@host:5432/db` (Postgres 13+).
