@@ -107,7 +107,7 @@ RSpec.describe "Insika.embed" do
     end
     keys = []
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/v1/chat/completions") do |env|
           keys << env.request_headers["Authorization"]
           Async::Task.current.sleep(0.001)
@@ -168,7 +168,7 @@ RSpec.describe "Insika.embed" do
     state = Insika::TurnState.new(task: task, profile: runtime.profile("support"), turn: 1, message: "private")
     attempts = 0
     allow_any_instance_of(RubyLLM::Transport::Connection).to receive(:post).and_wrap_original do |original, *args, **kwargs, &block|
-      original.receiver.connection.adapter :test do |stub|
+      stub_llm_http do |stub|
         stub.post("/v1/chat/completions") do
           attempts += 1
           if attempts == 1
