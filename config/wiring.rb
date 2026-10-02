@@ -250,7 +250,7 @@ module Insika
 
     # Backend durability: SQLite survives restart, Memory does not. Boot logs this so
     # the operator doesn't come up without durability by mistake (INSIKA_DB not set).
-    def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
+    def self.durable? = Insika::Stores.durable?(BACKEND)
   end
 end
 

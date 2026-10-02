@@ -32,6 +32,13 @@ module Insika
     # nor a lost spill key).
     def save(checkpoint)
       @store.transaction do
+        # The new turn's own key first: a backend that locks per key read inside a
+        # transaction then serializes two saves of the same turn, and the second
+        # one fails the guard below instead of overwriting the first.
+        if @store.get(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn))
+          raise ArgumentError, "checkpoint with non-monotonic turn: #{checkpoint.turn} already saved"
+        end
+
         current = latest(checkpoint.task_id)
         if current && current.turn >= checkpoint.turn
           raise ArgumentError,

@@ -23,7 +23,7 @@ ENV BUNDLE_DEPLOYMENT=1 \
 # extension — without them `bundle install` fails on ruby:4.0.6-slim (linux).
 # wget + ca-certificates: to fetch the Litestream release tarball below.
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libssl-dev pkg-config wget ca-certificates && \
+    apt-get install --no-install-recommends -y build-essential git libssl-dev libpq-dev pkg-config wget ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Litestream binary (opt-in continuous SQLite replication → S3/R2 for backup/DR;
@@ -73,7 +73,9 @@ ENV BUNDLE_DEPLOYMENT=1 \
 # root-owned and SQLite could not write insika.db. For the pilot
 # (single-tenant container) root is acceptable; non-root hardening (fsGroup/
 # init-chown) is left for k8s. See docs/DEPLOY.md.
-RUN mkdir -p /data
+# libpq for the opt-in Postgres store (INSIKA_DATABASE_URL; the pg gem links it).
+RUN apt-get update -qq && apt-get install --no-install-recommends -y libpq5 && rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /data
 WORKDIR /app
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --from=builder /usr/local/bin/litestream /usr/local/bin/litestream
