@@ -26,4 +26,14 @@ RSpec.describe "bulk reads" do
     expect(tasks.all.map(&:id)).to contain_exactly(a.id, b.id)
     expect(backend).to have_received(:entries).once
   end
+
+  it "SessionStore#recent returns the most recently written sessions from one read" do
+    sessions = Insika::SessionStore.new(store: backend)
+    %w[s1 s2 s3].each { |id| sessions.create(id: id) }
+    sessions.append_messages("s1", [{ "role" => "user", "content" => "hi" }])
+    allow(backend).to receive(:recent).and_call_original
+
+    expect(sessions.recent(2).map(&:id)).to eq(%w[s1 s3])
+    expect(backend).to have_received(:recent).once
+  end
 end

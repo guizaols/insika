@@ -26,8 +26,11 @@ module Insika
         JSON.parse(raw)
       end
 
+      # Re-inserted on every write, so the Hash's order is the write order (#recent).
       def set(scope, key, value)
-        @data[scope][key] = serialize(value)
+        raw = serialize(value)
+        @data[scope].delete(key)
+        @data[scope][key] = raw
         value
       end
 
@@ -38,6 +41,12 @@ module Insika
       def list(scope, prefix = nil)
         keys = @data[scope].keys.sort
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
+      end
+
+      def recent(scope, prefix, limit)
+        @data[scope].reverse_each.lazy
+                    .select { |key, _| prefix.nil? || key.start_with?(prefix) }
+                    .first(limit).map { |key, raw| [key, JSON.parse(raw)] }
       end
 
       def scopes(prefix = nil)
