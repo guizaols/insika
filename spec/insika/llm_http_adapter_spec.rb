@@ -5,8 +5,7 @@ require "insika/llm_http_adapter"
 
 RSpec.describe Insika::LLMHTTPAdapter do
   # Faraday's net_http adapter builds a CA store from the system bundle for each
-  # connection, and RubyLLM builds a connection per chat: every chat parsed the
-  # whole bundle again to verify the provider's certificate.
+  # connection; this one reuses the process-wide store for every connection.
   it "verifies against the process-wide default store instead of loading a new one" do
     adapter = described_class.new(->(_env) {})
 
