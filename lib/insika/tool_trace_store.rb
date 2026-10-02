@@ -52,7 +52,11 @@ module Insika
         "ok" => ok?(e["result"]),
         "args" => clip(mask(e["args"])), "result" => clip(mask(e["result"])),
         "ms" => e["ms"], "at" => e["at"].to_s
-      }.tap { |trace| trace["gate"] = e["gate"].to_s if e["gate"] }
+      }.tap do |trace|
+        trace["gate"] = e["gate"].to_s if e["gate"]
+        # Timing breakdown a data-tool reports (see DataDefinedTool#record_timing).
+        %w[pre_ms http_ms server_ms].each { |k| trace[k] = e[k] if e[k].is_a?(Integer) }
+      end
     end
 
     # Conventional tool error = Hash with key "error"/:error (everything else is ok).
