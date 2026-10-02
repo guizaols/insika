@@ -21,14 +21,15 @@ module Insika
           value      text NOT NULL,
           updated_at timestamptz NOT NULL DEFAULT now(),
           PRIMARY KEY (scope, key)
-        )
+        );
+        CREATE INDEX IF NOT EXISTS insika_kv_recent ON insika_kv (scope, updated_at DESC)
       SQL
 
       # Serializes the DDL across processes booting together (CREATE TABLE IF NOT
       # EXISTS races on the catalog otherwise). Any constant works; this one spells "insika".
       DDL_LOCK = 0x696e73696b61
 
-      UPSERT = "INSERT INTO insika_kv (scope, key, value, updated_at) VALUES ($1, $2, $3, now()) " \
+      UPSERT = "INSERT INTO insika_kv (scope, key, value, updated_at) VALUES ($1, $2, $3, clock_timestamp()) " \
                "ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
 
       GET = "SELECT value FROM insika_kv WHERE scope = $1 AND key = $2"
@@ -44,7 +45,7 @@ module Insika
       # so it waits for any transaction that read the key, as SQLite queued every
       # write behind an open transaction. Released when the statement ends.
       LOCKED_UPSERT = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
-                      "INSERT INTO insika_kv (scope, key, value, updated_at) SELECT $1, $2, $3, now() FROM l " \
+                      "INSERT INTO insika_kv (scope, key, value, updated_at) SELECT $1, $2, $3, clock_timestamp() FROM l " \
                       "ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
       LOCKED_DELETE = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
                       "DELETE FROM insika_kv WHERE scope = $1 AND key = $2 AND EXISTS (SELECT 1 FROM l)"
@@ -135,6 +136,25 @@ module Insika
                           [scope, prefix])
           else
             c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 ORDER BY key", [scope])
+          end
+        end
+        rows.map { |r| [r["key"], JSON.parse(r["value"])] }
+      end
+
+      # Newest first by the write time (updated_at, indexed with the scope); key
+      # breaks a tie. Only the top `limit` values travel.
+      def recent(scope, prefix, limit)
+        upper = prefix && range_end(prefix)
+        rows = with_conn do |c|
+          if upper
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND key >= $2 AND key < $3 " \
+                          "ORDER BY updated_at DESC, key DESC LIMIT $4", [scope, prefix, upper, limit])
+          elsif prefix
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND left(key, length($2)) = $2 " \
+                          "ORDER BY updated_at DESC, key DESC LIMIT $3", [scope, prefix, limit])
+          else
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 ORDER BY updated_at DESC, key DESC LIMIT $2",
+                          [scope, limit])
           end
         end
         rows.map { |r| [r["key"], JSON.parse(r["value"])] }

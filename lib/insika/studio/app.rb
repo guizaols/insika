@@ -2279,6 +2279,8 @@ end
       store = insika[:session_store]
       return [] unless store
 
+      return store.recent(limit) if store.respond_to?(:recent)
+
       every_record(store).sort_by { |s| s.updated_at.to_s }.reverse.first(limit)
     end
 
