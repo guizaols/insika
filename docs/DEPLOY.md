@@ -128,6 +128,8 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_RELAY_DELIVERY` | `at_end` | how the relay flushes the outbox: `at_end` (one POST) or `progressive` (one POST per balloon — [delivery policy](CHANNELS.md#delivery-policy)) |
 | `INSIKA_WIDGET_ORIGINS` | — | exact-match origins allowed to embed the [web widget](CHANNELS.md#the-web-widget), comma-separated. No wildcards. **Half the switch**: with `INSIKA_WIDGET_AGENTS` unset, nothing is mounted (`404`) |
 | `INSIKA_WIDGET_AGENTS` | — | agent ids a widget visitor may address, comma-separated. The other half of the switch. **A chat rate limit is also required** or the widget answers `503` |
+| `INSIKA_DATABASE_URL` | — | **Postgres store** (`postgres://…`, Postgres 13+). Set, it replaces `INSIKA_DB` and Litestream is skipped. Needs the `pg` gem. See [Postgres store](#postgres-store-optional) |
+| `INSIKA_DATABASE_POOL` | `5` | Postgres connections per process |
 | `LITESTREAM_REPLICA_URL` | — | **enables Litestream** (backup/DR). Empty = disabled (default). See below |
 | `LITESTREAM_ENDPOINT` | — | S3-compatible endpoint (R2/MinIO). Empty = AWS S3 |
 | `LITESTREAM_REGION` | — | bucket region (AWS: `us-east-1`; R2: `auto`) |
@@ -373,12 +375,32 @@ litestream ltx -config deploy/litestream.yml "$INSIKA_DB"
 litestream restore -config deploy/litestream.yml -o /tmp/restored.db "$INSIKA_DB"
 ```
 
+## Postgres store (optional)
+
+SQLite is the default and fits one process well. With several worker processes
+(`INSIKA_WORKERS` > 1) every write in every process takes the same file lock, so
+under load the workers queue behind each other. Postgres removes that: writers only
+meet on the keys they share.
+
+1. Add `gem "pg"` to your Gemfile (the reference image already has it and libpq).
+2. Set `INSIKA_DATABASE_URL=postgres://user:pass@host:5432/db` (Postgres 13+).
+   It replaces `INSIKA_DB`; Litestream is skipped. `INSIKA_DATABASE_POOL` sets the
+   connections per process (default 5) — keep workers × pool under the server's
+   `max_connections`.
+3. The table (`insika_kv`) is created on first boot.
+4. Moving an existing SQLite store: stop the app, then
+   `INSIKA_DB=/data/insika.db INSIKA_DATABASE_URL=… bundle exec ruby scripts/store_copy.rb`,
+   then boot with `INSIKA_DATABASE_URL` set. Unsetting it goes back to the SQLite
+   file as it was at the copy.
+
+Backups are Postgres's job (your provider's snapshots or point-in-time recovery).
+
 ## Kubernetes (evolution)
 
 SQLite does not share one file across nodes. Paths forward: a StatefulSet + a PVC
-per pod + **sticky-by-agent** routing (shard by tenant), or **LiteFS**, or an
-optional **Postgres** adapter. **Litestream** (above) for backup/DR from day one —
-orthogonal to topology.
+per pod + **sticky-by-agent** routing (shard by tenant), or **LiteFS**, or the
+[Postgres store](#postgres-store-optional), which every pod can share.
+**Litestream** (above) for backup/DR of SQLite — orthogonal to topology.
 
 For the *session-routing* half specifically — as opposed to the storage
 topology above — see [`insika-router`](ROUTER.md): N pods behind a
