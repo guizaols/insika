@@ -190,6 +190,12 @@ module Insika
 
     # -> enumerates ids without the "session:" prefix. Without a block,
     # returns an Enumerator.
+    # -> [Session] every record, from ONE bulk read of the backend (see
+    # Store#entries) instead of a read per id.
+    def all
+      @store.entries(SCOPE, KEY_PREFIX).map { |_, record| to_session(record) }
+    end
+
     def each_id
       return enum_for(:each_id) unless block_given?
 
