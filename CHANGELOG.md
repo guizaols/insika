@@ -22,6 +22,11 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Changed
 
+- RubyLLM is pinned to a newer `2.0.0` commit: streamed responses are priced once when
+  read instead of on every chunk, and HTTP connections are shared per process and
+  settings. Specs stub LLM HTTP with `stub_llm_http`, because swapping the adapter on an
+  already-built connection no longer takes effect.
+
 - Studio tools are grouped by origin and MCP server, with name/server filtering,
   collapsible sections and per-section select/deselect actions. Selection keeps
   denied tools blocked and requires saving before permissions change.
