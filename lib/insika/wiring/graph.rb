@@ -31,7 +31,7 @@ module Insika
         url = Insika::EnvSchema.read("INSIKA_DATABASE_URL", env)
         if url && !url.empty?
           pool = Insika::EnvSchema.read("INSIKA_DATABASE_POOL", env)
-          return Insika::Stores::Postgres.new(url: url, pool: pool && !pool.empty? ? Integer(pool) : 5)
+          return Insika::Stores::Postgres.new(url: url, pool: pool && !pool.empty? ? Integer(pool) : 10)
         end
 
         db = Insika::EnvSchema.read("INSIKA_DB", env)

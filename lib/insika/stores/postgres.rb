@@ -29,9 +29,6 @@ module Insika
       # EXISTS races on the catalog otherwise). Any constant works; this one spells "insika".
       DDL_LOCK = 0x696e73696b61
 
-      UPSERT = "INSERT INTO insika_kv (scope, key, value, updated_at) VALUES ($1, $2, $3, clock_timestamp()) " \
-               "ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
-
       GET = "SELECT value FROM insika_kv WHERE scope = $1 AND key = $2"
 
       # Inside a transaction a read first takes the key's advisory lock (held to
@@ -58,8 +55,11 @@ module Insika
       # Waits on a lock or a connect give up like SQLite's busy timeout did.
       CONNECT_OPTIONS = { connect_timeout: 5, options: "-c lock_timeout=5000" }.freeze
 
-      # pool: connections this process may open (lazily, on first use).
-      def initialize(url:, pool: 5)
+      # pool: connections this process may open (lazily, on first use). A
+      # transaction holds its connection across several round trips while its
+      # fiber yields to others, so under many concurrent turns a small pool is
+      # where calls queue.
+      def initialize(url:, pool: 10)
         require "pg" # lazy: the core installs without libpq
         raise ArgumentError, "pool must be at least 1 (got #{pool.inspect})" unless pool.is_a?(Integer) && pool >= 1
 
@@ -81,26 +81,14 @@ module Insika
 
       def set(scope, key, value)
         serialized = serialize(value) # fail-fast BEFORE writing
-        with_conn do |c|
-          if @tx[Fiber.current]
-            c.exec_params(KEY_LOCK, [scope, key])
-            c.exec_params(UPSERT, [scope, key, serialized])
-          else
-            c.exec_params(LOCKED_UPSERT, [scope, key, serialized])
-          end
-        end
+        # One statement in or out of a transaction: the key lock and the write
+        # together (inside a transaction the lock is still held to COMMIT).
+        with_conn { |c| c.exec_params(LOCKED_UPSERT, [scope, key, serialized]) }
         value
       end
 
       def delete(scope, key)
-        with_conn do |c|
-          if @tx[Fiber.current]
-            c.exec_params(KEY_LOCK, [scope, key])
-            c.exec_params("DELETE FROM insika_kv WHERE scope = $1 AND key = $2", [scope, key]).cmd_tuples.positive?
-          else
-            c.exec_params(LOCKED_DELETE, [scope, key]).cmd_tuples.positive?
-          end
-        end
+        with_conn { |c| c.exec_params(LOCKED_DELETE, [scope, key]).cmd_tuples.positive? }
       end
 
       # A prefix is a start_with? on the key, never a LIKE pattern (no escaping of
