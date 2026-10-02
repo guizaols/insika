@@ -115,6 +115,61 @@ RSpec.describe Insika::HttpClient do
     expect(Addrinfo).to have_received(:getaddrinfo).with("api.example.test", nil, nil, :STREAM).once
   end
 
+  # Keep-alive server: serves requests on each connection until the client closes
+  # it, and counts the connections it accepted.
+  def with_keep_alive_server
+    server = TCPServer.new("127.0.0.1", 0)
+    accepted = 0
+    thread = Thread.new do
+      loop do
+        socket = server.accept
+        accepted += 1
+        Thread.new(socket) do |s|
+          while (line = s.gets)
+            next unless line.strip.empty?
+
+            s.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{}")
+          end
+        rescue IOError, SystemCallError
+          nil
+        ensure
+          s.close
+        end
+      end
+    end
+    yield "http://127.0.0.1:#{server.addr[1]}/", -> { accepted }
+  ensure
+    thread&.kill
+    server&.close
+  end
+
+  it "reuses an idle connection to the same origin" do
+    client = described_class.new
+    with_keep_alive_server do |url, accepted|
+      3.times { expect(client.request(method: "POST", url: url, body: "{}")[:status]).to eq(200) }
+      expect(accepted.call).to eq(1)
+    end
+  end
+
+  it "opens a new connection once the idle one is past keep-alive" do
+    client = described_class.new(keep_alive: 0)
+    with_keep_alive_server do |url, accepted|
+      2.times { client.request(method: "GET", url: url) }
+      sleep 0.01
+      client.request(method: "GET", url: url)
+      expect(accepted.call).to be > 1
+    end
+  end
+
+  it "does not reuse a connection whose request raised" do
+    client = described_class.new(max_bytes: 1)
+    with_keep_alive_server do |url, accepted|
+      expect { client.request(method: "GET", url: url) }.to raise_error(described_class::ResponseTooLarge)
+      expect { client.request(method: "GET", url: url) }.to raise_error(described_class::ResponseTooLarge)
+      expect(accepted.call).to eq(2)
+    end
+  end
+
   it "resolves again after the TTL" do
     allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp("127.0.0.1", 0)])
     client = described_class.new(dns_ttl: 0)
