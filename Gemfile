@@ -30,3 +30,7 @@ gem "opentelemetry-exporter-otlp", "~> 0.31" # OTLP exporter (SigNoz/Tempo/etc.)
 # require is guarded — absent from the bundle degrades to traces only.
 gem "opentelemetry-metrics-sdk", "~> 0.15"
 gem "opentelemetry-exporter-otlp-metrics", "~> 0.10"
+
+# OPT-IN Postgres store (INSIKA_DATABASE_URL). Not a gem dependency: it needs libpq,
+# and SQLite stays the default. Required lazily by Insika::Stores::Postgres.
+gem "pg", "~> 1.5"

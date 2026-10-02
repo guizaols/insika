@@ -571,7 +571,7 @@ module Deploy
 
     # Backend durability: Boot warns loudly when nothing will be resumed after a
     # restart (INSIKA_DB not set), instead of coming up "without a net" silently.
-    def self.durable? = BACKEND.is_a?(Insika::Stores::SQLite)
+    def self.durable? = Insika::Stores.durable?(BACKEND)
 
     # OPT-IN observability: OTEL only turns on with INSIKA_OTEL / OTEL envs.
     # nil = off (parity, gem not even loaded). Turned on in the reactor via

@@ -112,6 +112,10 @@ module Insika
     # NOTHING valid. -> { revoked: n, issue: Issue }.
     def rotate(tenant_id:, label: "default", now: Time.now)
       @store.transaction do
+        # A key no one writes, read first: on a backend that locks per key read,
+        # two rotations of one tenant run one after the other, so the second
+        # revokes the token the first issued.
+        @store.get(SCOPE, "#{ROTATE_PREFIX}#{tenant_id}")
         revoked = revoke_all(tenant_id: tenant_id)
         { revoked: revoked, issue: issue(tenant_id: tenant_id, label: label) }
       end
@@ -145,6 +149,7 @@ module Insika
     end
 
     RECORD_PREFIX = "r:"
+    ROTATE_PREFIX = "rotate:" # never written: only read, to serialize rotations
     HASH_PREFIX = "h:"
 
     def record_key(id) = "#{RECORD_PREFIX}#{id}"

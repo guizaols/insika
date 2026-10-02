@@ -8,6 +8,18 @@ on:
 jobs:
   rspec:
     runs-on: ubuntu-latest
+    # The Postgres store's specs run against a real server; without PG_TEST_URL
+    # they are skipped, so a local `bundle exec rspec` needs no database.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: pg
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PG_TEST_URL: postgres://postgres:pg@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
 

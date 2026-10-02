@@ -78,6 +78,7 @@ spec/scripts/*
 !spec/scripts/replay_compaction_spec.rb
 !spec/scripts/migrate_openclaw_spec.rb
 !spec/scripts/replay_latency_spec.rb
+!spec/scripts/store_copy_spec.rb
 
 # OpenClaw state fetched from the Railway volumes (customer data — never commit)
 /openclaw-state*/

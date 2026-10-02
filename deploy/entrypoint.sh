@@ -75,6 +75,14 @@ prepare_db() {
   bundle exec ruby -Ilib -rinsika -e 'Insika::Stores::SQLite.new(path: ARGV[0]).close' "${DB}"
 }
 
+# Postgres store: no SQLite file to prepare and nothing for Litestream to replicate —
+# Postgres owns durability (its own backups / point-in-time recovery).
+if [ -n "${INSIKA_DATABASE_URL}" ]; then
+  [ -n "${LITESTREAM_REPLICA_URL}" ] && echo "[entrypoint] INSIKA_DATABASE_URL set — ignoring LITESTREAM_REPLICA_URL." >&2
+  echo "[entrypoint] Postgres store — booting app directly."
+  exec sh -c "${APP_CMD}"
+fi
+
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
   echo "[entrypoint] Litestream disabled (LITESTREAM_REPLICA_URL unset) — booting app directly."
   prepare_db
