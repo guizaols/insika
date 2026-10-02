@@ -11,6 +11,9 @@ module Insika
   #
   # RubyLLM executes tools; this decorator enforces Insika's per-call policy.
   class ToolEnvelope < SimpleDelegator
+    # Fiber-local slot where a tool leaves its timing breakdown for this call's trace.
+    TIMING_KEY = :insika_tool_timing
+
     PROVENANCE_INSTRUCTION = "This value was not returned by any tool in this conversation. " \
                              "Find it with a tool that returns it — a search or a lookup by id — " \
                              "then call this tool again with an id from that result."
@@ -133,6 +136,7 @@ module Insika
       end
 
       started = monotonic
+      Thread.current[TIMING_KEY] = nil
       result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { invoke(args) } }
       # the ONE seam every tool result passes on its way to the model.
       # For a declared-evidence tool: reshape to the lean envelope, record the ids
@@ -268,6 +272,8 @@ module Insika
     # ms), keyed by the SESSION. Masking/truncation is the ToolTraceStore's job;
     # here we only collect. NEVER breaks the turn (trace is observability).
     def trace(call_id, args, result, started)
+      timing = Thread.current[TIMING_KEY] || {}
+      Thread.current[TIMING_KEY] = nil
       return unless @trace_recorder && @state.task&.session_id
 
       @trace_recorder.record(
@@ -276,7 +282,7 @@ module Insika
                  "args" => args, "result" => result,
                  "gate" => result.is_a?(Blocked) || result.is_a?(Held) ? result["gate"] : nil,
                  "ms" => started ? ((monotonic - started) * 1000).round : nil,
-                 "at" => Time.now.utc.iso8601 }
+                 "at" => Time.now.utc.iso8601 }.merge(timing)
       )
     rescue StandardError
       nil

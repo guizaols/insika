@@ -66,6 +66,10 @@ module Insika
           # The redirect TARGET, so a moved API is reported as "moved to <url>"
           # instead of a bare 3xx with the empty body servers send with it.
           result[:location] = resp["location"].to_s if resp["location"]
+          # The server's own processing time (Rack::Runtime's X-Runtime, seconds),
+          # so a slow call can be split into server work and everything else.
+          runtime = Float(resp["x-runtime"], exception: false)
+          result[:server_ms] = (runtime * 1000).round if runtime
         end
         result
       end
