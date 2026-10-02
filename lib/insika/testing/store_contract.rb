@@ -158,6 +158,25 @@ RSpec.shared_examples "an Insika store" do
     end
   end
 
+  # The last-written keys, newest first: what a "recent" list needs without
+  # reading the whole scope.
+  describe "#recent" do
+    it "returns the most recently written pairs first, capped at limit" do
+      store.set("s", "a", { "n" => 1 })
+      store.set("s", "b", { "n" => 2 })
+      store.set("s", "c", { "n" => 3 })
+      store.set("s", "a", { "n" => 4 }) # rewritten: now the newest
+      expect(store.recent("s", nil, 2)).to eq([["a", { "n" => 4 }], ["c", { "n" => 3 }]])
+    end
+
+    it "keeps to the scope and the prefix" do
+      store.set("s", "x:1", 1)
+      store.set("other", "x:2", 2)
+      store.set("s", "y:1", 3)
+      expect(store.recent("s", "x:", 10)).to eq([["x:1", 1]])
+    end
+  end
+
   describe "#scopes" do
     it " returns scope names sorted lexicographically" do #
       store.set("zeta", "k", 1)

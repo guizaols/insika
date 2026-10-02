@@ -63,6 +63,14 @@ module Insika
       end
     end
 
+    # -> [[key, value], ...] the `limit` most recently WRITTEN keys of the scope
+    # (filtered like #list), newest first: a "recent" list without reading the
+    # whole scope. A backend that knows its write order answers it directly;
+    # this default approximates it by each value's "updated_at", when it has one.
+    def recent(scope, prefix, limit)
+      entries(scope, prefix).sort_by { |_, v| v.is_a?(Hash) ? v["updated_at"].to_s : "" }.reverse.first(limit)
+    end
+
     # -> the block's result; atomic if the backend supports it
     def transaction(&blk)
       raise NotImplementedError, "#{self.class}#transaction"
