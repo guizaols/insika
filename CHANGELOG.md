@@ -8,6 +8,18 @@ it is released. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
 
+### Added
+
+- **Optional Postgres store** (`INSIKA_DATABASE_URL`, `INSIKA_DATABASE_POOL`). It passes the
+  same store contract as SQLite; `pg` is not a gem dependency and loads only when the
+  variable is set. `scripts/store_copy.rb` moves an existing store. See
+  [Postgres store](docs/DEPLOY.md#postgres-store-optional) for when it pays off.
+- `Store#entries` and `Store#recent`: a whole scope, or its most recently written keys, in
+  one call. The default implementation keeps third-party backends working; SQLite and
+  Postgres answer each in one query. The Studio's session and task lists use them.
+- `INSIKA_SLOW_STORE_MS` also logs each slow write batch: its size, bytes, scopes, and how
+  long it waited for the lock versus how long its commit took.
+
 ### Changed
 
 - Studio tools are grouped by origin and MCP server, with name/server filtering,
@@ -25,6 +37,15 @@ it is released. Entries land with the pull request that makes the change.
   Streamable HTTP. Publication remains blocked by the native-MCP RubyLLM release
   and performance gate; see
   [migration results](docs/RUBYLLM_2_MIGRATION.md).
+
+- SQLite writes from concurrent turns share one transaction and one commit (group commit),
+  so N worker processes take the file's write lock far less often. A turn opens and
+  closes its task record in one write each, and skips an empty evidence write.
+- Litestream 0.5 with its blocking checkpoint disabled (`truncate-page-n: 0`); it restores
+  backups made by 0.3.
+- Less CPU per turn: the prompt reads an agent's files once per build, provider TLS
+  verifies against one CA store per process, the prompt-echo check caches each squeezed
+  prompt, and streamed events are matched only against their own session's subscriptions.
 
 ### Fixed
 
