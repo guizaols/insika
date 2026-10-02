@@ -25,12 +25,20 @@ module Insika
     class ResponseTooLarge < Insika::Error; end
 
     DNS_TTL = 60 # seconds
+    # A connection idle longer than this is reopened instead of reused. Kept well
+    # under common server idle timeouts: Net::HTTP retries only idempotent methods,
+    # so a POST on a socket the server already closed would fail the tool call.
+    KEEP_ALIVE = 5 # seconds
+    MAX_IDLE_PER_HOST = 16
 
-    def initialize(max_bytes: MAX_BYTES, dns_ttl: DNS_TTL)
+    def initialize(max_bytes: MAX_BYTES, dns_ttl: DNS_TTL, keep_alive: KEEP_ALIVE)
       @max_bytes = max_bytes
       @dns_ttl = dns_ttl
+      @keep_alive = keep_alive
       @dns = {}
-      @dns_lock = Mutex.new
+      @idle = Hash.new { |h, k| h[k] = [] }
+      @pid = Process.pid
+      @lock = Mutex.new
     end
 
     def request(method:, url:, headers: {}, body: nil, timeout: nil)
@@ -39,11 +47,7 @@ module Insika
       headers.each { |k, v| req[k] = v }
       req.body = body if body && !body.to_s.empty?
 
-      t = timeout || DEFAULT_TIMEOUT
-      # `ipaddr` connects to the cached address; TLS (SNI, certificate check) and the
-      # Host header still use the hostname.
-      opts = { use_ssl: uri.scheme == "https", open_timeout: t, read_timeout: t, ipaddr: address(uri.host) }
-      Net::HTTP.start(uri.host, uri.port, opts) do |http|
+      with_connection(uri, timeout || DEFAULT_TIMEOUT) do |http|
         result = nil
         http.request(req) do |resp|
           # Accumulate in BINARY: Net::HTTP yields ASCII-8BIT chunks and a
@@ -69,6 +73,57 @@ module Insika
 
     private
 
+    # Reuses an idle keep-alive connection to the same origin (a new TLS connection
+    # costs several round trips). One caller holds a connection at a time; one that
+    # raised is closed, never returned, since its state is unknown.
+    def with_connection(uri, timeout)
+      key = [uri.scheme, uri.host, uri.port]
+      http = checkout(key) || connect(uri, timeout)
+      http.read_timeout = timeout
+      result = yield http
+      checkin(key, http)
+      result
+    rescue StandardError
+      http&.finish if http&.started?
+      raise
+    end
+
+    def connect(uri, timeout)
+      # `ipaddr` connects to the cached address; TLS (SNI, certificate check) and the
+      # Host header still use the hostname.
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.ipaddr = address(uri.host)
+      http.use_ssl = uri.scheme == "https"
+      http.open_timeout = timeout
+      http.keep_alive_timeout = @keep_alive
+      http.start
+    end
+
+    def checkout(key)
+      @lock.synchronize do
+        reset_after_fork
+        @idle[key].pop
+      end
+    end
+
+    def checkin(key, http)
+      kept = @lock.synchronize do
+        next false if @idle[key].size >= MAX_IDLE_PER_HOST
+
+        @idle[key].push(http)
+        true
+      end
+      http.finish unless kept
+    end
+
+    # A forked child must not share its parent's sockets.
+    def reset_after_fork
+      return if @pid == Process.pid
+
+      @pid = Process.pid
+      @idle.clear
+    end
+
     # Net::HTTP resolves with getaddrinfo, which blocks the whole reactor under
     # Falcon: a burst of N tool calls queued N lookups and froze every turn of the
     # process meanwhile. Resolving once per host per TTL makes that rare.
@@ -76,11 +131,11 @@ module Insika
     # if one host per minute ever shows up in a profile.
     def address(host)
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      hit = @dns_lock.synchronize { @dns[host] }
+      hit = @lock.synchronize { @dns[host] }
       return hit[0] if hit && hit[1] > now
 
       ip = Addrinfo.getaddrinfo(host, nil, nil, :STREAM).first.ip_address
-      @dns_lock.synchronize { @dns[host] = [ip, now + @dns_ttl] }
+      @lock.synchronize { @dns[host] = [ip, now + @dns_ttl] }
       ip
     end
   end
