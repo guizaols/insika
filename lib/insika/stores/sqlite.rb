@@ -228,6 +228,26 @@ module Insika
         raise Insika::StoreError, e.message
       end
 
+      # Newest first by rowid: every write (INSERT OR REPLACE) takes a new, higher
+      # rowid, so rowid order IS write order — no extra column or index. Only the
+      # top `limit` values are read.
+      def recent(scope, prefix, limit)
+        upper = prefix && range_end(prefix)
+        rows =
+          if upper
+            @db.execute("SELECT key, value FROM kv WHERE scope = ? AND key >= ? AND key < ? ORDER BY rowid DESC LIMIT ?",
+                        [scope, prefix, upper, limit])
+          elsif prefix
+            @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC", [scope])
+               .select { |key, _| key.start_with?(prefix) }.first(limit)
+          else
+            @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC LIMIT ?", [scope, limit])
+          end
+        rows.map { |key, raw| [key, @serializer.parse(decode(raw))] }
+      rescue ::SQLite3::Exception => e
+        raise Insika::StoreError, e.message
+      end
+
       # The smallest key above every key starting with `prefix`: its last byte + 1.
       # ASCII only (every prefix the stores use), so the bound stays valid UTF-8 and
       # compares byte-wise under BINARY; anything else falls back to the scan.
