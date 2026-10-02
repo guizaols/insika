@@ -87,8 +87,8 @@ module Insika
     # workflows without a chat) contributes nothing.
     def sessions_by_agent
       acc = Hash.new { |h, k| h[k] = [] }
-      @task_store.each_id do |task_id|
-        task = @task_store.find(task_id) or next
+      tasks = @task_store.respond_to?(:all) ? @task_store.all : @task_store.each_id.filter_map { |id| @task_store.find(id) }
+      tasks.each do |task|
         agent = task.command.is_a?(Hash) ? task.command.dig("payload", "agent") : nil
         next if agent.to_s.empty? || task.session_id.to_s.empty?
 

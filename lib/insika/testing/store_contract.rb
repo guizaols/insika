@@ -134,6 +134,30 @@ RSpec.shared_examples "an Insika store" do
     end
   end
 
+  # Bulk read: what a caller that lists keys and reads each one needs, in one
+  # call. A backend may answer it in one query; the default is list + get.
+  describe "#entries" do
+    it "returns [key, value] pairs sorted by key, values deserialized" do
+      store.set("s", "b", { "n" => 2 })
+      store.set("s", "a", [1])
+      store.set("other", "a", "x")
+      expect(store.entries("s")).to eq([["a", [1]], ["b", { "n" => 2 }]])
+    end
+
+    it "filters by prefix with start_with?, ASCII or not" do
+      store.set("s", "ab", 1)
+      store.set("s", "abc", 2)
+      store.set("s", "b", 3)
+      store.set("s", "é1", 4)
+      expect(store.entries("s", "ab")).to eq([["ab", 1], ["abc", 2]])
+      expect(store.entries("s", "é")).to eq([["é1", 4]])
+    end
+
+    it "returns [] for an empty scope" do
+      expect(store.entries("nothing")).to eq([])
+    end
+  end
+
   describe "#scopes" do
     it " returns scope names sorted lexicographically" do #
       store.set("zeta", "k", 1)

@@ -231,6 +231,12 @@ module Insika
     def queued = with_status(:queued)
 
     # -> enumerates ids without the "task:" prefix; without a block returns an Enumerator.
+    # -> [Task] every record, from ONE bulk read of the backend (see
+    # Store#entries) instead of a read per id.
+    def all
+      @store.entries(SCOPE, KEY_PREFIX).map { |_, record| to_task(record) }
+    end
+
     def each_id
       return enum_for(:each_id) unless block_given?
 

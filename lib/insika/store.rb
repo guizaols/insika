@@ -53,6 +53,16 @@ module Insika
       raise NotImplementedError, "#{self.class}#scopes"
     end
 
+    # -> [[key, value], ...] sorted by key, filtered like #list. The bulk read for
+    # a caller that lists keys and reads each one. This default is exactly that;
+    # a backend overrides it to answer in one query (no lock taken, like #list).
+    def entries(scope, prefix = nil)
+      list(scope, prefix).filter_map do |key|
+        value = get(scope, key)
+        [key, value] unless value.nil?
+      end
+    end
+
     # -> the block's result; atomic if the backend supports it
     def transaction(&blk)
       raise NotImplementedError, "#{self.class}#transaction"
