@@ -155,9 +155,10 @@ module Insika
     # "memory:chat:<tenant>:<id>"). The scope enumeration is the Store's — no
     # session-derived list, so a customer cell whose session was already
     # deleted is still purged. ONE transaction for the whole tenant (the repo
-    # rule): the scope enumeration and every delete see the same snapshot, so a
-    # customer cell born mid-purge cannot slip through a deletion that reported
-    # success. -> count of records purged.
+    # rule): the purge commits or fails whole. On SQLite, whose transactions
+    # run one at a time, a cell cannot be written mid-purge at all; on a backend
+    # with concurrent writers a cell written while the purge runs lands after it
+    # (a later write, which a later purge removes). -> count of records purged.
     def purge_tenant(tenant)
       cell = scope_for(tenant)
       @store.transaction do
