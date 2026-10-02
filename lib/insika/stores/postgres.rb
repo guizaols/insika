@@ -40,10 +40,30 @@ module Insika
       # follows starts after the lock is ours and sees the committed value.
       KEY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))"
 
+      # Outside a transaction a write takes the same key lock in its own statement,
+      # so it waits for any transaction that read the key, as SQLite queued every
+      # write behind an open transaction. Released when the statement ends.
+      LOCKED_UPSERT = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
+                      "INSERT INTO insika_kv (scope, key, value, updated_at) SELECT $1, $2, $3, now() FROM l " \
+                      "ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
+      LOCKED_DELETE = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
+                      "DELETE FROM insika_kv WHERE scope = $1 AND key = $2 AND EXISTS (SELECT 1 FROM l)"
+
+      # A transaction the server aborted as a deadlock is run again: it was rolled
+      # back whole, so re-running is SQLite's wait-then-run. Blocks only touch the
+      # store (side effects happen after the commit), so a re-run is safe.
+      DEADLOCK_ATTEMPTS = 3
+
+      # Waits on a lock or a connect give up like SQLite's busy timeout did.
+      CONNECT_OPTIONS = { connect_timeout: 5, options: "-c lock_timeout=5000" }.freeze
+
       # pool: connections this process may open (lazily, on first use).
       def initialize(url:, pool: 5)
         require "pg" # lazy: the core installs without libpq
+        raise ArgumentError, "pool must be at least 1 (got #{pool.inspect})" unless pool.is_a?(Integer) && pool >= 1
+
         @url = url
+        @closed = false
         @pool = Thread::Queue.new
         pool.times { @pool << nil } # nil = a slot not connected yet
         @tx = {}                    # Fiber => connection pinned to its open transaction
@@ -60,13 +80,25 @@ module Insika
 
       def set(scope, key, value)
         serialized = serialize(value) # fail-fast BEFORE writing
-        with_conn { |c| c.exec_params(UPSERT, [scope, key, serialized]) }
+        with_conn do |c|
+          if @tx[Fiber.current]
+            c.exec_params(KEY_LOCK, [scope, key])
+            c.exec_params(UPSERT, [scope, key, serialized])
+          else
+            c.exec_params(LOCKED_UPSERT, [scope, key, serialized])
+          end
+        end
         value
       end
 
       def delete(scope, key)
         with_conn do |c|
-          c.exec_params("DELETE FROM insika_kv WHERE scope = $1 AND key = $2", [scope, key]).cmd_tuples.positive?
+          if @tx[Fiber.current]
+            c.exec_params(KEY_LOCK, [scope, key])
+            c.exec_params("DELETE FROM insika_kv WHERE scope = $1 AND key = $2", [scope, key]).cmd_tuples.positive?
+          else
+            c.exec_params(LOCKED_DELETE, [scope, key]).cmd_tuples.positive?
+          end
         end
       end
 
@@ -101,32 +133,25 @@ module Insika
       # It covers keys that do not exist yet, which a row lock cannot. Different
       # keys never wait on each other; a hash collision only over-serializes.
       # A nested transaction reuses the outer one.
-      def transaction
+      def transaction(&blk)
         return yield if @tx[Fiber.current]
 
-        conn = checkout
+        attempts = 0
         begin
-          conn.exec("BEGIN")
-          @tx[Fiber.current] = conn
-          result = yield
-          conn.exec("COMMIT")
-          result
-        rescue Exception # roll back on anything (a stopped fiber too), then re-raise it
-          begin
-            conn.exec("ROLLBACK") if conn.status == PG::CONNECTION_OK && conn.transaction_status != PG::PQTRANS_IDLE
-          rescue PG::Error
-            nil # a dead connection was rolled back by the server; keep the original error
-          end
+          attempts += 1
+          run_transaction(&blk)
+        rescue PG::TRDeadlockDetected, Insika::StoreError => e
+          deadlock = e.is_a?(PG::TRDeadlockDetected) || e.cause.is_a?(PG::TRDeadlockDetected)
+          retry if deadlock && attempts < DEADLOCK_ATTEMPTS
           raise
-        ensure
-          @tx.delete(Fiber.current)
-          checkin(conn)
         end
       rescue PG::Error => e
         raise Insika::StoreError, e.message
       end
 
+      # Closes the idle connections; a call after close raises instead of waiting.
       def close
+        @closed = true
         until @pool.empty?
           conn = @pool.pop(true)
           conn&.close
@@ -135,6 +160,33 @@ module Insika
       end
 
       private
+
+      # One attempt: BEGIN, the block, COMMIT. Anything that leaves without the
+      # COMMIT — an exception, a stopped fiber, or a `return`/`break` out of the
+      # block — rolls back, so a connection never goes back to the pool inside an
+      # open transaction (holding its key locks).
+      def run_transaction
+        conn = checkout
+        committed = false
+        begin
+          conn.exec("BEGIN")
+          @tx[Fiber.current] = conn
+          result = yield
+          conn.exec("COMMIT")
+          committed = true
+          result
+        ensure
+          @tx.delete(Fiber.current)
+          rollback(conn) unless committed
+          checkin(conn)
+        end
+      end
+
+      def rollback(conn)
+        conn.exec("ROLLBACK") if conn.status == PG::CONNECTION_OK && conn.transaction_status != PG::PQTRANS_IDLE
+      rescue PG::Error
+        nil # a dead connection was rolled back by the server; keep the original error
+      end
 
       # The smallest key above every key starting with `prefix` (last byte + 1).
       # ASCII only, so the bound stays valid text and compares byte-wise under "C".
@@ -161,7 +213,19 @@ module Insika
         raise Insika::StoreError, e.message
       end
 
-      def checkout = @pool.pop || connect
+      # A borrower whose connect fails gives the empty slot back: otherwise every
+      # failed reconnect during an outage would shrink the pool until calls wait
+      # forever.
+      def checkout
+        raise Insika::StoreError, "store closed" if @closed
+
+        @pool.pop || begin
+          connect
+        rescue StandardError
+          @pool << nil
+          raise
+        end
+      end
 
       # A connection the server dropped is not returned: its slot comes back empty
       # and the next borrower connects afresh.
@@ -174,7 +238,7 @@ module Insika
         end
       end
 
-      def connect = PG.connect(@url)
+      def connect = PG.connect(@url, **CONNECT_OPTIONS)
 
       # Its own short-lived connection, closed before returning: a server forks
       # its workers after the app is built, and an inherited socket would be

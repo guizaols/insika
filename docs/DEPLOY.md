@@ -388,7 +388,8 @@ meet on the keys they share.
    connections per process (default 5) — keep workers × pool under the server's
    `max_connections`.
 3. The table (`insika_kv`) is created on first boot.
-4. Moving an existing SQLite store: stop the app, then
+4. Moving an existing SQLite store into an **empty** database (the copy adds and
+   overwrites keys, it does not remove extra ones): stop the app, then
    `INSIKA_DB=/data/insika.db INSIKA_DATABASE_URL=… bundle exec ruby scripts/store_copy.rb`,
    then boot with `INSIKA_DATABASE_URL` set. Unsetting it goes back to the SQLite
    file as it was at the copy.

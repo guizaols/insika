@@ -95,7 +95,7 @@ module Insika
     # The engine's own keys. Deployment/app keys (DEEPSEEK_*, CONSUMER_*, …) are NOT
     # here — a root passes them as `extra:`.
     DEFAULT = [
-      spec(name: "INSIKA_DATABASE_URL", type: :string, description: "Postgres URL for the store (postgres://...). Set, it replaces INSIKA_DB: N workers write without SQLite's single file lock. Needs the pg gem."),
+      spec(name: "INSIKA_DATABASE_URL", type: :string, secret: true, description: "Postgres URL for the store (postgres://...). Set, it replaces INSIKA_DB: N workers write without SQLite's single file lock. Needs the pg gem."),
       spec(name: "INSIKA_DATABASE_POOL", type: :integer, description: "Postgres connections per process (default 5)."),
       spec(name: "INSIKA_DB", type: :path, description: "SQLite path; durable config+state. Unset -> ephemeral memory."),
       spec(name: "INSIKA_BIND", description: "Bind address for the transport server."),
