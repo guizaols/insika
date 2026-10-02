@@ -100,4 +100,26 @@ RSpec.describe Insika::HttpClient do
       with_server(chunks: ["x" * 100]) { |url| get(url, max_bytes: 10) }
     end.to raise_error(described_class::ResponseTooLarge)
   end
+
+  # getaddrinfo blocks the reactor; a burst of tool calls to one host must not
+  # resolve it once per call.
+  it "resolves a host once per TTL, not once per request" do
+    allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp("127.0.0.1", 0)])
+    client = described_class.new
+    2.times do
+      with_server(chunks: ["{}"]) do |url|
+        expect(client.request(method: "GET", url: url.sub("127.0.0.1", "api.example.test"))[:status]).to eq(200)
+      end
+    end
+
+    expect(Addrinfo).to have_received(:getaddrinfo).with("api.example.test", nil, nil, :STREAM).once
+  end
+
+  it "resolves again after the TTL" do
+    allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp("127.0.0.1", 0)])
+    client = described_class.new(dns_ttl: 0)
+    2.times { with_server(chunks: ["{}"]) { |url| client.request(method: "GET", url: url.sub("127.0.0.1", "api.example.test")) } }
+
+    expect(Addrinfo).to have_received(:getaddrinfo).twice
+  end
 end

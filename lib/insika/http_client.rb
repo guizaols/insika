@@ -24,8 +24,13 @@ module Insika
 
     class ResponseTooLarge < Insika::Error; end
 
-    def initialize(max_bytes: MAX_BYTES)
+    DNS_TTL = 60 # seconds
+
+    def initialize(max_bytes: MAX_BYTES, dns_ttl: DNS_TTL)
       @max_bytes = max_bytes
+      @dns_ttl = dns_ttl
+      @dns = {}
+      @dns_lock = Mutex.new
     end
 
     def request(method:, url:, headers: {}, body: nil, timeout: nil)
@@ -35,7 +40,9 @@ module Insika
       req.body = body if body && !body.to_s.empty?
 
       t = timeout || DEFAULT_TIMEOUT
-      opts = { use_ssl: uri.scheme == "https", open_timeout: t, read_timeout: t }
+      # `ipaddr` connects to the cached address; TLS (SNI, certificate check) and the
+      # Host header still use the hostname.
+      opts = { use_ssl: uri.scheme == "https", open_timeout: t, read_timeout: t, ipaddr: address(uri.host) }
       Net::HTTP.start(uri.host, uri.port, opts) do |http|
         result = nil
         http.request(req) do |resp|
@@ -58,6 +65,23 @@ module Insika
         end
         result
       end
+    end
+
+    private
+
+    # Net::HTTP resolves with getaddrinfo, which blocks the whole reactor under
+    # Falcon: a burst of N tool calls queued N lookups and froze every turn of the
+    # process meanwhile. Resolving once per host per TTL makes that rare.
+    # ponytail: the lookup on a miss still blocks; a fiber-aware resolver removes it
+    # if one host per minute ever shows up in a profile.
+    def address(host)
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      hit = @dns_lock.synchronize { @dns[host] }
+      return hit[0] if hit && hit[1] > now
+
+      ip = Addrinfo.getaddrinfo(host, nil, nil, :STREAM).first.ip_address
+      @dns_lock.synchronize { @dns[host] = [ip, now + @dns_ttl] }
+      ip
     end
   end
 end
