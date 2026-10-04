@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require "securerandom"
 require "time"
 
 module Insika
@@ -34,38 +36,100 @@ module Insika
 
     class UnknownScope < Insika::Error; end
 
-    def initialize(store:)
+    # Rewritten on every config write. A cache sees another process's write by
+    # finding a different token. Outside SCOPES, so no authored scope lists it.
+    VERSION_SCOPE = "#{SCOPE_PREFIX}:_version"
+    VERSION_KEY = "token"
+    # The server's recheck window (seconds): how stale another worker's write may
+    # be seen. Embedders keep 0 (no cache) unless they opt in.
+    RECHECK = 1.0
+
+    # recheck: 0 = no cache, every read goes to the store (the default).
+    # recheck > 0 = reads are served from memory; the version token is re-read
+    # at most once per `recheck` seconds and a changed token drops the cache.
+    def initialize(store:, recheck: 0, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @store = store
+      @recheck = recheck
+      @clock = clock
+      @cache = {}
+      @token = nil
+      @checked_at = nil
+      @lock = Mutex.new
     end
+
+    attr_reader :recheck
 
     # Upsert (last-write-wins). -> value (the same Hash that was passed)
     def put(scope, key, value)
-      @store.set(ns(scope), key.to_s, stringify(value))
+      s = ns(scope)
+      @store.transaction do
+        @store.set(s, key.to_s, stringify(value))
+        bump_version
+      end
+      forget
       value
     end
 
     # -> Hash | nil
     def get(scope, key)
-      @store.get(ns(scope), key.to_s)
+      s = ns(scope)
+      cached([:get, s, key.to_s]) { @store.get(s, key.to_s) }
     end
 
     # -> bool (did it exist?)
     def delete(scope, key)
-      @store.delete(ns(scope), key.to_s)
+      s = ns(scope)
+      existed = @store.transaction do
+        @store.delete(s, key.to_s).tap { |gone| bump_version if gone }
+      end
+      forget
+      existed
     end
 
     # -> [String] keys of the scope, sorted lexicographically
     def keys(scope)
-      @store.list(ns(scope))
+      s = ns(scope)
+      cached([:keys, s]) { @store.list(s) }
     end
 
-    # -> [Hash] all records of the scope (lexicographic key order)
+    # -> [Hash] all records of the scope (lexicographic key order), one store call
     def all(scope)
       s = ns(scope)
-      @store.list(s).filter_map { |k| @store.get(s, k) }
+      cached([:all, s]) { @store.entries(s).map(&:last) }
     end
 
     private
+
+    # The cache keeps JSON text, not objects: every hit parses a fresh copy, so a
+    # caller that mutates what it got never changes what the next caller reads.
+    def cached(entry)
+      return yield unless @recheck.positive?
+
+      revalidate
+      raw = @lock.synchronize { @cache[entry] }
+      return JSON.parse(raw) if raw
+
+      value = yield
+      @lock.synchronize { @cache[entry] = JSON.generate(value) }
+      value
+    end
+
+    def revalidate
+      now = @clock.call
+      return if @checked_at && now - @checked_at < @recheck
+
+      token = @store.get(VERSION_SCOPE, VERSION_KEY)
+      @lock.synchronize do
+        @cache.clear unless token == @token
+        @token = token
+        @checked_at = now
+      end
+    end
+
+    def bump_version = @store.set(VERSION_SCOPE, VERSION_KEY, SecureRandom.hex(8))
+
+    # Our own write: drop everything and re-read the token on the next read.
+    def forget = @lock.synchronize { @cache.clear; @checked_at = nil }
 
     def ns(scope)
       key = scope.to_s
