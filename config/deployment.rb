@@ -85,7 +85,9 @@ module Deploy
 
     # Durable config: profiles + prompt workspace + authored skills live HERE (SQLite
     # when INSIKA_DB; otherwise ephemeral Memory).
-    CONFIG_STORE      = Insika::ConfigStore.new(store: BACKEND)
+    # Config is read many times per turn and written rarely (Studio, packs): serve
+    # it from memory; another worker's write shows within ConfigStore::RECHECK.
+    CONFIG_STORE      = Insika::ConfigStore.new(store: BACKEND, recheck: Insika::ConfigStore::RECHECK)
     AGENT_FILE_STORE  = Insika::AgentFileStore.new(config_store: CONFIG_STORE)
     SKILL_STORE       = Insika::SkillStore.new(config_store: CONFIG_STORE)
 
