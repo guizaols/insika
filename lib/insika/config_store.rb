@@ -43,9 +43,13 @@ module Insika
     # The server's recheck window (seconds): how stale another worker's write may
     # be seen. Embedders keep 0 (no cache) unless they opt in.
     RECHECK = 1.0
+    # Fiber-storage flag a running turn sets. The cache serves only turns: Studio
+    # requests and pack imports read a record, change it and write it back, and
+    # that read must see another worker's write that landed a moment ago.
+    TURN_KEY = :insika_in_turn
 
     # recheck: 0 = no cache, every read goes to the store (the default).
-    # recheck > 0 = reads are served from memory; the version token is re-read
+    # recheck > 0 = reads made inside a turn are served from memory; the version token is re-read
     # at most once per `recheck` seconds and a changed token drops the cache.
     def initialize(store:, recheck: 0, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @store = store
@@ -54,6 +58,7 @@ module Insika
       @cache = {}
       @token = nil
       @checked_at = nil
+      @gen = 0
       @lock = Mutex.new
     end
 
@@ -103,14 +108,15 @@ module Insika
     # The cache keeps JSON text, not objects: every hit parses a fresh copy, so a
     # caller that mutates what it got never changes what the next caller reads.
     def cached(entry)
-      return yield unless @recheck.positive?
+      return yield unless @recheck.positive? && Fiber[TURN_KEY]
 
       revalidate
-      raw = @lock.synchronize { @cache[entry] }
+      gen, raw = @lock.synchronize { [@gen, @cache[entry]] }
       return JSON.parse(raw) if raw
 
       value = yield
-      @lock.synchronize { @cache[entry] = JSON.generate(value) }
+      # A drop while the read was in flight means the value may predate it.
+      @lock.synchronize { @cache[entry] = JSON.generate(value) if gen == @gen }
       value
     end
 
@@ -120,7 +126,7 @@ module Insika
 
       token = @store.get(VERSION_SCOPE, VERSION_KEY)
       @lock.synchronize do
-        @cache.clear unless token == @token
+        drop unless token == @token
         @token = token
         @checked_at = now
       end
@@ -129,7 +135,13 @@ module Insika
     def bump_version = @store.set(VERSION_SCOPE, VERSION_KEY, SecureRandom.hex(8))
 
     # Our own write: drop everything and re-read the token on the next read.
-    def forget = @lock.synchronize { @cache.clear; @checked_at = nil }
+    def forget = @lock.synchronize { drop; @checked_at = nil }
+
+    # Callers hold @lock. The generation tells an in-flight read its value is stale.
+    def drop
+      @cache.clear
+      @gen += 1
+    end
 
     def ns(scope)
       key = scope.to_s

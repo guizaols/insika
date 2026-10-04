@@ -888,6 +888,7 @@ module Insika
       # Store calls count into this turn's clock (Stores::TurnCounter). Assigned
       # even when nil, so a turn without a clock never feeds the previous one's.
       Fiber[TurnTiming::FIBER_KEY] = timing
+      Fiber[ConfigStore::TURN_KEY] = true # config reads from here on may be cached
       timing&.mark(:inbound) if channel_turn
       timing&.mark(:prep_start)
       state = build_turn_state(task, profile, resume_from)
