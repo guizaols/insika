@@ -885,6 +885,9 @@ module Insika
       timing ||= if TurnTiming.enabled? || channel_turn
                    TurnTiming.new(breakdown: TurnTiming.enabled?)
                  end
+      # Store calls count into this turn's clock (Stores::TurnCounter). Assigned
+      # even when nil, so a turn without a clock never feeds the previous one's.
+      Fiber[TurnTiming::FIBER_KEY] = timing
       timing&.mark(:inbound) if channel_turn
       timing&.mark(:prep_start)
       state = build_turn_state(task, profile, resume_from)

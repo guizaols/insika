@@ -27,7 +27,12 @@ module Insika
       # rule lived verbatim in both roots. Dual-read honors the legacy HARNESS_DB alias.
       # LITESTREAM_REPLICA_URL is the same switch deploy/entrypoint.sh uses: set, and
       # Litestream owns the checkpoints.
+      # Every backend counts its calls into the running turn (TurnTiming).
       def backend_from_env(env = ENV)
+        Insika::Stores::TurnCounter.attach(raw_backend_from_env(env))
+      end
+
+      def raw_backend_from_env(env = ENV)
         url = Insika::EnvSchema.read("INSIKA_DATABASE_URL", env)
         if url && !url.empty?
           pool = Insika::EnvSchema.read("INSIKA_DATABASE_POOL", env)

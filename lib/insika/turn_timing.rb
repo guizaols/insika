@@ -10,6 +10,7 @@ module Insika
   #              (context build, policy, guardrail detectors, chat assembly).
   #   ttft_ms  — ask -> first_token: the provider round-trip to the 1st token.
   #   gen_ms   — first_token -> done: streaming the rest of the response.
+  #   store_calls — store calls this turn made (+ store_calls_by: "op scope" => n).
   #
   # Marks are monotonic; `mark` is first-write-wins so `first_token` records the
   # FIRST content chunk even though it is called on every chunk.
@@ -31,6 +32,19 @@ module Insika
     # only first_balloon_ms.
     BREAKDOWN_MARKS = %i[prep_start ask first_token done].freeze
     private_constant :BREAKDOWN_MARKS
+
+    # Fiber-storage slot holding the running turn's clock. Child fibers (parallel
+    # tool calls, context providers) inherit it, so their store calls count too.
+    FIBER_KEY = :insika_turn_timing
+
+    def self.current = Fiber[FIBER_KEY]
+
+    # "config:<scope>" keeps its config scope; any other scope keeps its first
+    # segment, so ids embedded in scope names do not split the breakdown.
+    def self.scope_group(scope)
+      parts = scope.to_s.split(":")
+      parts.first == "config" ? parts.first(2).join(":") : parts.first.to_s
+    end
 
     # breakdown: true (the default) is the flag-on clock: prep/ttft/gen/total.
     # false is the   channel clock: only :inbound -> :first_balloon,
@@ -56,13 +70,23 @@ module Insika
     # first_balloon_ms is the inbound -> first outbox flush window.
     # A missing number is never a zero — no mark, no key.
     def to_h
-      {
+      h = {
         prep_ms: delta(:prep_start, :ask),
         ttft_ms: delta(:ask, :first_token),
         gen_ms: delta(:first_token, :done),
         total_ms: delta(:prep_start, :done),
         first_balloon_ms: delta(:inbound, :first_balloon)
       }.compact
+      return h unless @store_calls
+
+      h.merge(store_calls: @store_calls.values.sum,
+              store_calls_by: @store_calls.sort_by { |call, n| [-n, call] }.to_h)
+    end
+
+    # One store call made during this turn (see Stores::TurnCounter).
+    def count_store(op, scope)
+      @store_calls ||= Hash.new(0)
+      @store_calls["#{op} #{self.class.scope_group(scope)}"] += 1
     end
 
     private

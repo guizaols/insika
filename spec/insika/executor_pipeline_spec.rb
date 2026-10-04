@@ -682,6 +682,17 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(ev.data).not_to have_key(:timing)
     end
 
+    it "reports the turn's store calls when the backend counts them" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
+      Insika::Stores::TurnCounter.attach(backend)
+      session_store.create(id: "s1")
+      run_turn(build_executor, make_task)
+
+      timing = event_stream.events.find { |e| e.type == :task_completed }.data[:timing]
+      expect(timing[:store_calls]).to be > 0
+      expect(timing[:store_calls]).to eq(timing[:store_calls_by].values.sum)
+    end
+
     it "attaches prep/ttft/gen/total (ms) to the terminal event when enabled" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
       session_store.create(id: "s1")
