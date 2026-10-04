@@ -85,6 +85,8 @@ module Insika
 
     # One store call made during this turn (see Stores::TurnCounter).
     def count_store(op, scope)
+      return unless @breakdown
+
       @store_calls ||= Hash.new(0)
       @store_calls["#{op} #{self.class.scope_group(scope)}"] += 1
     end

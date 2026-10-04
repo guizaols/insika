@@ -693,6 +693,15 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(timing[:store_calls]).to eq(timing[:store_calls_by].values.sum)
     end
 
+    it "marks the turn's fiber so config reads inside it may be cached" do
+      seen = []
+      backend.define_singleton_method(:get) { |scope, key| seen << Fiber[Insika::ConfigStore::TURN_KEY]; super(scope, key) }
+      session_store.create(id: "s1")
+      run_turn(build_executor, make_task)
+
+      expect(seen).to include(true)
+    end
+
     it "attaches prep/ttft/gen/total (ms) to the terminal event when enabled" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
       session_store.create(id: "s1")

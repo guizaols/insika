@@ -40,6 +40,13 @@ RSpec.describe Insika::ConfigStore do
   end
 
   describe "cache (recheck > 0)" do
+    around do |ex|
+      Fiber[described_class::TURN_KEY] = true
+      ex.run
+    ensure
+      Fiber[described_class::TURN_KEY] = nil
+    end
+
     let(:backend) { Insika::Stores::Memory.new }
     let(:counted) do
       Class.new(SimpleDelegator) do
@@ -102,11 +109,50 @@ RSpec.describe Insika::ConfigStore do
       expect(cached.keys("agents")).to eq(%w[b])
     end
 
+    # A read in flight when the cache is dropped must not repopulate it with the
+    # value it read before the drop (it would outlive every later revalidation).
+    it "a read that yields across a cache drop does not cache its stale value" do
+      slow = Class.new(SimpleDelegator) do
+        def get(scope, key)
+          value = super
+          Async::Task.current?&.sleep(0.01) if scope == "config:agents"
+          value
+        end
+      end.new(backend)
+      now = 0.0
+      reader = described_class.new(store: slow, recheck: 1.0, clock: -> { now })
+      writer.put("agents", "bia", { v: 1 })
+
+      Sync do
+        a = Async { reader.get("agents", "bia") } # reads v1, then yields
+        writer.put("agents", "bia", { v: 2 })
+        now = 2.0
+        reader.get("settings", "x") # revalidates: new token, cache dropped
+        a.wait
+      end
+
+      now = 100.0
+      expect(reader.get("agents", "bia")).to eq("v" => 2)
+    end
+
     it "the version token lives outside the authored config scopes" do
       writer.put("agents", "bia", { id: "bia" })
       expect(backend.get(described_class::VERSION_SCOPE, "token")).to be_a(String)
       expect(writer.keys("agents")).to eq(%w[bia])
     end
+  end
+
+  # Studio and pack imports read a record, change it and write it back. Outside a
+  # turn the cache is off, so that read never misses another worker's write.
+  it "outside a turn the cache is off: a read-modify-write sees another worker's write" do
+    backend = Insika::Stores::Memory.new
+    worker_a = described_class.new(store: backend, recheck: 60)
+    worker_b = described_class.new(store: backend, recheck: 60)
+    worker_a.put("agent_files", "bia", { "files" => { "AGENTS.md" => 1 } })
+    worker_b.get("agent_files", "bia")
+    worker_a.put("agent_files", "bia", { "files" => { "AGENTS.md" => 2 } })
+
+    expect(worker_b.get("agent_files", "bia")).to eq("files" => { "AGENTS.md" => 2 })
   end
 
   it "recheck: 0 (the default) reads the store every time, as before" do
