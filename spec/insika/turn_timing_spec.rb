@@ -114,10 +114,12 @@ RSpec.describe Insika::TurnTiming do
       expect(described_class.new.to_h).not_to have_key(:store_calls)
     end
 
-    it "counts even on a channel clock (breakdown: false)" do
+    # The counts are opt-in diagnostics: a channel clock with INSIKA_TURN_TIMING
+    # off must not grow the task record or the completion event.
+    it "does not count on a channel clock (breakdown: false)" do
       t = described_class.new(breakdown: false)
       t.count_store(:get, "sessions")
-      expect(t.to_h[:store_calls]).to eq(1)
+      expect(t.to_h).not_to have_key(:store_calls)
     end
   end
 end
