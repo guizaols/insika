@@ -31,6 +31,10 @@ RSpec.describe Deploy::Wiring do
       expect(w::CONFIG_STORE.instance_variable_get(:@store)).to be(w::BACKEND)
     end
 
+    it "the server's config store caches reads (recheck window on)" do
+      expect(w::CONFIG_STORE.recheck).to eq(Insika::ConfigStore::RECHECK)
+    end
+
     it "selects Memory without INSIKA_DB (dev/demo default)" do
       skip "INSIKA_DB/HARNESS_DB is set in this environment" unless ENV["INSIKA_DB"].to_s.empty? && ENV["HARNESS_DB"].to_s.empty?
       expect(w::BACKEND).to be_a(Insika::Stores::Memory)
