@@ -91,4 +91,33 @@ RSpec.describe Insika::TurnTiming do
       expect(t.to_h).to eq({})
     end
   end
+
+  describe "store call counting" do
+    it "groups config scopes by their second segment and the rest by the first" do
+      expect(described_class.scope_group("config:agent_files")).to eq("config:agent_files")
+      expect(described_class.scope_group("sessions")).to eq("sessions")
+      expect(described_class.scope_group("knowledge:agent-1:t")).to eq("knowledge")
+    end
+
+    it "adds the total and the per-call breakdown to #to_h, busiest first" do
+      t = described_class.new
+      t.count_store(:get, "config:agents")
+      t.count_store(:get, "config:agents")
+      t.count_store(:set, "sessions")
+
+      expect(t.to_h).to include(store_calls: 3,
+                                store_calls_by: { "get config:agents" => 2, "set sessions" => 1 })
+      expect(t.to_h[:store_calls_by].keys.first).to eq("get config:agents")
+    end
+
+    it "omits the store keys when nothing was counted (absent, never zero)" do
+      expect(described_class.new.to_h).not_to have_key(:store_calls)
+    end
+
+    it "counts even on a channel clock (breakdown: false)" do
+      t = described_class.new(breakdown: false)
+      t.count_store(:get, "sessions")
+      expect(t.to_h[:store_calls]).to eq(1)
+    end
+  end
 end
