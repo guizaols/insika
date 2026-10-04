@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require "securerandom"
 require "time"
 
 module Insika
@@ -34,38 +36,112 @@ module Insika
 
     class UnknownScope < Insika::Error; end
 
-    def initialize(store:)
+    # Rewritten on every config write. A cache sees another process's write by
+    # finding a different token. Outside SCOPES, so no authored scope lists it.
+    VERSION_SCOPE = "#{SCOPE_PREFIX}:_version"
+    VERSION_KEY = "token"
+    # The server's recheck window (seconds): how stale another worker's write may
+    # be seen. Embedders keep 0 (no cache) unless they opt in.
+    RECHECK = 1.0
+    # Fiber-storage flag a running turn sets. The cache serves only turns: Studio
+    # requests and pack imports read a record, change it and write it back, and
+    # that read must see another worker's write that landed a moment ago.
+    TURN_KEY = :insika_in_turn
+
+    # recheck: 0 = no cache, every read goes to the store (the default).
+    # recheck > 0 = reads made inside a turn are served from memory; the version token is re-read
+    # at most once per `recheck` seconds and a changed token drops the cache.
+    def initialize(store:, recheck: 0, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @store = store
+      @recheck = recheck
+      @clock = clock
+      @cache = {}
+      @token = nil
+      @checked_at = nil
+      @gen = 0
+      @lock = Mutex.new
     end
+
+    attr_reader :recheck
 
     # Upsert (last-write-wins). -> value (the same Hash that was passed)
     def put(scope, key, value)
-      @store.set(ns(scope), key.to_s, stringify(value))
+      s = ns(scope)
+      @store.transaction do
+        @store.set(s, key.to_s, stringify(value))
+        bump_version
+      end
+      forget
       value
     end
 
     # -> Hash | nil
     def get(scope, key)
-      @store.get(ns(scope), key.to_s)
+      s = ns(scope)
+      cached([:get, s, key.to_s]) { @store.get(s, key.to_s) }
     end
 
     # -> bool (did it exist?)
     def delete(scope, key)
-      @store.delete(ns(scope), key.to_s)
+      s = ns(scope)
+      existed = @store.transaction do
+        @store.delete(s, key.to_s).tap { |gone| bump_version if gone }
+      end
+      forget
+      existed
     end
 
     # -> [String] keys of the scope, sorted lexicographically
     def keys(scope)
-      @store.list(ns(scope))
+      s = ns(scope)
+      cached([:keys, s]) { @store.list(s) }
     end
 
-    # -> [Hash] all records of the scope (lexicographic key order)
+    # -> [Hash] all records of the scope (lexicographic key order), one store call
     def all(scope)
       s = ns(scope)
-      @store.list(s).filter_map { |k| @store.get(s, k) }
+      cached([:all, s]) { @store.entries(s).map(&:last) }
     end
 
     private
+
+    # The cache keeps JSON text, not objects: every hit parses a fresh copy, so a
+    # caller that mutates what it got never changes what the next caller reads.
+    def cached(entry)
+      return yield unless @recheck.positive? && Fiber[TURN_KEY]
+
+      revalidate
+      gen, raw = @lock.synchronize { [@gen, @cache[entry]] }
+      return JSON.parse(raw) if raw
+
+      value = yield
+      # A drop while the read was in flight means the value may predate it.
+      @lock.synchronize { @cache[entry] = JSON.generate(value) if gen == @gen }
+      value
+    end
+
+    def revalidate
+      now = @clock.call
+      return if @checked_at && now - @checked_at < @recheck
+
+      token = @store.get(VERSION_SCOPE, VERSION_KEY)
+      @lock.synchronize do
+        drop unless token == @token
+        @token = token
+        @checked_at = now
+      end
+    end
+
+    def bump_version = @store.set(VERSION_SCOPE, VERSION_KEY, SecureRandom.hex(8))
+
+    # Our own write: drop everything and re-read the token on the next read.
+    def forget = @lock.synchronize { drop; @checked_at = nil }
+
+    # Callers hold @lock. The generation tells an in-flight read its value is stale.
+    def drop
+      @cache.clear
+      @gen += 1
+    end
 
     def ns(scope)
       key = scope.to_s
