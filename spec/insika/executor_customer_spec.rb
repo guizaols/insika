@@ -85,6 +85,28 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
     expect(session_store.find("s1").vars["agent"]).to eq("a")
   end
 
+  # A turn with no customer (an API call, a load run) still names its agent on the
+  # session, so the Studio's agent filters find it; it rides the turn's own
+  # session write, no extra store call.
+  it "stamps vars['agent'] on a session with no customer, without overwriting one already set" do
+    session_store.create(id: "s1")
+    executor = build_executor
+    allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+    run = lambda do |id, agent|
+      Sync do
+        executor.spawn(task("oi", id: id), profile: Insika::AgentProfile.build(id: agent, model: "m"))
+        executor.instance_variable_get(:@running)[id]&.wait
+      end
+    end
+
+    run.call("t-a", "a")
+    expect(session_store.find("s1").vars["agent"]).to eq("a")
+    expect(session_store.all_stats.first.vars["agent"]).to eq("a")
+
+    run.call("t-b", "b")
+    expect(session_store.find("s1").vars["agent"]).to eq("a")
+  end
+
   #  /E3 — the acceptance gate, end-to-end through the REAL
   # Executor + REAL ContextBuilder + REAL Memory provider. The trace holds
   # counts only , so the assertion reads the CONTEXT PACKAGE's memory
