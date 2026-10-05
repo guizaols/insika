@@ -79,11 +79,16 @@ module Insika
     # a non-supervised deployment) would interleave read/set and LOSE messages —
     # there is no compare-and-swap here. Route same-session writes through the
     # SessionActor; see session_actor.rb.
-    def append_messages(id, messages)
+    # `agent:` names the session's agent when it has none yet (a turn with no
+    # customer never stamped one), riding this write instead of one of its own.
+    def append_messages(id, messages, agent: nil)
       record = fetch!(id)
       incoming = (messages.is_a?(Hash) ? [messages] : Array(messages))
                  .map { |msg| stamp(deep_stringify(msg)) }
       record["messages"] += incoming
+      if agent && Coercion.presence((record["vars"] ||= {})["agent"]).nil?
+        record["vars"]["agent"] = agent.to_s
+      end
       record["updated_at"] = timestamp
       write(record)
       to_session(record)
