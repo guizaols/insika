@@ -2235,14 +2235,16 @@ end
 
         offset += HOME_PAGE
       end
-      found
+      # pages are separate reads: a write between two of them shifts a row onto both
+      found.uniq(&:id)
     end
 
     def session_total
       store = insika[:session_store]
       return 0 unless store
 
-      store.respond_to?(:recent) ? store.count : every_record(store).size # a paging store counts by key
+      # a paging store counts by key (a Struct double answers #count too, hence #recent)
+      store.respond_to?(:recent) && store.respond_to?(:count) ? store.count : every_record(store).size
     end
 
     def parse_time(str)
@@ -2578,7 +2580,7 @@ end
     def render_tasks
       store = insika[:task_store]
       @agent = presence(request.params["agent"])
-      @page = [request.params["page"].to_i, 1].max
+      @page = request.params["page"].to_i.clamp(1, 1_000_000)
       offset = (@page - 1) * TASKS_PER_PAGE
       rows =
         if store.nil? then []

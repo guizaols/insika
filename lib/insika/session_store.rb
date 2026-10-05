@@ -200,7 +200,9 @@ module Insika
     # one read (Store#recent) instead of reading every session to sort them.
     # `offset` skips that many of the newest (the next page).
     def recent(limit, offset: 0)
-      @store.recent(SCOPE, KEY_PREFIX, limit, offset).map { |_, record| to_session(record) }
+      # offset only when paging: a backend written for the 3-argument #recent keeps working
+      rows = offset.zero? ? @store.recent(SCOPE, KEY_PREFIX, limit) : @store.recent(SCOPE, KEY_PREFIX, limit, offset)
+      rows.map { |_, record| to_session(record) }
     end
 
     # -> Integer sessions stored, from the keys alone (no record is read).

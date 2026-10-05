@@ -155,6 +155,26 @@ RSpec.describe Insika::Stores::SQLite do
       reopened&.close
     end
 
+    # Rebuilt rows keep the write order recent pages rely on: rowid follows
+    # updated_at, not the key.
+    it "rebuilds the old layout in write order, so recent stays newest first" do
+      store.close
+      legacy = File.join(tmpdir, "legacy-order.db")
+      raw = SQLite3::Database.new(legacy)
+      raw.execute_batch(<<~SQL)
+        CREATE TABLE kv (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                         updated_at TEXT NOT NULL, PRIMARY KEY (scope, key)) WITHOUT ROWID;
+        INSERT INTO kv VALUES ('s', 'a', '1', '2026-09-03T00:00:00Z'), ('s', 'b', '2', '2026-09-01T00:00:00Z'),
+                              ('s', 'c', '3', '2026-09-02T00:00:00Z');
+      SQL
+      raw.close
+
+      reopened = described_class.new(path: legacy)
+      expect(reopened.recent("s", nil, 3).map(&:first)).to eq(%w[a c b])
+    ensure
+      reopened&.close
+    end
+
     it "is durable: data survives close + reopen on the same file" do
       store.set("s", "k", { "a" => 1 })
       store.transaction { store.set("s", "t", "commitado") }

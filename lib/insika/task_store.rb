@@ -240,7 +240,9 @@ module Insika
     # -> [Task] one page, most recently written first (every status change
     # rewrites the task, so this is "most recently updated"). Reads only the page.
     def recent(limit, offset: 0)
-      @store.recent(SCOPE, KEY_PREFIX, limit, offset).map { |_, record| to_task(record) }
+      # offset only when paging: a backend written for the 3-argument #recent keeps working
+      rows = offset.zero? ? @store.recent(SCOPE, KEY_PREFIX, limit) : @store.recent(SCOPE, KEY_PREFIX, limit, offset)
+      rows.map { |_, record| to_task(record) }
     end
 
     def each_id

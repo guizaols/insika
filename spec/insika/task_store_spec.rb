@@ -363,4 +363,12 @@ RSpec.describe Insika::TaskStore do
       expect(tasks.recent(2, offset: 4)).to eq([])
     end
   end
+
+  it "#recent still works over a backend whose #recent takes no offset" do
+    old = Insika::Stores::Memory.new
+    old.singleton_class.send(:define_method, :recent) { |scope, prefix, limit| super(scope, prefix, limit) }
+    store = described_class.new(store: old)
+    store.create(id: "a", command: command)
+    expect(store.recent(5).map(&:id)).to eq(%w[a])
+  end
 end
