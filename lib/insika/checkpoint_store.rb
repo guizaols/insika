@@ -30,32 +30,38 @@ module Insika
     # turn's spill key -> write the checkpoint -> delete the absorbed spill key.
     # Any exception in the middle -> full rollback (neither a partial checkpoint
     # nor a lost spill key).
-    def save(checkpoint)
+    # if_absent: true -> an already-saved turn returns nil instead of raising (the
+    # initial checkpoint of a resumed turn, which exists by definition).
+    def save(checkpoint, if_absent: false)
       @store.transaction do
         # The new turn's own key first: a backend that locks per key read inside a
         # transaction then serializes two saves of the same turn, and the second
         # one fails the guard below instead of overwriting the first.
         if @store.get(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn))
+          next nil if if_absent
+
           raise ArgumentError, "checkpoint with non-monotonic turn: #{checkpoint.turn} already saved"
         end
 
-        current = latest(checkpoint.task_id)
-        if current && current.turn >= checkpoint.turn
+        # The turn numbers come from the key list; reading the latest record
+        # itself would add a round trip for nothing.
+        current = checkpoint_turns(checkpoint.task_id).max
+        if current && current >= checkpoint.turn
           raise ArgumentError,
-                "checkpoint with non-monotonic turn: #{checkpoint.turn} <= #{current.turn}"
+                "checkpoint with non-monotonic turn: #{checkpoint.turn} <= #{current}"
         end
 
         # Stage 8 of turn n saves turn n+1's checkpoint:
         # the spill key to absorb is that of the turn that just executed (n).
         spill_key = sideeffects_key(checkpoint.task_id, checkpoint.turn - 1)
-        spilled = @store.get(SCOPE, spill_key) || []
+        spilled = Array(@store.get(SCOPE, spill_key))
         consolidated = Array(checkpoint.completed_side_effects).map(&:to_s) | spilled
 
         record = deep_stringify(checkpoint.to_h)
         record["completed_side_effects"] = consolidated
         record["created_at"] ||= timestamp
         @store.set(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn), record)
-        @store.delete(SCOPE, spill_key)
+        @store.delete(SCOPE, spill_key) unless spilled.empty?
 
         to_checkpoint(record)
       end

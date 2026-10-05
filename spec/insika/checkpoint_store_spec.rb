@@ -58,6 +58,43 @@ RSpec.describe Insika::CheckpointStore do
     end
   end
 
+  describe "store calls per save" do
+    def calls_during
+      calls = Hash.new(0)
+      %i[get set delete list].each do |op|
+        backend.define_singleton_method(op) { |*args| calls[op] += 1; super(*args) }
+      end
+      yield
+      calls
+    end
+
+    it "a save reads only the turn list to check monotonicity, never the latest record" do
+      checkpoints.save(checkpoint(turn: 1))
+      calls = calls_during { checkpoints.save(checkpoint(turn: 2)) }
+      # own key + spill key, one list, the write; no read of the latest checkpoint
+      expect(calls).to eq(get: 2, list: 1, set: 1)
+    end
+
+    it "a save deletes the spill key only when there was one to absorb" do
+      checkpoints.save(checkpoint(turn: 1))
+      checkpoints.record_side_effect("t", turn: 1, tool_call_id: "c1")
+      calls = calls_during { checkpoints.save(checkpoint(turn: 2)) }
+      expect(calls[:delete]).to eq(1)
+      expect(checkpoints.find("t", turn: 2).completed_side_effects).to eq(["c1"])
+    end
+
+    it "if_absent: true returns nil instead of raising when the turn already exists" do
+      first = checkpoints.save(checkpoint(turn: 1, messages: [{ "role" => "user", "content" => "a" }]))
+      expect(checkpoints.save(checkpoint(turn: 1, messages: [{ "role" => "user", "content" => "b" }]), if_absent: true)).to be_nil
+      expect(checkpoints.find("t", turn: 1).messages).to eq(first.messages)
+    end
+
+    it "if_absent: true still rejects a lower turn" do
+      checkpoints.save(checkpoint(turn: 2))
+      expect { checkpoints.save(checkpoint(turn: 1), if_absent: true) }.to raise_error(ArgumentError)
+    end
+  end
+
   describe "#save_continuation" do
     let(:continuation) do
       { "messages" => [{ "role" => "assistant", "content" => "Checking" }],
