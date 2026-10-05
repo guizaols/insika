@@ -55,6 +55,30 @@ RSpec.describe Insika::LLMTraceStore do
         expect(store.for_task("t")).to eq("entries" => [], "truncated" => false)
       end
 
+      it "record_many appends a turn's events in one transaction, same result as one by one" do
+        one = described_class.new(store: Insika::Stores::Memory.new.tap { Insika::TaskStore.new(store: _1).create(id: "t", command: {}) })
+        3.times { |i| one.record(task_id: "t", entry: entry.merge("turn" => i)) }
+        tx = 0
+        @backend.define_singleton_method(:transaction) { |&b| tx += 1; super(&b) }
+
+        store.record_many(task_id: "t", entries: 3.times.map { |i| entry.merge("turn" => i) })
+
+        expect(tx).to eq(1)
+        expect(store.for_task("t")).to eq(one.for_task("t"))
+      end
+
+      it "record_many keeps the cap and the truncation flag" do
+        store.record_many(task_id: "t", entries: 205.times.map { |i| entry.merge("turn" => i) })
+        result = store.for_task("t")
+        expect(result["truncated"]).to be(true)
+        expect(result["entries"].map { |e| e["turn"] }).to eq((5...205).to_a)
+      end
+
+      it "record_many of nothing touches no store" do
+        expect(@backend).not_to receive(:transaction)
+        store.record_many(task_id: "t", entries: [])
+      end
+
       it "clears traces and tolerates missing traces" do
         expect(store.for_task("old")["entries"]).to eq([])
         store.record(task_id: "t", entry: entry)
