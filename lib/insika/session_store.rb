@@ -20,6 +20,7 @@ module Insika
     include Coercion
 
     SCOPE = "sessions"
+    STATS_SCOPE = "session_stats" # one small record per session, see #write
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
@@ -56,7 +57,7 @@ module Insika
         "created_at" => now,
         "updated_at" => now
       }
-      @store.set(SCOPE, key, record)
+      write(record)
       to_session(record)
     end
 
@@ -84,7 +85,7 @@ module Insika
                  .map { |msg| stamp(deep_stringify(msg)) }
       record["messages"] += incoming
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -94,7 +95,7 @@ module Insika
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -111,7 +112,7 @@ module Insika
       # presentation tool joins on in a LATER turn. Absent until a card arrives.
       ev["cards"] = EvidenceLedger.merge_cards(ev["cards"], cards) unless Array(cards).empty?
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -138,7 +139,7 @@ module Insika
       value = Coercion.presence(Coercion.utf8(value.to_s))
       value ? briefing["fields"][field.to_s] = value : briefing["fields"].delete(field.to_s)
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -149,7 +150,7 @@ module Insika
       briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }
       briefing["next_step"] = Coercion.presence(Coercion.utf8(text.to_s))
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -179,12 +180,13 @@ module Insika
         "at" => timestamp
       }.compact
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
+      @store.delete(STATS_SCOPE, key_for(id))
       @store.delete(SCOPE, key_for(id))
     end
 
@@ -198,8 +200,47 @@ module Insika
 
     # -> [Session] the `limit` most recently written sessions, newest first, from
     # one read (Store#recent) instead of reading every session to sort them.
-    def recent(limit)
-      @store.recent(SCOPE, KEY_PREFIX, limit).map { |_, record| to_session(record) }
+    # `offset` skips that many of the newest (the next page).
+    def recent(limit, offset: 0)
+      # offset only when paging: a backend written for the 3-argument #recent keeps working
+      rows = offset.zero? ? @store.recent(SCOPE, KEY_PREFIX, limit) : @store.recent(SCOPE, KEY_PREFIX, limit, offset)
+      rows.map { |_, record| to_session(record) }
+    end
+
+    # -> Integer sessions stored, from the keys alone (no record is read).
+    def count = @store.list(SCOPE, KEY_PREFIX).size
+
+    # What a dashboard needs of a session without its messages: a few bytes per
+    # session, written with it, instead of the whole record (messages included).
+    Stat = Data.define(:id, :updated_at, :message_count, :vars)
+
+    # -> [Stat] every session's stats, in no particular order: small enough to read
+    # whole, so a reader never depends on the order they were written in.
+    def all_stats
+      @store.entries(STATS_SCOPE, KEY_PREFIX).map { |key, stat| to_stat(key, stat) }
+    end
+
+    # Writes the stats of every session that has none (sessions stored before
+    # stats existed) and deletes stats whose session is gone. Idempotent and safe
+    # with the app running: each batch re-reads inside a transaction, skipping a
+    # session that wrote its own stats meanwhile or was deleted. -> stats written.
+    def backfill_stats(batch: 500)
+      have = @store.list(STATS_SCOPE, KEY_PREFIX).to_set
+      written = 0
+      @store.list(SCOPE, KEY_PREFIX).reject { |key| have.include?(key) }.each_slice(batch) do |keys|
+        @store.transaction do
+          keys.each do |key|
+            next if @store.get(STATS_SCOPE, key)
+
+            record = @store.get(SCOPE, key) or next
+            @store.set(STATS_SCOPE, key, stats_of(record))
+            written += 1
+          end
+        end
+      end
+      live = @store.list(SCOPE, KEY_PREFIX).to_set
+      @store.list(STATS_SCOPE, KEY_PREFIX).each { |key| @store.delete(STATS_SCOPE, key) unless live.include?(key) }
+      written
     end
 
     def each_id
@@ -211,6 +252,23 @@ module Insika
     end
 
     private
+
+    # The one write of a session record: the record and its stats, side by side.
+    def write(record)
+      key = key_for(record["id"])
+      @store.set(SCOPE, key, record)
+      @store.set(STATS_SCOPE, key, stats_of(record))
+    end
+
+    def stats_of(record)
+      { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
+        "agent" => (record["vars"] || {})["agent"] }
+    end
+
+    def to_stat(key, stat)
+      Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
+               message_count: stat["message_count"].to_i, vars: { "agent" => stat["agent"] }.compact)
+    end
 
     def key_for(id)
       "#{KEY_PREFIX}#{id}"

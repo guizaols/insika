@@ -1,7 +1,7 @@
 <header class="page-head operation-head">
   <div>
     <%== crumbs_for("Tasks") %>
-    <h1>Tasks<span class="sub"><%= @tasks.size %> recent tasks</span></h1>
+    <h1>Tasks<span class="sub">most recent first · page <%= @page %></span></h1>
   </div>
   <div class="head-actions">
     <%== agent_filter_form("/studio/tasks", @agent) %>
@@ -11,12 +11,14 @@
 
 <p class="muted">Open a task to review its execution history, resolve approvals or control a running turn.</p>
 
-<% if @tasks.empty? %>
+<% if @tasks.empty? && @page == 1 %>
   <div class="empty">No tasks yet. A task is born when an agent runs a turn.</div>
+<% elsif @tasks.empty? %>
+  <div class="empty">No tasks on this page. <a href="<%= tasks_page_path(1) %>">Back to the most recent</a>.</div>
 <% else %>
   <div data-controller="list-filter">
     <div class="filter-bar">
-      <input type="search" class="filter-input" placeholder="Filter tasks by id, status or session…" aria-label="Filter tasks"
+      <input type="search" class="filter-input" placeholder="Filter this page by id, status or session…" aria-label="Filter tasks"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
       <span class="filter-count mono muted" data-list-filter-target="count"></span>
     </div>
@@ -41,5 +43,11 @@
       </table>
     </div>
     <div class="empty" data-list-filter-target="empty" hidden>No tasks match your filter.</div>
+    <% if @page > 1 || @more %>
+      <nav class="pager" aria-label="Task pages">
+        <% if @page > 1 %><a class="btn" href="<%= tasks_page_path(@page - 1) %>" rel="prev">← Newer</a><% end %>
+        <% if @more %><a class="btn" href="<%= tasks_page_path(@page + 1) %>" rel="next">Older →</a><% end %>
+      </nav>
+    <% end %>
   </div>
 <% end %>

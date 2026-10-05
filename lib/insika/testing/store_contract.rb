@@ -169,6 +169,14 @@ RSpec.shared_examples "an Insika store" do
       expect(store.recent("s", nil, 2)).to eq([["a", { "n" => 4 }], ["c", { "n" => 3 }]])
     end
 
+    it "skips the newest `offset` pairs (the next page)" do
+      %w[a b c d e].each_with_index { |k, i| store.set("s", "p:#{k}", i) }
+      expect(store.recent("s", "p:", 2, 0).map(&:first)).to eq(%w[p:e p:d])
+      expect(store.recent("s", "p:", 2, 2).map(&:first)).to eq(%w[p:c p:b])
+      expect(store.recent("s", "p:", 2, 4).map(&:first)).to eq(%w[p:a])
+      expect(store.recent("s", nil, 10, 5)).to eq([])
+    end
+
     it "keeps to the scope and the prefix" do
       store.set("s", "x:1", 1)
       store.set("other", "x:2", 2)

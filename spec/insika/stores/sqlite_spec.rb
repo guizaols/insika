@@ -61,6 +61,24 @@ RSpec.describe Insika::Stores::SQLite do
       expect(plan).to match(/SEARCH kv USING COVERING INDEX kv_scope_key \(scope=\? AND key>\? AND key<\?\)/)
     end
 
+    # Ordering a page by write order must not read every value of the range: the
+    # page's keys come from the index alone, and only their values are read.
+    it "finds a recent page's keys from the index alone" do
+      plan = store.instance_variable_get(:@db)
+                  .execute("EXPLAIN QUERY PLAN #{described_class::RECENT_KEYS_PREFIX_SQL}", ["s", "a:", "a;", 10, 0])
+                  .map(&:last).join(" ")
+
+      expect(plan).to match(/USING COVERING INDEX kv_scope_key/)
+    end
+
+    it "a recent page larger than one value batch keeps write order" do
+      600.times { |i| store.set("s", format("p:%04d", i), i) }
+      page = store.recent("s", "p:", 550, 10)
+      expect(page.size).to eq(550)
+      expect(page.first).to eq(["p:0589", 589])
+      expect(page.last).to eq(["p:0040", 40])
+    end
+
     # A store call holds the GVL for its whole duration, so a slow one stalls every
     # fiber in the process. The log names the call, the scope and the caller.
     it "logs store calls at or above slow_ms with the caller, and nothing when off" do
@@ -133,6 +151,26 @@ RSpec.describe Insika::Stores::SQLite do
 
       expect([sql.include?("WITHOUT ROWID"), index, reopened.list("s"), reopened.get("s", "b"), reopened.get("o", "a")])
         .to eq([false, "kv_scope_key", %w[a b], { "x" => 2 }, "z"])
+    ensure
+      reopened&.close
+    end
+
+    # Rebuilt rows keep the write order recent pages rely on: rowid follows
+    # updated_at, not the key.
+    it "rebuilds the old layout in write order, so recent stays newest first" do
+      store.close
+      legacy = File.join(tmpdir, "legacy-order.db")
+      raw = SQLite3::Database.new(legacy)
+      raw.execute_batch(<<~SQL)
+        CREATE TABLE kv (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+                         updated_at TEXT NOT NULL, PRIMARY KEY (scope, key)) WITHOUT ROWID;
+        INSERT INTO kv VALUES ('s', 'a', '1', '2026-09-03T00:00:00Z'), ('s', 'b', '2', '2026-09-01T00:00:00Z'),
+                              ('s', 'c', '3', '2026-09-02T00:00:00Z');
+      SQL
+      raw.close
+
+      reopened = described_class.new(path: legacy)
+      expect(reopened.recent("s", nil, 3).map(&:first)).to eq(%w[a c b])
     ensure
       reopened&.close
     end
