@@ -301,6 +301,7 @@ module Insika
       end
 
       @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
+      flush_llm_diagnostics(task) # the wait may last hours
 
       # Awaits the resolution of THIS pending. A spurious :approval (duplicate or
       # from another pending of the same actor) that wakes up before resolution is
@@ -621,12 +622,12 @@ module Insika
     # Stages 2..9. Runs INSIDE the task's fiber.
     def execute(task, profile:, actor:, resume_from: nil, timing: nil)
       state = nil
+      @llm_buffers[task.id] = []
       # Resume of a crash orphan: the interrupted attempt's Execution was left OPEN
       # (the fiber died). The TaskStore forbids opening a second one while one is
       # open -> close the orphan as :interrupted before opening the N+1 (a new
       # entry, never overwrites).
       close_orphan_execution(task) if resume_from
-      @llm_buffers[task.id] = []
       # attempt N+1, and queued (normal spawn) or paused/waiting (resume) ->
       # running, in one write. An orphan is already :running and stays so.
       @task_store.start_execution(task.id)
@@ -691,8 +692,11 @@ module Insika
         fail_task(task, e, stage: :unknown, usage: state&.usage)
       end
     ensure
-      flush_llm_diagnostics(task)
+      llm_entries = @llm_buffers.delete(task.id)
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
+      # after deregistering: the writes may wait on the store, and a resume or an
+      # approve arriving meanwhile must not find a finished turn "running"
+      write_llm_diagnostics(task, llm_entries)
       # Deregistered FIRST on purpose: from here on the `steer` door finds no actor for
       # this session and answers nil, so a message arriving during the release becomes
       # its own turn instead of a post into a mailbox nobody reads again.
@@ -2533,6 +2537,7 @@ module Insika
 
       @task_store.transition(task.id, to: :paused)
       emit(:task_paused, { task_id: task.id }, task: task)
+      flush_llm_diagnostics(task) # the wait may last hours
       actor.await(reason: :paused) # blocks until :resume (or raises on :cancel/:timeout)
       @task_store.transition(task.id, to: :running)
       emit(:task_resumed, { task_id: task.id }, task: task)
@@ -3124,17 +3129,10 @@ module Insika
       RubyLLM::Context.new(config)
     end
 
-    # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
-    # cleared at the end of the task — the resume (new Execution) continues the
-    # numbering (reliable replay). A task WITH a tenant (WS1) tags every event it
-    # emits — the tenant-scoped /v1/events subscription filters on it (a control
-    # event without a task has no tenant and never matches a tenant stream);
-    # absent tenant -> the meta is byte-identical to before.
     # A turn's LLM diagnostics in one batch per store, instead of one transaction
-    # per provider event. Runs when the turn ends, however it ends, after the
-    # customer already has the answer.
-    def flush_llm_diagnostics(task)
-      entries = @llm_buffers.delete(task.id)
+    # per provider event: written when the turn ends (however it ends, after the
+    # customer already has the answer) and before it suspends for a human.
+    def write_llm_diagnostics(task, entries)
       return if entries.nil? || entries.empty?
 
       [@llm_trace_store, @model_metrics_store].each do |store|
@@ -3150,6 +3148,23 @@ module Insika
       end
     end
 
+    # Writes what the running turn buffered so far and keeps buffering: a turn
+    # about to wait (approval, pause) may wait for hours, and its cost so far
+    # must be visible and survive a crash meanwhile.
+    def flush_llm_diagnostics(task)
+      entries = @llm_buffers[task.id]
+      return if entries.nil? || entries.empty?
+
+      @llm_buffers[task.id] = []
+      write_llm_diagnostics(task, entries)
+    end
+
+    # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
+    # cleared at the end of the task — the resume (new Execution) continues the
+    # numbering (reliable replay). A task WITH a tenant (WS1) tags every event it
+    # emits — the tenant-scoped /v1/events subscription filters on it (a control
+    # event without a task has no tenant and never matches a tenant stream);
+    # absent tenant -> the meta is byte-identical to before.
     def emit(type, data, task:)
       meta = { task_id: task.id, session_id: task.session_id,
                seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601(6) }

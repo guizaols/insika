@@ -34,9 +34,13 @@ module Insika
     # initial checkpoint of a resumed turn, which exists by definition).
     def save(checkpoint, if_absent: false)
       @store.transaction do
-        # The new turn's own key first: a backend that locks per key read inside a
-        # transaction then serializes two saves of the same turn, and the second
-        # one fails the guard below instead of overwriting the first.
+        # One key per task, read first and never written: a backend that locks
+        # each key read inside a transaction (Postgres) then serializes every save
+        # of the task, so two executions of it (recovery racing a worker) cannot
+        # both pass the monotonicity check below against the same latest turn.
+        @store.get(SCOPE, "checkpoint-lock:#{checkpoint.task_id}")
+        # The new turn's own key: two saves of the same turn are serialized too,
+        # and the second one fails the guard below instead of overwriting the first.
         if @store.get(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn))
           next nil if if_absent
 
@@ -54,7 +58,7 @@ module Insika
         # Stage 8 of turn n saves turn n+1's checkpoint:
         # the spill key to absorb is that of the turn that just executed (n).
         spill_key = sideeffects_key(checkpoint.task_id, checkpoint.turn - 1)
-        spilled = Array(@store.get(SCOPE, spill_key))
+        spilled = @store.get(SCOPE, spill_key) || []
         consolidated = Array(checkpoint.completed_side_effects).map(&:to_s) | spilled
 
         record = deep_stringify(checkpoint.to_h)
