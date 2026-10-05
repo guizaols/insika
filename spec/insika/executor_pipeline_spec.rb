@@ -716,6 +716,60 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(traces.for_task(task.id)["entries"].size).to eq(4)
     end
 
+    it "writes them after the turn is deregistered, so a resume or approve never targets a finished turn" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      running_during_flush = []
+      traces.define_singleton_method(:record_many) { |**kw| running_during_flush << executor.running?(task.id); super(**kw) }
+      run_turn(executor, task, fake_chat: reporting_chat(executor, task, []))
+
+      expect(running_during_flush).to eq([false])
+    end
+
+    # A turn that waits for a human may wait for hours: what it already spent must
+    # be visible (and survive a crash) before it blocks.
+    def waiting_actor(seen, task, pause: false)
+      stop = Class.new(StandardError)
+      actor = Object.new
+      actor.define_singleton_method(:drain!) { nil }
+      actor.define_singleton_method(:pause_requested?) { pause }
+      tr = traces
+      actor.define_singleton_method(:await) { |**| seen << tr.for_task(task.id)["entries"].size; raise stop }
+      [actor, stop]
+    end
+
+    def buffer_two_events(executor, task)
+      executor.instance_variable_get(:@llm_buffers)[task.id] = []
+      executor.send(:emit, :llm_request, { "request_id" => "r1", "status" => "succeeded" }, task: task)
+      executor.send(:emit, :llm_usage, { "request_id" => "r1", "input_tokens" => 2 }, task: task)
+    end
+
+    it "writes what the turn spent before it blocks for an approval" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics,
+                                pending_action_store: Insika::PendingActionStore.new(store: backend))
+      task = make_task
+      buffer_two_events(executor, task)
+      seen = []
+      actor, stop = waiting_actor(seen, task)
+
+      expect { executor.request_approval(task: task, turn: 1, tool: "refund", args: {}, actor: actor) }.to raise_error(stop)
+      expect(seen).to eq([2])
+      expect(executor.instance_variable_get(:@llm_buffers)[task.id]).to eq([]) # keeps buffering after the wait
+    end
+
+    it "writes what the turn spent before it blocks on a pause" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      task = make_task
+      task_store.start_execution(task.id)
+      buffer_two_events(executor, task)
+      seen = []
+      actor, stop = waiting_actor(seen, task, pause: true)
+
+      expect { executor.send(:drain_and_maybe_suspend, task, actor) }.to raise_error(stop)
+      expect(seen).to eq([2])
+    end
+
     it "events outside a running turn are written right away, as before" do
       executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
       task = task_store.create(command: {}, id: "late")
