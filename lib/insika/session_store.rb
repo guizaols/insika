@@ -214,22 +214,33 @@ module Insika
     # session, written with it, instead of the whole record (messages included).
     Stat = Data.define(:id, :updated_at, :message_count, :vars)
 
-    # -> [Stat] the `limit` most recently written sessions' stats, newest first.
-    def recent_stats(limit, offset: 0)
-      rows = offset.zero? ? @store.recent(STATS_SCOPE, KEY_PREFIX, limit) : @store.recent(STATS_SCOPE, KEY_PREFIX, limit, offset)
-      rows.map { |key, stat| to_stat(key, stat) }
+    # -> [Stat] every session's stats, in no particular order: small enough to read
+    # whole, so a reader never depends on the order they were written in.
+    def all_stats
+      @store.entries(STATS_SCOPE, KEY_PREFIX).map { |key, stat| to_stat(key, stat) }
     end
 
     # Writes the stats of every session that has none (sessions stored before
-    # stats existed). Idempotent. -> number of stats written.
-    def backfill_stats
+    # stats existed) and deletes stats whose session is gone. Idempotent and safe
+    # with the app running: each batch re-reads inside a transaction, skipping a
+    # session that wrote its own stats meanwhile or was deleted. -> stats written.
+    def backfill_stats(batch: 500)
       have = @store.list(STATS_SCOPE, KEY_PREFIX).to_set
-      missing = @store.list(SCOPE, KEY_PREFIX).reject { |key| have.include?(key) }
-      missing.count do |key|
-        record = @store.get(SCOPE, key) or next false
-        @store.set(STATS_SCOPE, key, stats_of(record))
-        true
+      written = 0
+      @store.list(SCOPE, KEY_PREFIX).reject { |key| have.include?(key) }.each_slice(batch) do |keys|
+        @store.transaction do
+          keys.each do |key|
+            next if @store.get(STATS_SCOPE, key)
+
+            record = @store.get(SCOPE, key) or next
+            @store.set(STATS_SCOPE, key, stats_of(record))
+            written += 1
+          end
+        end
       end
+      live = @store.list(SCOPE, KEY_PREFIX).to_set
+      @store.list(STATS_SCOPE, KEY_PREFIX).each { |key| @store.delete(STATS_SCOPE, key) unless live.include?(key) }
+      written
     end
 
     def each_id

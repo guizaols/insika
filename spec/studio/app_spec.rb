@@ -2331,40 +2331,45 @@ RSpec.describe Studio::App do
       expect(body).to include("last 14 days")
     end
 
-    # A store with stats: the home reads them, a page at a time, and reads whole
-    # sessions only for its short "recent" list.
-    def stats_store(sessions, shift: false)
-      Class.new(SessionStoreDouble) do
-        attr_reader :offsets
-        define_method(:recent_stats) do |limit, offset: 0|
-          (@offsets ||= []) << offset
-          sessions.drop(shift && offset.positive? ? offset - 1 : offset).first(limit).map { |s| stat(s) }
+    # The home reads every session's stats (small) and the session keys, never the
+    # sessions themselves except for its short "recent" list.
+    it "reads stats, not sessions, and ignores stats of sessions that are gone" do
+      sessions = (1..30).map { |i| stored(format("s%02d", i), i <= 20 ? 0 : 20, 2) }
+      store = Class.new(SessionStoreDouble) do
+        define_method(:all_stats) do
+          (sessions.map { |x| Insika::SessionStore::Stat.new(id: x.id, updated_at: x.updated_at, message_count: x.messages.size, vars: x.vars) } +
+            [Insika::SessionStore::Stat.new(id: "ghost", updated_at: Time.now.utc.iso8601, message_count: 50, vars: {})])
         end
-        define_method(:recent) do |limit, offset: 0|
-          raise "the home must read whole sessions only for its recent list" if limit > 8
-
-          sessions.first(limit)
-        end
-        define_method(:count) { sessions.size }
-        define_method(:each_id) { |*| raise "the home must not scan every session" }
-      end.tap { |k| k.define_method(:stat) { |s| Insika::SessionStore::Stat.new(id: s.id, updated_at: s.updated_at, message_count: s.messages.size, vars: s.vars) } }.new({})
-    end
-
-    it "a session seen on two pages (a write between reads) counts once" do
-      sessions = (1..10_001).map { |i| stored(format("s%05d", i), 0, 1) }
-      app, = build_app(session_store: stats_store(sessions, shift: true))
-      expect(kpi(login(app).get("/home").body, "Messages")).to eq(10_001)
-    end
-
-    it "walks the session stats newest first and stops past the window" do
-      sessions = (1..22_000).map { |i| stored(format("s%05d", i), i <= 21_000 ? 0 : 20, 1) } # newest first
-      store = stats_store(sessions)
+        define_method(:each_id) { |&b| sessions.map(&:id).each(&b) }
+        define_method(:recent) { |limit, offset: 0| raise "whole sessions only for the recent list" if limit > 8; sessions.first(limit) }
+        define_method(:find) { |id| sessions.find { _1.id == id } }
+        define_method(:all) { raise "the home must not read every session" }
+      end.new({})
       app, = build_app(session_store: store)
       body = login(app).get("/home").body
 
-      expect(kpi(body, "Messages")).to eq(21_000)
-      expect(kpi(body, "Conversations")).to eq(22_000)
-      expect(store.offsets).to eq([0, 10_000, 20_000])
+      expect(kpi(body, "Messages")).to eq(40)
+      expect(kpi(body, "Conversations")).to eq(30)
+    end
+
+    # The order the stats were written in does not matter: a backfill writes them
+    # all at once, oldest and newest mixed.
+    it "counts the window right after a backfill of old sessions" do
+      backend = Insika::Stores::Memory.new
+      real = Insika::SessionStore.new(store: backend)
+      old = (Time.now.utc - (30 * 86_400)).iso8601
+      120.times do |i|
+        real.create(id: "old#{i}")
+        backend.set("sessions", "session:old#{i}", backend.get("sessions", "session:old#{i}").merge("updated_at" => old))
+      end
+      3.times { |i| real.create(id: "new#{i}"); real.append_messages("new#{i}", [{ "role" => "user", "content" => "oi" }]) }
+      backend.list(Insika::SessionStore::STATS_SCOPE, "session:old").each { backend.delete(Insika::SessionStore::STATS_SCOPE, _1) }
+      real.backfill_stats
+
+      app, = build_app(session_store: real)
+      body = login(app).get("/home").body
+      expect(kpi(body, "Messages")).to eq(3)
+      expect(kpi(body, "Conversations")).to eq(123)
     end
   end
 

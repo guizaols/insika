@@ -394,21 +394,16 @@ RSpec.describe Insika::SessionStore do
       sessions.update_vars("a", { "x" => 1 })
       sessions.create(id: "b")
 
-      stats = sessions.recent_stats(10)
-      expect(stats.map(&:id)).to eq(%w[b a])
-      a = stats.last
-      expect([a.message_count, a.vars["agent"], a.updated_at]).to eq([2, "bia", sessions.find("a").updated_at])
-    end
-
-    it "pages stats newest first" do
-      %w[a b c].each { |id| sessions.create(id: id) }
-      expect(sessions.recent_stats(2, offset: 2).map(&:id)).to eq(%w[a])
+      stats = sessions.all_stats.to_h { [_1.id, _1] }
+      expect(stats.keys).to contain_exactly("a", "b")
+      expect([stats["a"].message_count, stats["a"].vars["agent"], stats["a"].updated_at])
+        .to eq([2, "bia", sessions.find("a").updated_at])
     end
 
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")
-      expect(sessions.recent_stats(10)).to eq([])
+      expect(sessions.all_stats).to eq([])
     end
 
     it "backfill_stats writes stats for sessions stored before they existed, once" do
@@ -418,7 +413,14 @@ RSpec.describe Insika::SessionStore do
 
       expect(sessions.backfill_stats).to eq(1)
       expect(sessions.backfill_stats).to eq(0)
-      expect(sessions.recent_stats(10).map(&:message_count)).to eq([1])
+      expect(sessions.all_stats.map(&:message_count)).to eq([1])
+    end
+
+    it "backfill_stats removes stats whose session is gone" do
+      sessions.create(id: "a")
+      backend.set(described_class::STATS_SCOPE, "session:ghost", { "updated_at" => "2026-01-01T00:00:00Z", "message_count" => 9 })
+      sessions.backfill_stats
+      expect(sessions.all_stats.map(&:id)).to eq(%w[a])
     end
   end
 end

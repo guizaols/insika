@@ -30,8 +30,10 @@ it is released. Entries land with the pull request that makes the change.
   window (and says so), and the conversations total comes from the keys alone.
 - Every session write also writes a small stats record (last update, message count,
   agent) in the `session_stats` scope, and the Studio home reads those instead of whole
-  sessions. Sessions stored before this change have no stats until
-  `scripts/backfill_session_stats.rb` runs once (idempotent, safe with the app running).
+  sessions (every stat, filtered by date, so the order they were written in does not
+  matter). Sessions stored before this change have no stats until
+  `scripts/backfill_session_stats.rb` runs once (idempotent, safe with the app running;
+  it also removes stats whose session is gone).
 - RubyLLM is pinned to a newer `2.0.0` commit: streamed responses are priced once when
   read instead of on every chunk, and HTTP connections are shared per process and
   settings. Specs stub LLM HTTP with `stub_llm_http`, because swapping the adapter on an
