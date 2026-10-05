@@ -16,34 +16,32 @@ module Insika
 
     def self.task_prefix(task_id) = "#{task_id.to_s.bytesize}:#{task_id}:"
 
-    def record(task_id:, entry:)
-      data = LLMTraceStore.sanitize(entry.slice(*FIELDS))
-      return unless %w[llm_request llm_usage].include?(data["type"])
-      return if data["request_id"].nil? || data["request_id"].empty?
+    def record(task_id:, entry:) = record_many(task_id: task_id, entries: [entry])
+
+    # A turn's events in one transaction: each request's row is read and written
+    # once, however many events (request, usage, retries) it got.
+    def record_many(task_id:, entries:)
+      rows = entries.filter_map do |entry|
+        data = LLMTraceStore.sanitize(entry.slice(*FIELDS))
+        next unless %w[llm_request llm_usage].include?(data["type"])
+        next if data["request_id"].nil? || data["request_id"].empty?
+
+        data
+      end
+      return if rows.empty?
 
       @store.transaction do
         next unless @store.get(TaskStore::SCOPE, "#{TaskStore::KEY_PREFIX}#{task_id}")
 
-        key = self.class.task_prefix(task_id) + data["request_id"]
-        row = @store.get(SCOPE, key) || {
-          "task_id" => task_id.to_s, "request_id" => data["request_id"],
-          "attempts" => 0, "failed_attempts" => 0, "reported" => {}
-        }
-        row.merge!(data.slice("operation", "provider", "model", "turn").compact)
-        if data["type"] == "llm_request"
-          row.merge!(data.slice("status", "duration_ms"))
-          row["completed_at"] = Time.iso8601(data.fetch("at")).utc.iso8601(6)
-        else
-          row["attempts"] += 1
-          row["failed_attempts"] += 1 if data["status"] == "failed"
-          VALUES.each do |field|
-            next if data[field].nil?
-
-            row[field] = row.fetch(field, 0) + data[field]
-            row["reported"][field] = row["reported"].fetch(field, 0) + 1
-          end
+        rows.group_by { |data| data["request_id"] }.each do |request_id, events|
+          key = self.class.task_prefix(task_id) + request_id
+          row = @store.get(SCOPE, key) || {
+            "task_id" => task_id.to_s, "request_id" => request_id,
+            "attempts" => 0, "failed_attempts" => 0, "reported" => {}
+          }
+          events.each { |data| fold(row, data) }
+          @store.set(SCOPE, key, row)
         end
-        @store.set(SCOPE, key, row)
       end
     rescue StandardError
       nil
@@ -93,6 +91,23 @@ module Insika
     end
 
     private
+
+    def fold(row, data)
+      row.merge!(data.slice("operation", "provider", "model", "turn").compact)
+      if data["type"] == "llm_request"
+        row.merge!(data.slice("status", "duration_ms"))
+        row["completed_at"] = Time.iso8601(data.fetch("at")).utc.iso8601(6)
+      else
+        row["attempts"] += 1
+        row["failed_attempts"] += 1 if data["status"] == "failed"
+        VALUES.each do |field|
+          next if data[field].nil?
+
+          row[field] = row.fetch(field, 0) + data[field]
+          row["reported"][field] = row["reported"].fetch(field, 0) + 1
+        end
+      end
+    end
 
     HOUR = 3600
     MAX_BUCKETS = 92

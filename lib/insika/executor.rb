@@ -41,6 +41,8 @@ module Insika
       @capability_registry = capability_registry # capability resolution (nil = off)
       @llm_trace_store = llm_trace_store
       @model_metrics_store = model_metrics_store
+      # task id -> the running turn's LLM diagnostics, written once when it ends
+      @llm_buffers = {}
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
@@ -624,6 +626,7 @@ module Insika
       # open -> close the orphan as :interrupted before opening the N+1 (a new
       # entry, never overwrites).
       close_orphan_execution(task) if resume_from
+      @llm_buffers[task.id] = []
       # attempt N+1, and queued (normal spawn) or paused/waiting (resume) ->
       # running, in one write. An orphan is already :running and stays so.
       @task_store.start_execution(task.id)
@@ -688,6 +691,7 @@ module Insika
         fail_task(task, e, stage: :unknown, usage: state&.usage)
       end
     ensure
+      flush_llm_diagnostics(task)
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
       # Deregistered FIRST on purpose: from here on the `steer` door finds no actor for
       # this session and answers nil, so a message arriving during the release becomes
@@ -3128,17 +3132,42 @@ module Insika
     # emits — the tenant-scoped /v1/events subscription filters on it (a control
     # event without a task has no tenant and never matches a tenant stream);
     # absent tenant -> the meta is byte-identical to before.
+    # A turn's LLM diagnostics in one batch per store, instead of one transaction
+    # per provider event. Runs when the turn ends, however it ends, after the
+    # customer already has the answer.
+    def flush_llm_diagnostics(task)
+      entries = @llm_buffers.delete(task.id)
+      return if entries.nil? || entries.empty?
+
+      [@llm_trace_store, @model_metrics_store].each do |store|
+        next unless store
+
+        if store.respond_to?(:record_many)
+          store.record_many(task_id: task.id, entries: entries)
+        else
+          entries.each { |entry| store.record(task_id: task.id, entry: entry) }
+        end
+      rescue StandardError
+        # Diagnostics must never fail the turn.
+      end
+    end
+
     def emit(type, data, task:)
       meta = { task_id: task.id, session_id: task.session_id,
                seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601(6) }
       tenant = task_tenant(task)
       meta[:tenant] = tenant unless tenant.nil?
       if type == :llm_request || type == :llm_usage
-        [@llm_trace_store, @model_metrics_store].each do |store|
-          begin
-            store&.record(task_id: task.id, entry: data.merge("type" => type.to_s, "at" => meta[:at]))
-          rescue StandardError
-            # Recorders fail independently; diagnostics must not interrupt the model.
+        entry = data.merge("type" => type.to_s, "at" => meta[:at])
+        if (buffer = @llm_buffers[task.id])
+          buffer << entry # a running turn writes them all at its end (#flush_llm_diagnostics)
+        else
+          [@llm_trace_store, @model_metrics_store].each do |store|
+            begin
+              store&.record(task_id: task.id, entry: entry)
+            rescue StandardError
+              # Recorders fail independently; diagnostics must not interrupt the model.
+            end
           end
         end
       end

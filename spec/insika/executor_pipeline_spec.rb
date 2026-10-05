@@ -671,6 +671,60 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
     end
   end
 
+  describe "LLM diagnostics are written once per turn" do
+    let(:traces) { Insika::LLMTraceStore.new(store: backend) }
+    let(:metrics) { Insika::ModelMetricsStore.new(store: backend) }
+
+    # A chat whose round reports two provider requests, like a tool round + answer.
+    def reporting_chat(executor, task, seen)
+      Class.new(FakeChat) do
+        define_method(:ask) do |message, with: nil, &blk|
+          %w[r1 r2].each do |id|
+            executor.send(:emit, :llm_request, { "request_id" => id, "status" => "succeeded", "duration_ms" => 5 }, task: task)
+            executor.send(:emit, :llm_usage, { "request_id" => id, "status" => "succeeded", "input_tokens" => 3 }, task: task)
+          end
+          seen << traces_now(task)
+          super(message, with: with, &blk)
+        end
+      end.new.tap { |c| c.define_singleton_method(:traces_now) { |t| executor.instance_variable_get(:@llm_trace_store).for_task(t.id)["entries"].size } }
+    end
+
+    it "holds the events during the turn and writes them in one transaction at its end" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      seen = []
+      tx = Hash.new(0)
+      [traces, metrics].each { |st| st.define_singleton_method(:record_many) { |**kw| tx[st.class] += 1; super(**kw) } }
+      run_turn(executor, task, fake_chat: reporting_chat(executor, task, seen))
+
+      expect(seen).to eq([0]) # nothing written while the turn ran
+      expect(traces.for_task(task.id)["entries"].size).to eq(4)
+      expect(metrics.report["totals"]).to include("requests" => 2, "attempts" => 2, "input_tokens" => 6)
+      expect(tx.values).to eq([1, 1])
+    end
+
+    it "still writes them when the turn fails" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      chat = reporting_chat(executor, task, [])
+      chat.define_singleton_method(:round) { |*| raise "provider exploded" }
+      run_turn(executor, task, fake_chat: chat)
+
+      expect(event_stream.events.map(&:type)).to include(:task_failed)
+      expect(traces.for_task(task.id)["entries"].size).to eq(4)
+    end
+
+    it "events outside a running turn are written right away, as before" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      task = task_store.create(command: {}, id: "late")
+      executor.send(:emit, :llm_usage, { "request_id" => "k1", "operation" => "knowledge_extract" }, task: task)
+
+      expect(traces.for_task("late")["entries"].size).to eq(1)
+    end
+  end
+
   describe "per-turn timing breakdown (opt-in via INSIKA_TURN_TIMING)" do
     it "omits :timing from the terminal event when disabled (default)" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
