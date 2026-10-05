@@ -2331,6 +2331,17 @@ RSpec.describe Studio::App do
       expect(body).to include("last 14 days")
     end
 
+    it "a session seen on two pages (a write between reads) counts once" do
+      sessions = (1..2001).map { |i| stored(format("s%04d", i), 0, 1) }
+      paged = Class.new(SessionStoreDouble) do
+        # the second page starts one row early, as if a session was written in between
+        define_method(:recent) { |limit, offset: 0| sessions.drop(offset.zero? ? 0 : offset - 1).first(limit) }
+        define_method(:count) { sessions.size }
+      end.new({})
+      app, = build_app(session_store: paged)
+      expect(kpi(login(app).get("/home").body, "Messages")).to eq(2001)
+    end
+
     it "walks a paged session store newest first and stops past the window" do
       sessions = (1..4800).map { |i| stored(format("s%04d", i), i <= 4400 ? 0 : 20, 1) } # newest first
       paged = Class.new(SessionStoreDouble) do
@@ -3523,6 +3534,13 @@ RSpec.describe Studio::App do
       expect(body).not_to include("t021")
       expect(body).to include('href="/studio/tasks?page=2"')
       expect(body).not_to include("page=4")
+    end
+
+    it "an absurd page number shows an empty page, not an error" do
+      app, = build_app(tasks: many_tasks(3))
+      res = login(app).get("/tasks?page=100000000000000000000")
+      expect(res.status).to eq(200)
+      expect(res.body).to include("No tasks on this page")
     end
 
     it "keeps the agent filter in the page links" do

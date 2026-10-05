@@ -57,7 +57,8 @@ module Insika
       SQL
 
       # The rebuild of a file still in the old layout: one transaction, so a crash
-      # leaves the old table whole.
+      # leaves the old table whole. Rows go in by updated_at so their rowids follow
+      # write order, which #recent reads them in.
       REBUILD = <<~SQL
         CREATE TABLE kv_rowid (
           scope      TEXT    NOT NULL,
@@ -66,7 +67,7 @@ module Insika
           updated_at TEXT    NOT NULL
         );
         INSERT INTO kv_rowid (scope, key, value, updated_at)
-          SELECT scope, key, value, updated_at FROM kv ORDER BY scope, key;
+          SELECT scope, key, value, updated_at FROM kv ORDER BY scope, updated_at, key;
         DROP TABLE kv;
         ALTER TABLE kv_rowid RENAME TO kv;
       SQL

@@ -378,4 +378,12 @@ RSpec.describe Insika::SessionStore do
       expect(sessions.count).to eq(3)
     end
   end
+
+  it "still works over a backend whose #recent takes no offset (the old signature)" do
+    old = Insika::Stores::Memory.new
+    old.singleton_class.send(:define_method, :recent) { |scope, prefix, limit| super(scope, prefix, limit) }
+    store = described_class.new(store: old)
+    store.create(id: "a")
+    expect(store.recent(5).map(&:id)).to eq(%w[a])
+  end
 end
