@@ -2160,8 +2160,6 @@ end
     # author in `vars["agent"]`). The live layer (live_home_controller) only
     # repaints what this renders — it never computes its own baseline.
     HOME_WINDOW_DAYS = 14
-    HOME_PAGE = 2_000          # whole sessions per read, when a store keeps no stats
-    HOME_STATS_PAGE = 10_000   # stats are a few bytes each: fewer, larger reads
 
     # Everything on the home is read from the sessions of the last 14 days — the
     # window the charts already show — never from every session ever stored. The
@@ -2217,36 +2215,23 @@ end
       store.respond_to?(:all) ? store.all : store.each_id.filter_map { |id| store.find(id) }
     end
 
-    # Sessions touched in the last HOME_WINDOW_DAYS, read newest first a page at a
-    # time and stopping at the first page with none left in the window: their
-    # stats when the store keeps them (no messages read), else the sessions. A
-    # store without paging (an injected double) is read whole and filtered.
+    # Sessions touched in the last HOME_WINDOW_DAYS. A store that keeps session
+    # stats gives all of them (a few bytes each) and its session ids: stats of a
+    # session that is gone are ignored, and the ids are the conversations total.
+    # Any other store (an injected double) is read whole and filtered.
+    # ponytail: reads every session's stats; a per-day index if the count of
+    # sessions ever makes that slow.
     def window_sessions(now)
       store = insika[:session_store]
       return [] unless store
 
       floor = now - (HOME_WINDOW_DAYS * 86_400)
       in_window = ->(s) { (t = utc_time(s.updated_at)) && t >= floor }
-      fetch =
-        if store.respond_to?(:recent_stats) then ->(offset) { store.recent_stats(HOME_STATS_PAGE, offset: offset) }
-        elsif store.respond_to?(:recent) then ->(offset) { store.recent(HOME_PAGE, offset: offset) }
-        end
-      return every_record(store).select(&in_window) unless fetch
+      return every_record(store).select(&in_window) unless store.respond_to?(:all_stats)
 
-      size = store.respond_to?(:recent_stats) ? HOME_STATS_PAGE : HOME_PAGE
-
-      found = []
-      offset = 0
-      loop do
-        page = fetch.call(offset)
-        hits = page.select(&in_window)
-        found.concat(hits)
-        break if page.size < size || hits.empty?
-
-        offset += size
-      end
-      # pages are separate reads: a write between two of them shifts a row onto both
-      found.uniq(&:id)
+      ids = store.each_id.to_set
+      @session_total = ids.size
+      store.all_stats.select { |s| ids.include?(s.id) && in_window.call(s) }
     end
 
     # A session's message count, whether the home holds the session or its stats.
@@ -2255,6 +2240,8 @@ end
     end
 
     def session_total
+      return @session_total if @session_total
+
       store = insika[:session_store]
       return 0 unless store
 
