@@ -2159,12 +2159,20 @@ end
     # `?agent=` narrows every number to one agent (the sessions stamp their
     # author in `vars["agent"]`). The live layer (live_home_controller) only
     # repaints what this renders — it never computes its own baseline.
+    HOME_WINDOW_DAYS = 14
+    HOME_PAGE = 2_000
+
+    # Everything on the home is read from the sessions of the last 14 days — the
+    # window the charts already show — never from every session ever stored. The
+    # conversations total comes from the keys alone (no record read); with an agent
+    # filter it is the window's, since the agent lives inside the record.
     def render_home
       ps = insika[:profile_source]
       @agent = presence(request.params["agent"])
-      sessions = agent_sessions(all_sessions, @agent)
+      now = Time.now.utc
+      sessions = agent_sessions(window_sessions(now), @agent)
       @counts = {
-        "conversations" => sessions.size,
+        "conversations" => @agent ? sessions.size : session_total,
         "messages" => sessions.sum { |s| Array(s.messages).size },
         "agents" => ps ? ps.all.size : 0,
         "skills" => insika[:skill_catalog] ? insika[:skill_catalog].all.size : 0,
@@ -2179,10 +2187,10 @@ end
       # matching and the 24h floor was built three hours in the future, silently
       # emptying both charts. Instant comparisons (`cutoff`) never had the bug;
       # calendar arithmetic did.
-      now = Time.now.utc
       cutoff = now - (5 * 60)
       @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
+      @recent = agent_sessions(recent_sessions(limit: 8), @agent) if @recent.empty?
       @activity = activity_by_day(sessions, days: 14, now: now)
       # 24h sparkline: conversations touched per hour, oldest
       # first — the same session scan, bucketed finer.
@@ -2206,11 +2214,35 @@ end
       store.respond_to?(:all) ? store.all : store.each_id.filter_map { |id| store.find(id) }
     end
 
-    def all_sessions
+    # Sessions touched in the last HOME_WINDOW_DAYS, read newest first a page at a
+    # time and stopping at the first page with none left in the window. A store
+    # without paging (an injected double) is read whole and filtered.
+    def window_sessions(now)
       store = insika[:session_store]
       return [] unless store
 
-      every_record(store)
+      floor = now - (HOME_WINDOW_DAYS * 86_400)
+      in_window = ->(s) { (t = utc_time(s.updated_at)) && t >= floor }
+      return every_record(store).select(&in_window) unless store.respond_to?(:recent)
+
+      found = []
+      offset = 0
+      loop do
+        page = store.recent(HOME_PAGE, offset: offset)
+        hits = page.select(&in_window)
+        found.concat(hits)
+        break if page.size < HOME_PAGE || hits.empty?
+
+        offset += HOME_PAGE
+      end
+      found
+    end
+
+    def session_total
+      store = insika[:session_store]
+      return 0 unless store
+
+      store.respond_to?(:recent) ? store.count : every_record(store).size # a paging store counts by key
     end
 
     def parse_time(str)

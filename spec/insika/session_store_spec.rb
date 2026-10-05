@@ -367,4 +367,15 @@ RSpec.describe Insika::SessionStore do
       sqlite&.close
     end
   end
+
+  describe "#recent with offset and #count" do
+    it "pages sessions most recently written first and counts them by key" do
+      %w[a b c].each { |id| sessions.create(id: id) }
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }]) # a is now the newest
+
+      expect(sessions.recent(2).map(&:id)).to eq(%w[a c])
+      expect(sessions.recent(2, offset: 2).map(&:id)).to eq(%w[b])
+      expect(sessions.count).to eq(3)
+    end
+  end
 end
