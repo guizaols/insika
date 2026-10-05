@@ -128,7 +128,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       session_store.create(id: "s1")
       executor = build_executor
       order = []
-      allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a| order << :checkpoint; m.call(*a) }
+      allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a, **kw| order << :checkpoint; m.call(*a, **kw) }
       allow(session_store).to receive(:append_messages).and_wrap_original { |m, *a| order << :session; m.call(*a) }
       allow(task_store).to receive(:start_execution).and_wrap_original { |m, id| order << :start; m.call(id) }
       allow(task_store).to receive(:complete_execution).and_wrap_original do |m, id, **kw|
@@ -668,6 +668,114 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
         request.stop # without a supervisor, the turn is a child of the request -> cancelled
         expect(poll_until(top) { !executor.running?("t") }).to be(true)
       end
+    end
+  end
+
+  describe "LLM diagnostics are written once per turn" do
+    let(:traces) { Insika::LLMTraceStore.new(store: backend) }
+    let(:metrics) { Insika::ModelMetricsStore.new(store: backend) }
+
+    # A chat whose round reports two provider requests, like a tool round + answer.
+    def reporting_chat(executor, task, seen)
+      Class.new(FakeChat) do
+        define_method(:ask) do |message, with: nil, &blk|
+          %w[r1 r2].each do |id|
+            executor.send(:emit, :llm_request, { "request_id" => id, "status" => "succeeded", "duration_ms" => 5 }, task: task)
+            executor.send(:emit, :llm_usage, { "request_id" => id, "status" => "succeeded", "input_tokens" => 3 }, task: task)
+          end
+          seen << traces_now(task)
+          super(message, with: with, &blk)
+        end
+      end.new.tap { |c| c.define_singleton_method(:traces_now) { |t| executor.instance_variable_get(:@llm_trace_store).for_task(t.id)["entries"].size } }
+    end
+
+    it "holds the events during the turn and writes them in one transaction at its end" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      seen = []
+      tx = Hash.new(0)
+      [traces, metrics].each { |st| st.define_singleton_method(:record_many) { |**kw| tx[st.class] += 1; super(**kw) } }
+      run_turn(executor, task, fake_chat: reporting_chat(executor, task, seen))
+
+      expect(seen).to eq([0]) # nothing written while the turn ran
+      expect(traces.for_task(task.id)["entries"].size).to eq(4)
+      expect(metrics.report["totals"]).to include("requests" => 2, "attempts" => 2, "input_tokens" => 6)
+      expect(tx.values).to eq([1, 1])
+    end
+
+    it "still writes them when the turn fails" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      chat = reporting_chat(executor, task, [])
+      chat.define_singleton_method(:round) { |*| raise "provider exploded" }
+      run_turn(executor, task, fake_chat: chat)
+
+      expect(event_stream.events.map(&:type)).to include(:task_failed)
+      expect(traces.for_task(task.id)["entries"].size).to eq(4)
+    end
+
+    it "writes them after the turn is deregistered, so a resume or approve never targets a finished turn" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      session_store.create(id: "s1")
+      task = make_task
+      running_during_flush = []
+      traces.define_singleton_method(:record_many) { |**kw| running_during_flush << executor.running?(task.id); super(**kw) }
+      run_turn(executor, task, fake_chat: reporting_chat(executor, task, []))
+
+      expect(running_during_flush).to eq([false])
+    end
+
+    # A turn that waits for a human may wait for hours: what it already spent must
+    # be visible (and survive a crash) before it blocks.
+    def waiting_actor(seen, task, pause: false)
+      stop = Class.new(StandardError)
+      actor = Object.new
+      actor.define_singleton_method(:drain!) { nil }
+      actor.define_singleton_method(:pause_requested?) { pause }
+      tr = traces
+      actor.define_singleton_method(:await) { |**| seen << tr.for_task(task.id)["entries"].size; raise stop }
+      [actor, stop]
+    end
+
+    def buffer_two_events(executor, task)
+      executor.instance_variable_get(:@llm_buffers)[task.id] = []
+      executor.send(:emit, :llm_request, { "request_id" => "r1", "status" => "succeeded" }, task: task)
+      executor.send(:emit, :llm_usage, { "request_id" => "r1", "input_tokens" => 2 }, task: task)
+    end
+
+    it "writes what the turn spent before it blocks for an approval" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics,
+                                pending_action_store: Insika::PendingActionStore.new(store: backend))
+      task = make_task
+      buffer_two_events(executor, task)
+      seen = []
+      actor, stop = waiting_actor(seen, task)
+
+      expect { executor.request_approval(task: task, turn: 1, tool: "refund", args: {}, actor: actor) }.to raise_error(stop)
+      expect(seen).to eq([2])
+      expect(executor.instance_variable_get(:@llm_buffers)[task.id]).to eq([]) # keeps buffering after the wait
+    end
+
+    it "writes what the turn spent before it blocks on a pause" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      task = make_task
+      task_store.start_execution(task.id)
+      buffer_two_events(executor, task)
+      seen = []
+      actor, stop = waiting_actor(seen, task, pause: true)
+
+      expect { executor.send(:drain_and_maybe_suspend, task, actor) }.to raise_error(stop)
+      expect(seen).to eq([2])
+    end
+
+    it "events outside a running turn are written right away, as before" do
+      executor = build_executor(llm_trace_store: traces, model_metrics_store: metrics)
+      task = task_store.create(command: {}, id: "late")
+      executor.send(:emit, :llm_usage, { "request_id" => "k1", "operation" => "knowledge_extract" }, task: task)
+
+      expect(traces.for_task("late")["entries"].size).to eq(1)
     end
   end
 

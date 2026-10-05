@@ -41,6 +41,8 @@ module Insika
       @capability_registry = capability_registry # capability resolution (nil = off)
       @llm_trace_store = llm_trace_store
       @model_metrics_store = model_metrics_store
+      # task id -> the running turn's LLM diagnostics, written once when it ends
+      @llm_buffers = {}
       @tool_trace_store = tool_trace_store # tool-call trace for Studio debugging (nil = off)
       # per-turn context breakdown (tokens by category + budget) for the
       # Studio session card. nil = off (no record, zero overhead — parity).
@@ -299,6 +301,7 @@ module Insika
       end
 
       @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
+      flush_llm_diagnostics(task) # the wait may last hours
 
       # Awaits the resolution of THIS pending. A spurious :approval (duplicate or
       # from another pending of the same actor) that wakes up before resolution is
@@ -619,6 +622,7 @@ module Insika
     # Stages 2..9. Runs INSIDE the task's fiber.
     def execute(task, profile:, actor:, resume_from: nil, timing: nil)
       state = nil
+      @llm_buffers[task.id] = []
       # Resume of a crash orphan: the interrupted attempt's Execution was left OPEN
       # (the fiber died). The TaskStore forbids opening a second one while one is
       # open -> close the orphan as :interrupted before opening the N+1 (a new
@@ -688,7 +692,11 @@ module Insika
         fail_task(task, e, stage: :unknown, usage: state&.usage)
       end
     ensure
+      llm_entries = @llm_buffers.delete(task.id)
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
+      # after deregistering: the writes may wait on the store, and a resume or an
+      # approve arriving meanwhile must not find a finished turn "running"
+      write_llm_diagnostics(task, llm_entries)
       # Deregistered FIRST on purpose: from here on the `steer` door finds no actor for
       # this session and answers nil, so a message arriving during the release becomes
       # its own turn instead of a post into a mailbox nobody reads again.
@@ -2529,6 +2537,7 @@ module Insika
 
       @task_store.transition(task.id, to: :paused)
       emit(:task_paused, { task_id: task.id }, task: task)
+      flush_llm_diagnostics(task) # the wait may last hours
       actor.await(reason: :paused) # blocks until :resume (or raises on :cancel/:timeout)
       @task_store.transition(task.id, to: :running)
       emit(:task_resumed, { task_id: task.id }, task: task)
@@ -2539,13 +2548,11 @@ module Insika
     # (does not re-save — the CheckpointStore's monotonicity would raise). It emits
     # NO event (:checkpoint_created is stage 8's only) and touches no side-effects.
     def save_initial_checkpoint(task, profile, state)
-      return unless @checkpoint_store.find(task.id, turn: state.turn).nil?
-
       @checkpoint_store.save(Insika::Checkpoint.new(
                                task_id: task.id, turn: state.turn, session_id: task.session_id,
                                agent_id: profile.id, messages: flatten_history(state.context.history),
                                completed_side_effects: [], created_at: Time.now.utc.iso8601
-                             ))
+                             ), if_absent: true)
     end
 
     # GRACEFUL halt: a Middleware short-circuited with a safe reply.
@@ -3122,6 +3129,36 @@ module Insika
       RubyLLM::Context.new(config)
     end
 
+    # A turn's LLM diagnostics in one batch per store, instead of one transaction
+    # per provider event: written when the turn ends (however it ends, after the
+    # customer already has the answer) and before it suspends for a human.
+    def write_llm_diagnostics(task, entries)
+      return if entries.nil? || entries.empty?
+
+      [@llm_trace_store, @model_metrics_store].each do |store|
+        next unless store
+
+        if store.respond_to?(:record_many)
+          store.record_many(task_id: task.id, entries: entries)
+        else
+          entries.each { |entry| store.record(task_id: task.id, entry: entry) }
+        end
+      rescue StandardError
+        # Diagnostics must never fail the turn.
+      end
+    end
+
+    # Writes what the running turn buffered so far and keeps buffering: a turn
+    # about to wait (approval, pause) may wait for hours, and its cost so far
+    # must be visible and survive a crash meanwhile.
+    def flush_llm_diagnostics(task)
+      entries = @llm_buffers[task.id]
+      return if entries.nil? || entries.empty?
+
+      @llm_buffers[task.id] = []
+      write_llm_diagnostics(task, entries)
+    end
+
     # Single emitter: an Event with meta and a monotonic seq per task. @seqs is not
     # cleared at the end of the task — the resume (new Execution) continues the
     # numbering (reliable replay). A task WITH a tenant (WS1) tags every event it
@@ -3134,11 +3171,16 @@ module Insika
       tenant = task_tenant(task)
       meta[:tenant] = tenant unless tenant.nil?
       if type == :llm_request || type == :llm_usage
-        [@llm_trace_store, @model_metrics_store].each do |store|
-          begin
-            store&.record(task_id: task.id, entry: data.merge("type" => type.to_s, "at" => meta[:at]))
-          rescue StandardError
-            # Recorders fail independently; diagnostics must not interrupt the model.
+        entry = data.merge("type" => type.to_s, "at" => meta[:at])
+        if (buffer = @llm_buffers[task.id])
+          buffer << entry # a running turn writes them all at its end (#flush_llm_diagnostics)
+        else
+          [@llm_trace_store, @model_metrics_store].each do |store|
+            begin
+              store&.record(task_id: task.id, entry: entry)
+            rescue StandardError
+              # Recorders fail independently; diagnostics must not interrupt the model.
+            end
           end
         end
       end

@@ -30,19 +30,29 @@ module Insika
     # turn's spill key -> write the checkpoint -> delete the absorbed spill key.
     # Any exception in the middle -> full rollback (neither a partial checkpoint
     # nor a lost spill key).
-    def save(checkpoint)
+    # if_absent: true -> an already-saved turn returns nil instead of raising (the
+    # initial checkpoint of a resumed turn, which exists by definition).
+    def save(checkpoint, if_absent: false)
       @store.transaction do
-        # The new turn's own key first: a backend that locks per key read inside a
-        # transaction then serializes two saves of the same turn, and the second
-        # one fails the guard below instead of overwriting the first.
+        # One key per task, read first and never written: a backend that locks
+        # each key read inside a transaction (Postgres) then serializes every save
+        # of the task, so two executions of it (recovery racing a worker) cannot
+        # both pass the monotonicity check below against the same latest turn.
+        @store.get(SCOPE, "checkpoint-lock:#{checkpoint.task_id}")
+        # The new turn's own key: two saves of the same turn are serialized too,
+        # and the second one fails the guard below instead of overwriting the first.
         if @store.get(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn))
+          next nil if if_absent
+
           raise ArgumentError, "checkpoint with non-monotonic turn: #{checkpoint.turn} already saved"
         end
 
-        current = latest(checkpoint.task_id)
-        if current && current.turn >= checkpoint.turn
+        # The turn numbers come from the key list; reading the latest record
+        # itself would add a round trip for nothing.
+        current = checkpoint_turns(checkpoint.task_id).max
+        if current && current >= checkpoint.turn
           raise ArgumentError,
-                "checkpoint with non-monotonic turn: #{checkpoint.turn} <= #{current.turn}"
+                "checkpoint with non-monotonic turn: #{checkpoint.turn} <= #{current}"
         end
 
         # Stage 8 of turn n saves turn n+1's checkpoint:
@@ -55,7 +65,7 @@ module Insika
         record["completed_side_effects"] = consolidated
         record["created_at"] ||= timestamp
         @store.set(SCOPE, checkpoint_key(checkpoint.task_id, checkpoint.turn), record)
-        @store.delete(SCOPE, spill_key)
+        @store.delete(SCOPE, spill_key) unless spilled.empty?
 
         to_checkpoint(record)
       end
