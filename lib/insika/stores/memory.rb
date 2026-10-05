@@ -43,10 +43,10 @@ module Insika
         prefix ? keys.select { |k| k.start_with?(prefix) } : keys
       end
 
-      def recent(scope, prefix, limit)
+      def recent(scope, prefix, limit, offset = 0)
         @data[scope].reverse_each.lazy
                     .select { |key, _| prefix.nil? || key.start_with?(prefix) }
-                    .first(limit).map { |key, raw| [key, JSON.parse(raw)] }
+                    .drop(offset).first(limit).map { |key, raw| [key, JSON.parse(raw)] }
       end
 
       def scopes(prefix = nil)

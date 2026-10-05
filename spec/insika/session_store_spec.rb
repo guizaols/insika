@@ -367,4 +367,60 @@ RSpec.describe Insika::SessionStore do
       sqlite&.close
     end
   end
+
+  describe "#recent with offset and #count" do
+    it "pages sessions most recently written first and counts them by key" do
+      %w[a b c].each { |id| sessions.create(id: id) }
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }]) # a is now the newest
+
+      expect(sessions.recent(2).map(&:id)).to eq(%w[a c])
+      expect(sessions.recent(2, offset: 2).map(&:id)).to eq(%w[b])
+      expect(sessions.count).to eq(3)
+    end
+  end
+
+  it "still works over a backend whose #recent takes no offset (the old signature)" do
+    old = Insika::Stores::Memory.new
+    old.singleton_class.send(:define_method, :recent) { |scope, prefix, limit| super(scope, prefix, limit) }
+    store = described_class.new(store: old)
+    store.create(id: "a")
+    expect(store.recent(5).map(&:id)).to eq(%w[a])
+  end
+
+  describe "stats (what the Studio home reads instead of whole sessions)" do
+    it "every write keeps a session's stats: last update, message count, agent" do
+      sessions.create(id: "a", vars: { agent: "bia" })
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }, { "role" => "assistant", "content" => "olá" }])
+      sessions.update_vars("a", { "x" => 1 })
+      sessions.create(id: "b")
+
+      stats = sessions.all_stats.to_h { [_1.id, _1] }
+      expect(stats.keys).to contain_exactly("a", "b")
+      expect([stats["a"].message_count, stats["a"].vars["agent"], stats["a"].updated_at])
+        .to eq([2, "bia", sessions.find("a").updated_at])
+    end
+
+    it "deleting a session deletes its stats" do
+      sessions.create(id: "a")
+      sessions.delete("a")
+      expect(sessions.all_stats).to eq([])
+    end
+
+    it "backfill_stats writes stats for sessions stored before they existed, once" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }])
+      backend.delete(described_class::STATS_SCOPE, "session:a") # as if written by an older version
+
+      expect(sessions.backfill_stats).to eq(1)
+      expect(sessions.backfill_stats).to eq(0)
+      expect(sessions.all_stats.map(&:message_count)).to eq([1])
+    end
+
+    it "backfill_stats removes stats whose session is gone" do
+      sessions.create(id: "a")
+      backend.set(described_class::STATS_SCOPE, "session:ghost", { "updated_at" => "2026-01-01T00:00:00Z", "message_count" => 9 })
+      sessions.backfill_stats
+      expect(sessions.all_stats.map(&:id)).to eq(%w[a])
+    end
+  end
 end

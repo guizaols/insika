@@ -131,18 +131,18 @@ module Insika
 
       # Newest first by the write time (updated_at, indexed with the scope); key
       # breaks a tie. Only the top `limit` values travel.
-      def recent(scope, prefix, limit)
+      def recent(scope, prefix, limit, offset = 0)
         upper = prefix && range_end(prefix)
         rows = with_conn do |c|
           if upper
             c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND key >= $2 AND key < $3 " \
-                          "ORDER BY updated_at DESC, key DESC LIMIT $4", [scope, prefix, upper, limit])
+                          "ORDER BY updated_at DESC, key DESC LIMIT $4 OFFSET $5", [scope, prefix, upper, limit, offset])
           elsif prefix
             c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 AND left(key, length($2)) = $2 " \
-                          "ORDER BY updated_at DESC, key DESC LIMIT $3", [scope, prefix, limit])
+                          "ORDER BY updated_at DESC, key DESC LIMIT $3 OFFSET $4", [scope, prefix, limit, offset])
           else
-            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 ORDER BY updated_at DESC, key DESC LIMIT $2",
-                          [scope, limit])
+            c.exec_params("SELECT key, value FROM insika_kv WHERE scope = $1 ORDER BY updated_at DESC, key DESC LIMIT $2 OFFSET $3",
+                          [scope, limit, offset])
           end
         end
         rows.map { |r| [r["key"], JSON.parse(r["value"])] }

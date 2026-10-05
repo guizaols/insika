@@ -172,7 +172,7 @@ RSpec.describe Studio::App do
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
-                data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
+                data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, session_store: nil, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
@@ -238,7 +238,7 @@ RSpec.describe Studio::App do
       tool_catalog: ToolCatalogDouble.new(tools.map { |t| t.is_a?(Insika::ToolCatalog::Entry) ? t : Insika::ToolCatalog::Entry.new(name: t.name, description: t.description) }),
       tool_store: tool_store,
       memory_store: MemoryStoreDouble.new(memory),
-      session_store: SessionStoreDouble.new(sessions),
+      session_store: session_store || SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
       tool_trace_store: trace_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store, context_trace_store: ctx_trace_store,
@@ -2312,6 +2312,67 @@ RSpec.describe Studio::App do
     expect(body).to match(/agent · bia/)
   end
 
+  describe "home reads only the last 14 days" do
+    def stored(id, days_ago, messages)
+      StoredSession.new(id: id, updated_at: (Time.now.utc - (days_ago * 86_400)).iso8601, vars: { "agent" => "bia" },
+                        messages: Array.new(messages) { { "role" => "user", "content" => "m" } })
+    end
+
+    def kpi(body, label)
+      body[%r{<span class="label">#{label}</span>\s*<span class="value tnum">(\d+)</span>}, 1]&.to_i
+    end
+
+    it "counts messages of the last 14 days and conversations of all time" do
+      app, = build_app(sessions: { "new" => stored("new", 0, 2), "old" => stored("old", 30, 5) })
+      body = login(app).get("/home").body
+
+      expect(kpi(body, "Messages")).to eq(2)
+      expect(kpi(body, "Conversations")).to eq(2)
+      expect(body).to include("last 14 days")
+    end
+
+    # The home reads every session's stats (small) and the session keys, never the
+    # sessions themselves except for its short "recent" list.
+    it "reads stats, not sessions, and ignores stats of sessions that are gone" do
+      sessions = (1..30).map { |i| stored(format("s%02d", i), i <= 20 ? 0 : 20, 2) }
+      store = Class.new(SessionStoreDouble) do
+        define_method(:all_stats) do
+          (sessions.map { |x| Insika::SessionStore::Stat.new(id: x.id, updated_at: x.updated_at, message_count: x.messages.size, vars: x.vars) } +
+            [Insika::SessionStore::Stat.new(id: "ghost", updated_at: Time.now.utc.iso8601, message_count: 50, vars: {})])
+        end
+        define_method(:each_id) { |&b| sessions.map(&:id).each(&b) }
+        define_method(:recent) { |limit, offset: 0| raise "whole sessions only for the recent list" if limit > 8; sessions.first(limit) }
+        define_method(:find) { |id| sessions.find { _1.id == id } }
+        define_method(:all) { raise "the home must not read every session" }
+      end.new({})
+      app, = build_app(session_store: store)
+      body = login(app).get("/home").body
+
+      expect(kpi(body, "Messages")).to eq(40)
+      expect(kpi(body, "Conversations")).to eq(30)
+    end
+
+    # The order the stats were written in does not matter: a backfill writes them
+    # all at once, oldest and newest mixed.
+    it "counts the window right after a backfill of old sessions" do
+      backend = Insika::Stores::Memory.new
+      real = Insika::SessionStore.new(store: backend)
+      old = (Time.now.utc - (30 * 86_400)).iso8601
+      120.times do |i|
+        real.create(id: "old#{i}")
+        backend.set("sessions", "session:old#{i}", backend.get("sessions", "session:old#{i}").merge("updated_at" => old))
+      end
+      3.times { |i| real.create(id: "new#{i}"); real.append_messages("new#{i}", [{ "role" => "user", "content" => "oi" }]) }
+      backend.list(Insika::SessionStore::STATS_SCOPE, "session:old").each { backend.delete(Insika::SessionStore::STATS_SCOPE, _1) }
+      real.backfill_stats
+
+      app, = build_app(session_store: real)
+      body = login(app).get("/home").body
+      expect(kpi(body, "Messages")).to eq(3)
+      expect(kpi(body, "Conversations")).to eq(123)
+    end
+  end
+
   it "home renders the live layer, the 24h sparkline on .chart, and the KPI deltas" do
     sess = StoredSession.new(id: "s-live", updated_at: Time.now.utc.iso8601,
                              vars: { "agent" => "bia" },
@@ -3459,6 +3520,48 @@ RSpec.describe Studio::App do
     expect(res.status).to eq(200)
     expect(res.body).to include("t1")
     expect(res.body).to include("running")
+  end
+
+  describe "tasks list pagination" do
+    def many_tasks(n, agent: "sales")
+      (1..n).to_h do |i|
+        id = format("t%03d", i)
+        [id, TaskDouble.new(id: id, status: :completed, command: { "type" => "send_message", "payload" => { "agent" => agent } },
+                            session_id: "s#{i}", executions: [], updated_at: format("2026-07-21T00:%02d:%02dZ", i / 60, i % 60),
+                            timing: nil)]
+      end
+    end
+
+    it "shows the 50 most recent tasks and links to the next page" do
+      app, = build_app(tasks: many_tasks(120))
+      body = login(app).get("/tasks").body
+      expect(body).to include("t120", "t071")
+      expect(body).not_to include("t070")
+      expect(body).to include('href="/studio/tasks?page=2"')
+      expect(body).not_to include("?page=0")
+    end
+
+    it "a later page shows the rest and links back" do
+      app, = build_app(tasks: many_tasks(120))
+      body = login(app).get("/tasks?page=3").body
+      expect(body).to include("t020", "t001")
+      expect(body).not_to include("t021")
+      expect(body).to include('href="/studio/tasks?page=2"')
+      expect(body).not_to include("page=4")
+    end
+
+    it "an absurd page number shows an empty page, not an error" do
+      app, = build_app(tasks: many_tasks(3))
+      res = login(app).get("/tasks?page=100000000000000000000")
+      expect(res.status).to eq(200)
+      expect(res.body).to include("No tasks on this page")
+    end
+
+    it "keeps the agent filter in the page links" do
+      app, = build_app(tasks: many_tasks(60, agent: "sales").merge(many_tasks(3, agent: "x").transform_keys { "x#{_1}" }))
+      body = login(app).get("/tasks?agent=sales").body
+      expect(body).to include('href="/studio/tasks?agent=sales&amp;page=2"')
+    end
   end
 
   describe "Models dashboard" do

@@ -2159,13 +2159,20 @@ end
     # `?agent=` narrows every number to one agent (the sessions stamp their
     # author in `vars["agent"]`). The live layer (live_home_controller) only
     # repaints what this renders — it never computes its own baseline.
+    HOME_WINDOW_DAYS = 14
+
+    # Everything on the home is read from the sessions of the last 14 days — the
+    # window the charts already show — never from every session ever stored. The
+    # conversations total comes from the keys alone (no record read); with an agent
+    # filter it is the window's, since the agent lives inside the record.
     def render_home
       ps = insika[:profile_source]
       @agent = presence(request.params["agent"])
-      sessions = agent_sessions(all_sessions, @agent)
+      now = Time.now.utc
+      sessions = agent_sessions(window_sessions(now), @agent)
       @counts = {
-        "conversations" => sessions.size,
-        "messages" => sessions.sum { |s| Array(s.messages).size },
+        "conversations" => @agent ? sessions.size : session_total,
+        "messages" => sessions.sum { |s| message_count(s) },
         "agents" => ps ? ps.all.size : 0,
         "skills" => insika[:skill_catalog] ? insika[:skill_catalog].all.size : 0,
         "tools" => insika[:tool_catalog] ? insika[:tool_catalog].all.size : 0,
@@ -2179,10 +2186,12 @@ end
       # matching and the 24h floor was built three hours in the future, silently
       # emptying both charts. Instant comparisons (`cutoff`) never had the bug;
       # calendar arithmetic did.
-      now = Time.now.utc
       cutoff = now - (5 * 60)
-      @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
+      @active_now = sessions.count { |s| (t = utc_time(s.updated_at)) && t >= cutoff }
+      # the window holds stats; the short list needs the sessions themselves
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
+                        .filter_map { |s| s.respond_to?(:messages) ? s : insika[:session_store].find(s.id) }
+      @recent = agent_sessions(recent_sessions(limit: 8), @agent) if @recent.empty?
       @activity = activity_by_day(sessions, days: 14, now: now)
       # 24h sparkline: conversations touched per hour, oldest
       # first — the same session scan, bucketed finer.
@@ -2206,11 +2215,38 @@ end
       store.respond_to?(:all) ? store.all : store.each_id.filter_map { |id| store.find(id) }
     end
 
-    def all_sessions
+    # Sessions touched in the last HOME_WINDOW_DAYS. A store that keeps session
+    # stats gives all of them (a few bytes each) and its session ids: stats of a
+    # session that is gone are ignored, and the ids are the conversations total.
+    # Any other store (an injected double) is read whole and filtered.
+    # ponytail: reads every session's stats; a per-day index if the count of
+    # sessions ever makes that slow.
+    def window_sessions(now)
       store = insika[:session_store]
       return [] unless store
 
-      every_record(store)
+      floor = now - (HOME_WINDOW_DAYS * 86_400)
+      in_window = ->(s) { (t = utc_time(s.updated_at)) && t >= floor }
+      return every_record(store).select(&in_window) unless store.respond_to?(:all_stats)
+
+      ids = store.each_id.to_set
+      @session_total = ids.size
+      store.all_stats.select { |s| ids.include?(s.id) && in_window.call(s) }
+    end
+
+    # A session's message count, whether the home holds the session or its stats.
+    def message_count(session)
+      session.respond_to?(:message_count) ? session.message_count : Array(session.messages).size
+    end
+
+    def session_total
+      return @session_total if @session_total
+
+      store = insika[:session_store]
+      return 0 unless store
+
+      # a paging store counts by key (a Struct double answers #count too, hence #recent)
+      store.respond_to?(:recent) && store.respond_to?(:count) ? store.count : every_record(store).size
     end
 
     def parse_time(str)
@@ -2257,7 +2293,7 @@ end
     def message_delta(sessions, now)
       today = now.to_date
       sum = ->(date) do
-        sessions.sum { |s| (t = utc_time(s.updated_at)) && t.to_date == date ? Array(s.messages).size : 0 }
+        sessions.sum { |s| (t = utc_time(s.updated_at)) && t.to_date == date ? message_count(s) : 0 }
       end
       sum.call(today) - sum.call(today - 1)
     end
@@ -2267,8 +2303,9 @@ end
     # anything else would otherwise bucket by its own zone. `getutc`, not `utc`:
     # the latter mutates the receiver.
     def utc_time(value)
-      t = parse_time(value)
-      t&.getutc
+      # one parse per stamp per request: the home reads tens of thousands of them,
+      # several times each (window, activity, trend)
+      (@utc_times ||= {}).fetch(value) { @utc_times[value] = parse_time(value)&.getutc }
     end
 
     # --- History -------------------------------------------------------------
@@ -2536,13 +2573,40 @@ end
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     # `?agent=` narrows to one agent (the task's command payload stamps it).
+    TASKS_PER_PAGE = 50
+    # ponytail: the agent filter scans this many recent tasks (the payload holds
+    # the agent, not the key); an index by agent if older matches ever matter.
+    TASKS_AGENT_SCAN = 5_000
+
+    # One page of tasks, most recently updated first. Reads one page more than it
+    # shows to know whether there is a next one, never the whole store.
     def render_tasks
       store = insika[:task_store]
       @agent = presence(request.params["agent"])
-      @tasks = store ? every_record(store) : []
-      @tasks = @tasks.select { |t| task_agent(t) == @agent } if @agent
-      @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
+      @page = request.params["page"].to_i.clamp(1, 1_000_000)
+      offset = (@page - 1) * TASKS_PER_PAGE
+      rows =
+        if store.nil? then []
+        elsif @agent
+          recent_tasks(store, TASKS_AGENT_SCAN, 0).select { |t| task_agent(t) == @agent }
+                                                  .drop(offset).first(TASKS_PER_PAGE + 1)
+        else
+          recent_tasks(store, TASKS_PER_PAGE + 1, offset)
+        end
+      @more = rows.size > TASKS_PER_PAGE
+      @tasks = rows.first(TASKS_PER_PAGE)
       view("tasks")
+    end
+
+    def recent_tasks(store, limit, offset)
+      return store.recent(limit, offset: offset) if store.respond_to?(:recent)
+
+      every_record(store).sort_by { |t| t.updated_at.to_s }.reverse.drop(offset).first(limit)
+    end
+
+    def tasks_page_path(page)
+      query = { "agent" => @agent, "page" => (page if page > 1) }.compact
+      query.empty? ? "/studio/tasks" : "/studio/tasks?#{Rack::Utils.build_query(query)}"
     end
 
     def task_agent(task)

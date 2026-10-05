@@ -21,7 +21,19 @@ it is released. Entries land with the pull request that makes the change.
   long it waited for the lock versus how long its commit took.
 
 ### Changed
-
+- `Store#recent` takes an optional fourth argument, `offset`, to read the next page; a
+  backend that implements the three-argument form keeps working (the stores pass
+  `offset` only when paging). SQLite reads a page's keys from the index and then only
+  their values, instead of reading every value in the range to sort it.
+- Studio: the tasks list shows 50 tasks per page, newest first, instead of every task.
+  The home reads only the sessions of the last 14 days; its messages card counts that
+  window (and says so), and the conversations total comes from the keys alone.
+- Every session write also writes a small stats record (last update, message count,
+  agent) in the `session_stats` scope, and the Studio home reads those instead of whole
+  sessions (every stat, filtered by date, so the order they were written in does not
+  matter). Sessions stored before this change have no stats until
+  `scripts/backfill_session_stats.rb` runs once (idempotent, safe with the app running;
+  it also removes stats whose session is gone).
 - RubyLLM is pinned to a newer `2.0.0` commit: streamed responses are priced once when
   read instead of on every chunk, and HTTP connections are shared per process and
   settings. Specs stub LLM HTTP with `stub_llm_http`, because swapping the adapter on an

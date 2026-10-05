@@ -57,7 +57,8 @@ module Insika
       SQL
 
       # The rebuild of a file still in the old layout: one transaction, so a crash
-      # leaves the old table whole.
+      # leaves the old table whole. Rows go in by updated_at so their rowids follow
+      # write order, which #recent reads them in.
       REBUILD = <<~SQL
         CREATE TABLE kv_rowid (
           scope      TEXT    NOT NULL,
@@ -66,7 +67,7 @@ module Insika
           updated_at TEXT    NOT NULL
         );
         INSERT INTO kv_rowid (scope, key, value, updated_at)
-          SELECT scope, key, value, updated_at FROM kv ORDER BY scope, key;
+          SELECT scope, key, value, updated_at FROM kv ORDER BY scope, updated_at, key;
         DROP TABLE kv;
         ALTER TABLE kv_rowid RENAME TO kv;
       SQL
@@ -229,21 +230,32 @@ module Insika
       end
 
       # Newest first by rowid: every write (INSERT OR REPLACE) takes a new, higher
-      # rowid, so rowid order IS write order — no extra column or index. Only the
-      # top `limit` values are read.
-      def recent(scope, prefix, limit)
+      # rowid, so rowid order IS write order — no extra column or index. Two steps:
+      # the page's keys come from the (scope, key) index alone, then only their
+      # values are read. Asking for key and value in one query made SQLite read
+      # every value of the range just to sort it (a temp B-tree over the rows).
+      RECENT_KEYS_PREFIX_SQL = "SELECT key FROM kv WHERE scope = ? AND key >= ? AND key < ? " \
+                               "ORDER BY rowid DESC LIMIT ? OFFSET ?"
+      RECENT_KEYS_SQL = "SELECT key FROM kv WHERE scope = ? ORDER BY rowid DESC LIMIT ? OFFSET ?"
+      VALUES_BATCH = 500 # keys per IN (...) read, well under SQLite's variable limit
+
+      def recent(scope, prefix, limit, offset = 0)
         upper = prefix && range_end(prefix)
-        rows =
-          if upper
-            @db.execute("SELECT key, value FROM kv WHERE scope = ? AND key >= ? AND key < ? ORDER BY rowid DESC LIMIT ?",
-                        [scope, prefix, upper, limit])
-          elsif prefix
-            @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC", [scope])
-               .select { |key, _| key.start_with?(prefix) }.first(limit)
-          else
-            @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC LIMIT ?", [scope, limit])
-          end
-        rows.map { |key, raw| [key, @serializer.parse(decode(raw))] }
+        if prefix && !upper
+          return @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC", [scope])
+                    .select { |key, _| key.start_with?(prefix) }.drop(offset).first(limit)
+                    .map { |key, raw| [key, @serializer.parse(decode(raw))] }
+        end
+
+        keys = (upper ? @db.execute(RECENT_KEYS_PREFIX_SQL, [scope, prefix, upper, limit, offset])
+                      : @db.execute(RECENT_KEYS_SQL, [scope, limit, offset])).flatten
+        values = {}
+        keys.each_slice(VALUES_BATCH) do |batch|
+          @db.execute("SELECT key, value FROM kv WHERE scope = ? AND key IN (#{Array.new(batch.size, '?').join(',')})",
+                      [scope, *batch]).each { |key, raw| values[key] = raw }
+        end
+        # a key deleted between the two reads simply drops out of the page
+        keys.filter_map { |key| (raw = values[key]) && [key, @serializer.parse(decode(raw))] }
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end

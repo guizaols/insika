@@ -352,4 +352,23 @@ RSpec.describe Insika::TaskStore do
       expect { tasks.complete_execution(task.id, outcome: :cancelled) }.to raise_error(ArgumentError)
     end
   end
+
+  describe "#recent" do
+    it "returns a page of tasks, most recently written first" do
+      %w[a b c d].each { |id| tasks.create(id: id, command: command) }
+      tasks.start_execution("b") # b is now the most recently written
+
+      expect(tasks.recent(2).map(&:id)).to eq(%w[b d])
+      expect(tasks.recent(2, offset: 2).map(&:id)).to eq(%w[c a])
+      expect(tasks.recent(2, offset: 4)).to eq([])
+    end
+  end
+
+  it "#recent still works over a backend whose #recent takes no offset" do
+    old = Insika::Stores::Memory.new
+    old.singleton_class.send(:define_method, :recent) { |scope, prefix, limit| super(scope, prefix, limit) }
+    store = described_class.new(store: old)
+    store.create(id: "a", command: command)
+    expect(store.recent(5).map(&:id)).to eq(%w[a])
+  end
 end

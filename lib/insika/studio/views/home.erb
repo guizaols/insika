@@ -24,14 +24,15 @@
   </header>
 
   <div class="kpi-strip">
-    <% [["conversations", "Conversations", @conv_trend],
-        ["messages", "Messages", @msg_trend],
-        ["agents", "Agents", nil],
-        ["skills", "Skills", nil],
-        ["tools", "Tools", nil],
-        ["providers", "LLM providers", nil]].each do |key, label, trend| %>
+    <% window = "last 14 days" %>
+    <% [["conversations", "Conversations", @conv_trend, (window if @agent)],
+        ["messages", "Messages", @msg_trend, window],
+        ["agents", "Agents", nil, nil],
+        ["skills", "Skills", nil, nil],
+        ["tools", "Tools", nil, nil],
+        ["providers", "LLM providers", nil, nil]].each do |key, label, trend, sub| %>
       <% delta = (trend && !trend.zero?) ? "#{trend.positive? ? '+' : '-'}#{trend.abs}" : nil %>
-      <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta }) %>
+      <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta, sub: sub }) %>
     <% end %>
   </div>
 
