@@ -2667,7 +2667,7 @@ module Insika
       # session only when the turn is from a persisted session; one-shot/history
       # do not persist TO THE SESSION (but always checkpoint). `session: false` is
       # the edge-blocked halt (see complete_with_halt).
-      @session_store.append_messages(task.session_id, new_messages) if session && task.session_id
+      @session_store.append_messages(task.session_id, new_messages, agent: profile.id) if session && task.session_id
 
       # closes the Execution and moves to :completed in one write.
       @task_store.complete_execution(task.id, outcome: :completed)
