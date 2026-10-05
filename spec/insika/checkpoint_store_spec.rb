@@ -58,6 +58,73 @@ RSpec.describe Insika::CheckpointStore do
     end
   end
 
+  describe "store calls per save" do
+    def calls_during
+      calls = Hash.new(0)
+      %i[get set delete list].each do |op|
+        backend.define_singleton_method(op) { |*args| calls[op] += 1; super(*args) }
+      end
+      yield
+      calls
+    end
+
+    it "a save reads only the turn list to check monotonicity, never the latest record" do
+      checkpoints.save(checkpoint(turn: 1))
+      calls = calls_during { checkpoints.save(checkpoint(turn: 2)) }
+      # the task's lock key + own key + spill key, one list, the write; no read of
+      # the latest checkpoint record
+      expect(calls).to eq(get: 3, list: 1, set: 1)
+    end
+
+    it "a save deletes the spill key only when there was one to absorb" do
+      checkpoints.save(checkpoint(turn: 1))
+      checkpoints.record_side_effect("t", turn: 1, tool_call_id: "c1")
+      calls = calls_during { checkpoints.save(checkpoint(turn: 2)) }
+      expect(calls[:delete]).to eq(1)
+      expect(checkpoints.find("t", turn: 2).completed_side_effects).to eq(["c1"])
+    end
+
+    it "if_absent: true returns nil instead of raising when the turn already exists" do
+      first = checkpoints.save(checkpoint(turn: 1, messages: [{ "role" => "user", "content" => "a" }]))
+      expect(checkpoints.save(checkpoint(turn: 1, messages: [{ "role" => "user", "content" => "b" }]), if_absent: true)).to be_nil
+      expect(checkpoints.find("t", turn: 1).messages).to eq(first.messages)
+    end
+
+    it "if_absent: true still rejects a lower turn" do
+      checkpoints.save(checkpoint(turn: 2))
+      expect { checkpoints.save(checkpoint(turn: 1), if_absent: true) }.to raise_error(ArgumentError)
+    end
+  end
+
+  # Two live executions of one task in different processes (recovery racing a
+  # worker) must not both pass the monotonicity check against the same latest turn.
+  context "concurrent saves of one task on Postgres", if: ENV["PG_TEST_URL"] do
+    let(:url) { ENV.fetch("PG_TEST_URL") }
+
+    before { Insika::Stores::Postgres.new(url: url).tap { |s| s.send(:with_conn) { |c| c.exec("TRUNCATE insika_kv") } }.close }
+
+    it "a save of a later turn checks only after an in-flight save of the task committed" do
+      slow = Insika::Stores::Postgres.new(url: url)
+      fast = Insika::Stores::Postgres.new(url: url)
+      described_class.new(store: fast).save(checkpoint(turn: 1))
+      slow.define_singleton_method(:list) { |*a| r = super(*a); Async::Task.current.sleep(0.3); r }
+      seen_by_fast = []
+      fast.define_singleton_method(:list) { |*a| r = super(*a); seen_by_fast << r.map { _1.split(":").last.to_i }.max; r }
+
+      Sync do |top|
+        b = top.async { described_class.new(store: slow).save(checkpoint(turn: 2)) }
+        top.sleep(0.05)
+        a = top.async { described_class.new(store: fast).save(checkpoint(turn: 3)) }
+        [b, a].each(&:wait)
+      end
+
+      expect(seen_by_fast.last).to eq(2)
+    ensure
+      slow&.close
+      fast&.close
+    end
+  end
+
   describe "#save_continuation" do
     let(:continuation) do
       { "messages" => [{ "role" => "assistant", "content" => "Checking" }],

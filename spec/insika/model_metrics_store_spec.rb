@@ -26,6 +26,27 @@ RSpec.describe "Durable model metrics" do
         }.merge(fields.transform_keys(&:to_s)))
       end
 
+      it "record_many folds a turn's events in one transaction, same report as one by one" do
+        events = [
+          ["llm_request", "r1", { duration_ms: 12, status: "succeeded" }],
+          ["llm_usage", "r1", { status: "succeeded", cost: 0.5, input_tokens: 8, output_tokens: 2 }],
+          ["llm_request", "r2", { duration_ms: 30, status: "succeeded" }],
+          ["llm_usage", "r2", { status: "failed", cost: nil }],
+          ["llm_usage", "r2", { status: "succeeded", cost: 0.25, input_tokens: 4 }]
+        ].map { |type, id, f| { "type" => type, "request_id" => id, "at" => now.iso8601, "provider" => "deepseek", "model" => "flash" }.merge(f.transform_keys(&:to_s)) }
+        other = Insika::Stores::Memory.new
+        Insika::TaskStore.new(store: other).create(id: "t", command: {})
+        one = Insika::ModelMetricsStore.new(store: other)
+        events.each { one.record(task_id: "t", entry: _1) }
+        tx = 0
+        @backend.define_singleton_method(:transaction) { |&b| tx += 1; super(&b) }
+
+        store.record_many(task_id: "t", entries: events + [{ "type" => "other", "request_id" => "x" }, { "type" => "llm_usage" }])
+
+        expect(tx).to eq(1)
+        expect(store.report(now: now)).to eq(one.report(now: now))
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,

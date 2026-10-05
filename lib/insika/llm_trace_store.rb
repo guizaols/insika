@@ -24,15 +24,21 @@ module Insika
       end
     end
 
-    def record(task_id:, entry:)
+    def record(task_id:, entry:) = record_many(task_id: task_id, entries: [entry])
+
+    # A turn's events in one transaction: one read and one write of the trace,
+    # instead of one transaction per event.
+    def record_many(task_id:, entries:)
+      return if entries.empty?
+
       @store.transaction do
         next unless @store.get(TaskStore::SCOPE, "#{TaskStore::KEY_PREFIX}#{task_id}")
 
         trace = for_task(task_id)
-        entries = trace["entries"] + [self.class.sanitize(entry)]
+        all = trace["entries"] + entries.map { |entry| self.class.sanitize(entry) }
         @store.set(SCOPE, task_id.to_s, {
-          "entries" => entries.last(MAX_PER_TASK),
-          "truncated" => trace["truncated"] || entries.size > MAX_PER_TASK
+          "entries" => all.last(MAX_PER_TASK),
+          "truncated" => trace["truncated"] || all.size > MAX_PER_TASK
         })
       end
     rescue StandardError
