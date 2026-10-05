@@ -172,7 +172,7 @@ RSpec.describe Studio::App do
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
                 agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
-                data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, settings: nil, llm_providers: [],
+                data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, session_store: nil, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
@@ -238,7 +238,7 @@ RSpec.describe Studio::App do
       tool_catalog: ToolCatalogDouble.new(tools.map { |t| t.is_a?(Insika::ToolCatalog::Entry) ? t : Insika::ToolCatalog::Entry.new(name: t.name, description: t.description) }),
       tool_store: tool_store,
       memory_store: MemoryStoreDouble.new(memory),
-      session_store: SessionStoreDouble.new(sessions),
+      session_store: session_store || SessionStoreDouble.new(sessions),
       settings_store: settings_store, llm_provider_store: provider_store,
       mcp_store: mcp_store, system_file_store: system_file_store,
       tool_trace_store: trace_store, llm_trace_store: llm_trace_store, model_metrics_store: model_metrics_store, context_trace_store: ctx_trace_store,
@@ -2310,6 +2310,42 @@ RSpec.describe Studio::App do
     expect(body).to include("marker-row")
     expect(body).to include("ghost-pill")
     expect(body).to match(/agent · bia/)
+  end
+
+  describe "home reads only the last 14 days" do
+    def stored(id, days_ago, messages)
+      StoredSession.new(id: id, updated_at: (Time.now.utc - (days_ago * 86_400)).iso8601, vars: { "agent" => "bia" },
+                        messages: Array.new(messages) { { "role" => "user", "content" => "m" } })
+    end
+
+    def kpi(body, label)
+      body[%r{<span class="label">#{label}</span>\s*<span class="value tnum">(\d+)</span>}, 1]&.to_i
+    end
+
+    it "counts messages of the last 14 days and conversations of all time" do
+      app, = build_app(sessions: { "new" => stored("new", 0, 2), "old" => stored("old", 30, 5) })
+      body = login(app).get("/home").body
+
+      expect(kpi(body, "Messages")).to eq(2)
+      expect(kpi(body, "Conversations")).to eq(2)
+      expect(body).to include("last 14 days")
+    end
+
+    it "walks a paged session store newest first and stops past the window" do
+      sessions = (1..4800).map { |i| stored(format("s%04d", i), i <= 4400 ? 0 : 20, 1) } # newest first
+      paged = Class.new(SessionStoreDouble) do
+        attr_reader :offsets
+        define_method(:recent) { |limit, offset: 0| (@offsets ||= []) << offset; sessions.drop(offset).first(limit) }
+        define_method(:count) { sessions.size }
+        define_method(:each_id) { |*| raise "the home must not scan every session" }
+      end.new(sessions.to_h { [_1.id, _1] })
+      app, = build_app(session_store: paged)
+      body = login(app).get("/home").body
+
+      expect(kpi(body, "Messages")).to eq(4400)
+      expect(kpi(body, "Conversations")).to eq(4800)
+      expect(paged.offsets).to eq([0, 2000, 4000])
+    end
   end
 
   it "home renders the live layer, the 24h sparkline on .chart, and the KPI deltas" do

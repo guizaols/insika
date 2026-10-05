@@ -198,9 +198,13 @@ module Insika
 
     # -> [Session] the `limit` most recently written sessions, newest first, from
     # one read (Store#recent) instead of reading every session to sort them.
-    def recent(limit)
-      @store.recent(SCOPE, KEY_PREFIX, limit).map { |_, record| to_session(record) }
+    # `offset` skips that many of the newest (the next page).
+    def recent(limit, offset: 0)
+      @store.recent(SCOPE, KEY_PREFIX, limit, offset).map { |_, record| to_session(record) }
     end
+
+    # -> Integer sessions stored, from the keys alone (no record is read).
+    def count = @store.list(SCOPE, KEY_PREFIX).size
 
     def each_id
       return enum_for(:each_id) unless block_given?
