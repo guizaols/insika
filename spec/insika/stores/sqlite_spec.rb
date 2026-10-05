@@ -61,6 +61,24 @@ RSpec.describe Insika::Stores::SQLite do
       expect(plan).to match(/SEARCH kv USING COVERING INDEX kv_scope_key \(scope=\? AND key>\? AND key<\?\)/)
     end
 
+    # Ordering a page by write order must not read every value of the range: the
+    # page's keys come from the index alone, and only their values are read.
+    it "finds a recent page's keys from the index alone" do
+      plan = store.instance_variable_get(:@db)
+                  .execute("EXPLAIN QUERY PLAN #{described_class::RECENT_KEYS_PREFIX_SQL}", ["s", "a:", "a;", 10, 0])
+                  .map(&:last).join(" ")
+
+      expect(plan).to match(/USING COVERING INDEX kv_scope_key/)
+    end
+
+    it "a recent page larger than one value batch keeps write order" do
+      600.times { |i| store.set("s", format("p:%04d", i), i) }
+      page = store.recent("s", "p:", 550, 10)
+      expect(page.size).to eq(550)
+      expect(page.first).to eq(["p:0589", 589])
+      expect(page.last).to eq(["p:0040", 40])
+    end
+
     # A store call holds the GVL for its whole duration, so a slow one stalls every
     # fiber in the process. The log names the call, the scope and the caller.
     it "logs store calls at or above slow_ms with the caller, and nothing when off" do

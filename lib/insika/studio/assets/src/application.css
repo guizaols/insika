@@ -1131,6 +1131,7 @@
 
   /* ── List filter bar ─────────────────────────────────────────── */
   .filter-bar { display:flex; align-items:center; gap:.7rem; margin:0 0 1rem; }
+  .pager { display:flex; justify-content:flex-end; gap:.5rem; margin:1rem 0 0; }
   input[type=search].filter-input {
     display:block; flex:1; margin:0; font:inherit; font-size:var(--text-sm); padding:.32rem .8rem .32rem 2rem; min-height:2rem;
     border:1px solid var(--line-2); border-radius:var(--radius); background-color:var(--surface-1); background-repeat:no-repeat; background-position:.65rem 50%;

@@ -237,6 +237,12 @@ module Insika
       @store.entries(SCOPE, KEY_PREFIX).map { |_, record| to_task(record) }
     end
 
+    # -> [Task] one page, most recently written first (every status change
+    # rewrites the task, so this is "most recently updated"). Reads only the page.
+    def recent(limit, offset: 0)
+      @store.recent(SCOPE, KEY_PREFIX, limit, offset).map { |_, record| to_task(record) }
+    end
+
     def each_id
       return enum_for(:each_id) unless block_given?
 

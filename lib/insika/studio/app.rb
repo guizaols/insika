@@ -2536,13 +2536,40 @@ end
 
     # Task list, most-recently-updated first. Empty-state if no store was injected.
     # `?agent=` narrows to one agent (the task's command payload stamps it).
+    TASKS_PER_PAGE = 50
+    # ponytail: the agent filter scans this many recent tasks (the payload holds
+    # the agent, not the key); an index by agent if older matches ever matter.
+    TASKS_AGENT_SCAN = 5_000
+
+    # One page of tasks, most recently updated first. Reads one page more than it
+    # shows to know whether there is a next one, never the whole store.
     def render_tasks
       store = insika[:task_store]
       @agent = presence(request.params["agent"])
-      @tasks = store ? every_record(store) : []
-      @tasks = @tasks.select { |t| task_agent(t) == @agent } if @agent
-      @tasks = @tasks.sort_by { |t| t.updated_at.to_s }.reverse
+      @page = [request.params["page"].to_i, 1].max
+      offset = (@page - 1) * TASKS_PER_PAGE
+      rows =
+        if store.nil? then []
+        elsif @agent
+          recent_tasks(store, TASKS_AGENT_SCAN, 0).select { |t| task_agent(t) == @agent }
+                                                  .drop(offset).first(TASKS_PER_PAGE + 1)
+        else
+          recent_tasks(store, TASKS_PER_PAGE + 1, offset)
+        end
+      @more = rows.size > TASKS_PER_PAGE
+      @tasks = rows.first(TASKS_PER_PAGE)
       view("tasks")
+    end
+
+    def recent_tasks(store, limit, offset)
+      return store.recent(limit, offset: offset) if store.respond_to?(:recent)
+
+      every_record(store).sort_by { |t| t.updated_at.to_s }.reverse.drop(offset).first(limit)
+    end
+
+    def tasks_page_path(page)
+      query = { "agent" => @agent, "page" => (page if page > 1) }.compact
+      query.empty? ? "/studio/tasks" : "/studio/tasks?#{Rack::Utils.build_query(query)}"
     end
 
     def task_agent(task)
