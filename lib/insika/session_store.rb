@@ -20,6 +20,7 @@ module Insika
     include Coercion
 
     SCOPE = "sessions"
+    STATS_SCOPE = "session_stats" # one small record per session, see #write
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
@@ -56,7 +57,7 @@ module Insika
         "created_at" => now,
         "updated_at" => now
       }
-      @store.set(SCOPE, key, record)
+      write(record)
       to_session(record)
     end
 
@@ -84,7 +85,7 @@ module Insika
                  .map { |msg| stamp(deep_stringify(msg)) }
       record["messages"] += incoming
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -94,7 +95,7 @@ module Insika
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -111,7 +112,7 @@ module Insika
       # presentation tool joins on in a LATER turn. Absent until a card arrives.
       ev["cards"] = EvidenceLedger.merge_cards(ev["cards"], cards) unless Array(cards).empty?
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -138,7 +139,7 @@ module Insika
       value = Coercion.presence(Coercion.utf8(value.to_s))
       value ? briefing["fields"][field.to_s] = value : briefing["fields"].delete(field.to_s)
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -149,7 +150,7 @@ module Insika
       briefing = record["briefing"] ||= { "fields" => {}, "next_step" => nil }
       briefing["next_step"] = Coercion.presence(Coercion.utf8(text.to_s))
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
@@ -179,12 +180,13 @@ module Insika
         "at" => timestamp
       }.compact
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      write(record)
       to_session(record)
     end
 
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
+      @store.delete(STATS_SCOPE, key_for(id))
       @store.delete(SCOPE, key_for(id))
     end
 
@@ -208,6 +210,28 @@ module Insika
     # -> Integer sessions stored, from the keys alone (no record is read).
     def count = @store.list(SCOPE, KEY_PREFIX).size
 
+    # What a dashboard needs of a session without its messages: a few bytes per
+    # session, written with it, instead of the whole record (messages included).
+    Stat = Data.define(:id, :updated_at, :message_count, :vars)
+
+    # -> [Stat] the `limit` most recently written sessions' stats, newest first.
+    def recent_stats(limit, offset: 0)
+      rows = offset.zero? ? @store.recent(STATS_SCOPE, KEY_PREFIX, limit) : @store.recent(STATS_SCOPE, KEY_PREFIX, limit, offset)
+      rows.map { |key, stat| to_stat(key, stat) }
+    end
+
+    # Writes the stats of every session that has none (sessions stored before
+    # stats existed). Idempotent. -> number of stats written.
+    def backfill_stats
+      have = @store.list(STATS_SCOPE, KEY_PREFIX).to_set
+      missing = @store.list(SCOPE, KEY_PREFIX).reject { |key| have.include?(key) }
+      missing.count do |key|
+        record = @store.get(SCOPE, key) or next false
+        @store.set(STATS_SCOPE, key, stats_of(record))
+        true
+      end
+    end
+
     def each_id
       return enum_for(:each_id) unless block_given?
 
@@ -217,6 +241,23 @@ module Insika
     end
 
     private
+
+    # The one write of a session record: the record and its stats, side by side.
+    def write(record)
+      key = key_for(record["id"])
+      @store.set(SCOPE, key, record)
+      @store.set(STATS_SCOPE, key, stats_of(record))
+    end
+
+    def stats_of(record)
+      { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
+        "agent" => (record["vars"] || {})["agent"] }
+    end
+
+    def to_stat(key, stat)
+      Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
+               message_count: stat["message_count"].to_i, vars: { "agent" => stat["agent"] }.compact)
+    end
 
     def key_for(id)
       "#{KEY_PREFIX}#{id}"

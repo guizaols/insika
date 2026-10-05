@@ -2331,31 +2331,40 @@ RSpec.describe Studio::App do
       expect(body).to include("last 14 days")
     end
 
-    it "a session seen on two pages (a write between reads) counts once" do
-      sessions = (1..2001).map { |i| stored(format("s%04d", i), 0, 1) }
-      paged = Class.new(SessionStoreDouble) do
-        # the second page starts one row early, as if a session was written in between
-        define_method(:recent) { |limit, offset: 0| sessions.drop(offset.zero? ? 0 : offset - 1).first(limit) }
-        define_method(:count) { sessions.size }
-      end.new({})
-      app, = build_app(session_store: paged)
-      expect(kpi(login(app).get("/home").body, "Messages")).to eq(2001)
-    end
-
-    it "walks a paged session store newest first and stops past the window" do
-      sessions = (1..4800).map { |i| stored(format("s%04d", i), i <= 4400 ? 0 : 20, 1) } # newest first
-      paged = Class.new(SessionStoreDouble) do
+    # A store with stats: the home reads them, a page at a time, and reads whole
+    # sessions only for its short "recent" list.
+    def stats_store(sessions, shift: false)
+      Class.new(SessionStoreDouble) do
         attr_reader :offsets
-        define_method(:recent) { |limit, offset: 0| (@offsets ||= []) << offset; sessions.drop(offset).first(limit) }
+        define_method(:recent_stats) do |limit, offset: 0|
+          (@offsets ||= []) << offset
+          sessions.drop(shift && offset.positive? ? offset - 1 : offset).first(limit).map { |s| stat(s) }
+        end
+        define_method(:recent) do |limit, offset: 0|
+          raise "the home must read whole sessions only for its recent list" if limit > 8
+
+          sessions.first(limit)
+        end
         define_method(:count) { sessions.size }
         define_method(:each_id) { |*| raise "the home must not scan every session" }
-      end.new(sessions.to_h { [_1.id, _1] })
-      app, = build_app(session_store: paged)
+      end.tap { |k| k.define_method(:stat) { |s| Insika::SessionStore::Stat.new(id: s.id, updated_at: s.updated_at, message_count: s.messages.size, vars: s.vars) } }.new({})
+    end
+
+    it "a session seen on two pages (a write between reads) counts once" do
+      sessions = (1..10_001).map { |i| stored(format("s%05d", i), 0, 1) }
+      app, = build_app(session_store: stats_store(sessions, shift: true))
+      expect(kpi(login(app).get("/home").body, "Messages")).to eq(10_001)
+    end
+
+    it "walks the session stats newest first and stops past the window" do
+      sessions = (1..22_000).map { |i| stored(format("s%05d", i), i <= 21_000 ? 0 : 20, 1) } # newest first
+      store = stats_store(sessions)
+      app, = build_app(session_store: store)
       body = login(app).get("/home").body
 
-      expect(kpi(body, "Messages")).to eq(4400)
-      expect(kpi(body, "Conversations")).to eq(4800)
-      expect(paged.offsets).to eq([0, 2000, 4000])
+      expect(kpi(body, "Messages")).to eq(21_000)
+      expect(kpi(body, "Conversations")).to eq(22_000)
+      expect(store.offsets).to eq([0, 10_000, 20_000])
     end
   end
 

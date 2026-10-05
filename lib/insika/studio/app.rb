@@ -2160,7 +2160,8 @@ end
     # author in `vars["agent"]`). The live layer (live_home_controller) only
     # repaints what this renders — it never computes its own baseline.
     HOME_WINDOW_DAYS = 14
-    HOME_PAGE = 2_000
+    HOME_PAGE = 2_000          # whole sessions per read, when a store keeps no stats
+    HOME_STATS_PAGE = 10_000   # stats are a few bytes each: fewer, larger reads
 
     # Everything on the home is read from the sessions of the last 14 days — the
     # window the charts already show — never from every session ever stored. The
@@ -2173,7 +2174,7 @@ end
       sessions = agent_sessions(window_sessions(now), @agent)
       @counts = {
         "conversations" => @agent ? sessions.size : session_total,
-        "messages" => sessions.sum { |s| Array(s.messages).size },
+        "messages" => sessions.sum { |s| message_count(s) },
         "agents" => ps ? ps.all.size : 0,
         "skills" => insika[:skill_catalog] ? insika[:skill_catalog].all.size : 0,
         "tools" => insika[:tool_catalog] ? insika[:tool_catalog].all.size : 0,
@@ -2188,8 +2189,10 @@ end
       # emptying both charts. Instant comparisons (`cutoff`) never had the bug;
       # calendar arithmetic did.
       cutoff = now - (5 * 60)
-      @active_now = sessions.count { |s| (t = parse_time(s.updated_at)) && t >= cutoff }
+      @active_now = sessions.count { |s| (t = utc_time(s.updated_at)) && t >= cutoff }
+      # the window holds stats; the short list needs the sessions themselves
       @recent = sessions.sort_by { |s| s.updated_at.to_s }.reverse.first(8)
+                        .filter_map { |s| s.respond_to?(:messages) ? s : insika[:session_store].find(s.id) }
       @recent = agent_sessions(recent_sessions(limit: 8), @agent) if @recent.empty?
       @activity = activity_by_day(sessions, days: 14, now: now)
       # 24h sparkline: conversations touched per hour, oldest
@@ -2215,28 +2218,40 @@ end
     end
 
     # Sessions touched in the last HOME_WINDOW_DAYS, read newest first a page at a
-    # time and stopping at the first page with none left in the window. A store
-    # without paging (an injected double) is read whole and filtered.
+    # time and stopping at the first page with none left in the window: their
+    # stats when the store keeps them (no messages read), else the sessions. A
+    # store without paging (an injected double) is read whole and filtered.
     def window_sessions(now)
       store = insika[:session_store]
       return [] unless store
 
       floor = now - (HOME_WINDOW_DAYS * 86_400)
       in_window = ->(s) { (t = utc_time(s.updated_at)) && t >= floor }
-      return every_record(store).select(&in_window) unless store.respond_to?(:recent)
+      fetch =
+        if store.respond_to?(:recent_stats) then ->(offset) { store.recent_stats(HOME_STATS_PAGE, offset: offset) }
+        elsif store.respond_to?(:recent) then ->(offset) { store.recent(HOME_PAGE, offset: offset) }
+        end
+      return every_record(store).select(&in_window) unless fetch
+
+      size = store.respond_to?(:recent_stats) ? HOME_STATS_PAGE : HOME_PAGE
 
       found = []
       offset = 0
       loop do
-        page = store.recent(HOME_PAGE, offset: offset)
+        page = fetch.call(offset)
         hits = page.select(&in_window)
         found.concat(hits)
-        break if page.size < HOME_PAGE || hits.empty?
+        break if page.size < size || hits.empty?
 
-        offset += HOME_PAGE
+        offset += size
       end
       # pages are separate reads: a write between two of them shifts a row onto both
       found.uniq(&:id)
+    end
+
+    # A session's message count, whether the home holds the session or its stats.
+    def message_count(session)
+      session.respond_to?(:message_count) ? session.message_count : Array(session.messages).size
     end
 
     def session_total
@@ -2291,7 +2306,7 @@ end
     def message_delta(sessions, now)
       today = now.to_date
       sum = ->(date) do
-        sessions.sum { |s| (t = utc_time(s.updated_at)) && t.to_date == date ? Array(s.messages).size : 0 }
+        sessions.sum { |s| (t = utc_time(s.updated_at)) && t.to_date == date ? message_count(s) : 0 }
       end
       sum.call(today) - sum.call(today - 1)
     end
@@ -2301,8 +2316,9 @@ end
     # anything else would otherwise bucket by its own zone. `getutc`, not `utc`:
     # the latter mutates the receiver.
     def utc_time(value)
-      t = parse_time(value)
-      t&.getutc
+      # one parse per stamp per request: the home reads tens of thousands of them,
+      # several times each (window, activity, trend)
+      (@utc_times ||= {}).fetch(value) { @utc_times[value] = parse_time(value)&.getutc }
     end
 
     # --- History -------------------------------------------------------------

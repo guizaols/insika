@@ -386,4 +386,39 @@ RSpec.describe Insika::SessionStore do
     store.create(id: "a")
     expect(store.recent(5).map(&:id)).to eq(%w[a])
   end
+
+  describe "stats (what the Studio home reads instead of whole sessions)" do
+    it "every write keeps a session's stats: last update, message count, agent" do
+      sessions.create(id: "a", vars: { agent: "bia" })
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }, { "role" => "assistant", "content" => "olá" }])
+      sessions.update_vars("a", { "x" => 1 })
+      sessions.create(id: "b")
+
+      stats = sessions.recent_stats(10)
+      expect(stats.map(&:id)).to eq(%w[b a])
+      a = stats.last
+      expect([a.message_count, a.vars["agent"], a.updated_at]).to eq([2, "bia", sessions.find("a").updated_at])
+    end
+
+    it "pages stats newest first" do
+      %w[a b c].each { |id| sessions.create(id: id) }
+      expect(sessions.recent_stats(2, offset: 2).map(&:id)).to eq(%w[a])
+    end
+
+    it "deleting a session deletes its stats" do
+      sessions.create(id: "a")
+      sessions.delete("a")
+      expect(sessions.recent_stats(10)).to eq([])
+    end
+
+    it "backfill_stats writes stats for sessions stored before they existed, once" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "oi" }])
+      backend.delete(described_class::STATS_SCOPE, "session:a") # as if written by an older version
+
+      expect(sessions.backfill_stats).to eq(1)
+      expect(sessions.backfill_stats).to eq(0)
+      expect(sessions.recent_stats(10).map(&:message_count)).to eq([1])
+    end
+  end
 end
