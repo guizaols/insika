@@ -67,8 +67,9 @@ module Insika
     # (filtered like #list), newest first: a "recent" list without reading the
     # whole scope. A backend that knows its write order answers it directly;
     # this default approximates it by each value's "updated_at", when it has one.
-    def recent(scope, prefix, limit)
-      entries(scope, prefix).sort_by { |_, v| v.is_a?(Hash) ? v["updated_at"].to_s : "" }.reverse.first(limit)
+    # `offset` skips that many of the newest (the next page).
+    def recent(scope, prefix, limit, offset = 0)
+      entries(scope, prefix).sort_by { |_, v| v.is_a?(Hash) ? v["updated_at"].to_s : "" }.reverse.drop(offset).first(limit)
     end
 
     # -> the block's result; atomic if the backend supports it

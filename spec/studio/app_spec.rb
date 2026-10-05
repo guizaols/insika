@@ -3461,6 +3461,41 @@ RSpec.describe Studio::App do
     expect(res.body).to include("running")
   end
 
+  describe "tasks list pagination" do
+    def many_tasks(n, agent: "sales")
+      (1..n).to_h do |i|
+        id = format("t%03d", i)
+        [id, TaskDouble.new(id: id, status: :completed, command: { "type" => "send_message", "payload" => { "agent" => agent } },
+                            session_id: "s#{i}", executions: [], updated_at: format("2026-07-21T00:%02d:%02dZ", i / 60, i % 60),
+                            timing: nil)]
+      end
+    end
+
+    it "shows the 50 most recent tasks and links to the next page" do
+      app, = build_app(tasks: many_tasks(120))
+      body = login(app).get("/tasks").body
+      expect(body).to include("t120", "t071")
+      expect(body).not_to include("t070")
+      expect(body).to include('href="/studio/tasks?page=2"')
+      expect(body).not_to include("?page=0")
+    end
+
+    it "a later page shows the rest and links back" do
+      app, = build_app(tasks: many_tasks(120))
+      body = login(app).get("/tasks?page=3").body
+      expect(body).to include("t020", "t001")
+      expect(body).not_to include("t021")
+      expect(body).to include('href="/studio/tasks?page=2"')
+      expect(body).not_to include("page=4")
+    end
+
+    it "keeps the agent filter in the page links" do
+      app, = build_app(tasks: many_tasks(60, agent: "sales").merge(many_tasks(3, agent: "x").transform_keys { "x#{_1}" }))
+      body = login(app).get("/tasks?agent=sales").body
+      expect(body).to include('href="/studio/tasks?agent=sales&amp;page=2"')
+    end
+  end
+
   describe "Models dashboard" do
     let(:metrics) do
       {
