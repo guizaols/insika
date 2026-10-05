@@ -128,7 +128,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       session_store.create(id: "s1")
       executor = build_executor
       order = []
-      allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a| order << :checkpoint; m.call(*a) }
+      allow(checkpoint_store).to receive(:save).and_wrap_original { |m, *a, **kw| order << :checkpoint; m.call(*a, **kw) }
       allow(session_store).to receive(:append_messages).and_wrap_original { |m, *a| order << :session; m.call(*a) }
       allow(task_store).to receive(:start_execution).and_wrap_original { |m, id| order << :start; m.call(id) }
       allow(task_store).to receive(:complete_execution).and_wrap_original do |m, id, **kw|

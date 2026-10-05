@@ -2543,13 +2543,11 @@ module Insika
     # (does not re-save — the CheckpointStore's monotonicity would raise). It emits
     # NO event (:checkpoint_created is stage 8's only) and touches no side-effects.
     def save_initial_checkpoint(task, profile, state)
-      return unless @checkpoint_store.find(task.id, turn: state.turn).nil?
-
       @checkpoint_store.save(Insika::Checkpoint.new(
                                task_id: task.id, turn: state.turn, session_id: task.session_id,
                                agent_id: profile.id, messages: flatten_history(state.context.history),
                                completed_side_effects: [], created_at: Time.now.utc.iso8601
-                             ))
+                             ), if_absent: true)
     end
 
     # GRACEFUL halt: a Middleware short-circuited with a safe reply.
