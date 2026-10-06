@@ -100,6 +100,8 @@ module Insika
       spec(name: "INSIKA_DB", type: :path, description: "SQLite path; durable config+state. Unset -> ephemeral memory."),
       spec(name: "INSIKA_BIND", description: "Bind address for the transport server."),
       spec(name: "INSIKA_PORT", type: :integer, description: "Port for the transport server."),
+      spec(name: "INSIKA_CONVERSATIONS_URL", type: :url, description: "Required central history URL for shared_conversations profiles."),
+      spec(name: "INSIKA_CONVERSATIONS_TOKEN", secret: true, description: "Scoped central history bearer token."),
       spec(name: "INSIKA_PUBLIC_URL", type: :url, description: "Public base URL (A2A agent card, links)."),
       spec(name: "INSIKA_ENV", description: "Environment name shown in the Studio (falls back to RACK_ENV)."),
       spec(name: "INSIKA_A2A_AGENT", description: "Agent id to expose over inbound A2A (opt-in)."),

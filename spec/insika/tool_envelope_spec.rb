@@ -60,6 +60,20 @@ RSpec.describe Insika::ToolEnvelope do
                               skip_side_effects: skip_side_effects, trace_recorder: trace_recorder)
   end
 
+  it "records full allowed shared results before evidence and fencing clip the prompt" do
+    st = state_for(current_tool_call: Struct.new(:id).new('full-call'))
+    st.instance_variable_set(:@profile, st.profile.with(fencing: true))
+    st.fence_max_chars = 50
+    st.shared_conversations = double('shared bridge')
+    tool = EnvEchoTool.new
+    full = {"result"=>"x"*10_000}
+    allow(tool).to receive(:call).and_return(full)
+    expect(st.shared_conversations).to receive(:record_tool_result).with(task: st.task, call_id: 'full-call', result: full).ordered
+    expect(st.shared_conversations).to receive(:record_tool_result).with(task: st.task, call_id: 'full-call', result: anything).ordered
+    projected = Sync { envelope(tool,st).call({}) }
+    expect(projected['result'].length).to eq(50)
+  end
+
   describe "per-call timeout" do
     it "timeout fired -> returns a serialized error to the model, does NOT propagate (the turn continues)" do
       tool = EnvSleepyTool.new

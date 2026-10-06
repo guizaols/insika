@@ -427,6 +427,7 @@ module Insika
         tenant = req_tenant(req)
         ensure_session(parsed[:user], tenant: tenant)
         payload = { agent: parsed[:agent], session_id: parsed[:user], message: parsed[:message] }
+        payload.merge!(parsed.slice(:shared_conversation, :user_text))
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
         payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
         payload[:parts] = parsed[:parts] if parsed[:parts] # WS9: multimodal content parts

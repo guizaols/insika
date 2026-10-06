@@ -264,6 +264,7 @@ module Insika
       end
 
       # --- knobs -----------------------------------------------------------
+      def shared_conversations(on = true) = @config[:shared_conversations] = on
       def memory(on = true) = @config[:memory] = on
       def memory_retrieval(hash) = (@config[:memory_retrieval] ||= {}).merge!(hash.transform_keys(&:to_s))
 

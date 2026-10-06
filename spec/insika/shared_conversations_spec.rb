@@ -21,6 +21,7 @@ RSpec.describe 'Required shared conversation persistence' do
     command = Insika::Command.build(:send_message, { agent: 'synthetic', message: 'hello' })
     tasks.create(command: command.to_h, session_id: 'synthetic', id: 'synthetic-turn')
   end
+  before { allow(bridge).to receive(:input_attachments).and_return([]) }
   def run_turn
     Sync do
       executor.spawn(task, profile: profile)
@@ -59,6 +60,14 @@ RSpec.describe 'Required shared conversation persistence' do
     run_turn
     expect(tasks.find(task.id).status).to eq(:completed)
     expect(events.types.count(:content)).to eq(1)
+  end
+
+  it 'returns a recovered accepted answer without creating a chat' do
+    allow(bridge).to receive(:begin_turn).and_raise(Insika::SharedConversations::Recovered.new('recorded answer'))
+    expect(executor).not_to receive(:create_chat)
+    run_turn
+    expect(tasks.find(task.id).status).to eq(:completed)
+    expect(events.types).to include(:content, :task_completed)
   end
 
   it 'keeps native mode independent when the profile is off' do

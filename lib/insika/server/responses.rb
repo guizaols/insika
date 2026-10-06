@@ -42,6 +42,11 @@ module Insika
         message = extract_input(body[:input])
 
         out = { agent: agent.strip, user: user, message: message }
+        if body.key?(:shared_conversation)
+          raise Insika::ValidationError, 'shared_conversation must be an object and user_text a string' unless body[:shared_conversation].is_a?(Hash) && body[:user_text].is_a?(String)
+          out[:shared_conversation] = body[:shared_conversation]
+          out[:user_text] = body[:user_text]
+        end
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
         # WS8: the optional customer_key — per-customer memory scope + purge handle
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)

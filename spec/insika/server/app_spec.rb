@@ -833,6 +833,18 @@ RSpec.describe Insika::Server::App do
       expect(send.payload).to include(agent: "bia", session_id: "chat-9", message: "olá")
     end
 
+    it "forwards explicit shared identity and original user text without changing input" do
+      bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }
+      app = build_app(bus: bus, session_store: ServerStoreDouble.new(nil), config: { gateway_token: "tok" })
+      body = JSON.generate(model: "insika:bia", user: "chat-9", input: "context plus speech",
+        user_text: "speech", shared_conversation: {conversation_id: "explicit"})
+      env = Rack::MockRequest.env_for("/v1/responses", method: "POST", input: body)
+      env["HTTP_AUTHORIZATION"] = "Bearer tok"
+      app.call(env)
+      send = bus.dispatched.find { |c| c.type == :send_message }
+      expect(send.payload).to include(message: "context plus speech", user_text: "speech", shared_conversation: {conversation_id: "explicit"})
+    end
+
     it "existing session: does NOT create a session, only send_message" do
       record = { "id" => "chat-9" } # ServerStoreDouble#find returns truthy
       bus = ServerBusDouble.new { |c| c.type == :send_message ? { task_id: "t-1" } : {} }

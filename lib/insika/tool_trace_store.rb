@@ -65,7 +65,9 @@ module Insika
     end
 
     # Masks values of sensitive keys (recursive); the rest pass through intact.
-    def mask(obj)
+    def mask(obj) = self.class.mask(obj)
+
+    def self.mask(obj)
       case obj
       when Hash
         obj.each_with_object({}) do |(k, v), acc|

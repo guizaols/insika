@@ -638,15 +638,27 @@ module Insika
       if profile.respond_to?(:shared_conversations) && profile.shared_conversations
         @shared_turns[task.id] = { committed: false }
         raise StoreError, "shared conversation service is not configured" unless @shared_conversations
-        raise StoreError, "shared conversation resume requires reconciliation" if resume_from
-
-        @shared_turns[task.id][:history] = @shared_conversations.begin_turn(task: task, profile: profile)
+        @shared_turns[task.id][:history] = if resume_from
+          @shared_conversations.resume_turn(task: task, profile: profile, checkpoint: resume_from)
+        else
+          @shared_conversations.begin_turn(task: task, profile: profile)
+        end
       end
       actor.drain!
       run_pipeline(task, profile, actor, resume_from, timing) { |current| state = current }
     # SINGLE capture at the top of the fiber: a single place maps
     # error -> terminal state -> events. Stages do no rescue of their own
     # (except tool, RubyLLM semantics). The fiber NEVER re-raises.
+    rescue SharedConversations::Recovered => recovered
+      @shared_turns[task.id][:committed] = true
+      @task_store.complete_execution(task.id, outcome: :completed)
+      emit(:content, {delta: recovered.content}, task: task)
+      recovery_state = TurnState.new(task: task, profile: profile, turn: 1, message: '')
+      recovery_state.evidence_attachments = recovered.attachments
+      finalize_channel_delivery(task, recovered.content, recovery_state, timing)
+      data = {task_id: task.id, content: recovered.content}
+      data[:output_parts] = recovered.output_parts unless recovered.output_parts.empty?
+      emit(:task_completed, data, task: task)
     rescue CancelledError
       # cancel is not an error: transition WITHOUT error: (does not close the
       # Execution), then finish_execution closes it with outcome :cancelled.
@@ -974,6 +986,7 @@ module Insika
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
+      state.shared_conversations = @shared_conversations if @shared_turns[task.id]
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
       stamp_customer_session(task, profile)
       state.turn_context = build_turn_context(task, profile, state) # data-tools' ctx.*
@@ -1522,6 +1535,11 @@ module Insika
     # for data/HTTP tools. The engine transports media, never meaning: no
     # speech/vision logic beyond the call itself.
     def run_media_stage(task, state)
+      if state.shared_conversations
+        attachments = state.shared_conversations.input_attachments(task: task)
+        state.media_attachments = attachments unless attachments.empty?
+        return
+      end
       # a consumer that pre-transcribed voice text labels it `source: voice`;
       # the marker rides the turn even when there are no audio PARTS left.
       state.message_source = :voice if rebuild_command(task).payload["source"].to_s == "voice"
@@ -2680,7 +2698,12 @@ module Insika
       @session_store.append_messages(task.session_id, new_messages, agent: profile.id) if session && task.session_id
 
       if (shared = @shared_turns[task.id])
-        @shared_conversations.complete(task: task, messages: new_messages)
+        if @pending_action_store && task.session_id
+          @pending_action_store.expire_customer_holds(session_id: task.session_id, except_task_id: task.id)
+        end
+        pending = @pending_action_store && task.session_id && !@pending_action_store.open_for_session(task.session_id).empty?
+        @shared_conversations.complete(task: task, messages: new_messages, pending_approval: !!pending,
+          output_parts: state.output_parts, attachments: delivery_attachments(state))
         shared[:committed] = true
         emit(:content, { delta: content }, task: task) unless content.empty?
       end
@@ -3029,13 +3052,13 @@ module Insika
       baseline = state.chat_baseline
       return [] unless chat && baseline && chat.respond_to?(:messages)
 
-      Array(chat.messages).drop(baseline).filter_map { |m| serialize_chat_message(m) }
+      Array(chat.messages).drop(baseline).filter_map { |m| serialize_chat_message(m, clip: !(state.task && @shared_turns.key?(state.task.id))) }
     end
 
     # A RubyLLM::Message (duck-typed) -> string-keyed Hash. Assistant carries
     # "tool_calls" only when present; tool carries "tool_call_id" + a clipped content.
     # Do not persist raw_content: native replay would bypass redaction and clipping.
-    def serialize_chat_message(msg)
+    def serialize_chat_message(msg, clip: true)
       role = msg_field(msg, :role).to_s
       content = msg_field(msg, :content).to_s
       case role
@@ -3046,7 +3069,7 @@ module Insika
         h
       when "tool"
         { "role" => "tool", "tool_call_id" => msg_field(msg, :tool_call_id).to_s,
-          "content" => clip_tool_content(content) }
+          "content" => clip ? clip_tool_content(content) : content }
       else
         { "role" => role, "content" => content }
       end
@@ -3184,7 +3207,7 @@ module Insika
     def emit(type, data, task:)
       # Required mode releases only the accepted final answer after its durable ack.
       if (shared = @shared_turns[task.id]) && !shared[:committed]
-        return if type == :content || type == :intermediate
+        return if %i[content intermediate thinking workflow_completed].include?(type)
       end
       meta = { task_id: task.id, session_id: task.session_id,
                seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601(6) }
