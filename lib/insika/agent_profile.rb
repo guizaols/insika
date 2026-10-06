@@ -53,6 +53,7 @@ module Insika
     :tools_deferred,                  # searchable-not-wired tools (Tool Search).
     #                                   nil = no deferred (all eager — parity);
     #                                   [names] ⊆ allowed_tools, exposed via tool_search.
+    :shared_conversations,            # opt-in authoritative conversation persistence
     :memory,                          # cross-session memory.
     #                                   nil/false = OFF (parity: provider []; the `remember`
     #                                   tool not wired); true = ON. Same opt-in as capabilities.
@@ -339,7 +340,7 @@ module Insika
                    skills_eager: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    customer_confirm: nil,
-                   capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil, memory_retrieval: nil,
+                   capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil, memory_retrieval: nil, shared_conversations: false,
                    prompt_caching: nil, tool_persistence: nil, tool_output_compression: nil,
                    fencing: nil, params: {}, model_policy: nil, guardrails: nil, sandbox: nil,
                     refinement: nil, capabilities_declared: nil, edge_stream: nil, metadata: {},
@@ -361,7 +362,7 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         # opt-in like capabilities: nil => NONE. Array-normalize a present value so
         # readers get a clean [] and the ChatBuilder gate (present? => wire) is stable.
         subagents: subagents.nil? ? nil : Array(subagents).map(&:to_s),
-        tools_deferred: tools_deferred, memory: memory,
+        tools_deferred: tools_deferred, memory: memory, shared_conversations: shared_conversations == true,
         memory_retrieval: normalize_memory_retrieval(memory_retrieval),
         prompt_caching: prompt_caching, tool_persistence: tool_persistence,
         tool_output_compression: tool_output_compression, fencing: fencing,

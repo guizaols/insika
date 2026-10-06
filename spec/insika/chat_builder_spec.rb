@@ -669,3 +669,16 @@ RSpec.describe Insika::ChatBuilder do
     end
   end
 end
+
+RSpec.describe Insika::ChatBuilder, "shared history attachments" do
+  it "passes explicit attachments to RubyLLM without changing text-only messages" do
+    chat = double("chat")
+    attachment = Object.new
+    expect(chat).to receive(:add_message).with(role: :user, content: "hello", attachments: [attachment]).ordered
+    expect(chat).to receive(:add_message).with(role: :assistant, content: "hello").ordered
+    described_class.allocate.seed_history(chat, [
+      { "role" => "user", "content" => "hello", "attachments" => [attachment] },
+      { "role" => "assistant", "content" => "hello" }
+    ])
+  end
+end

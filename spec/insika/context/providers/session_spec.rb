@@ -72,6 +72,14 @@ RSpec.describe Insika::Context::Providers::Session do
     expect(provider.call(request(vars: { history: original }))[1].content[:content]).to eq(original[1]["content"])
   end
 
+  it "retains explicit shared-history attachments in its native prompt projection" do
+    attachment = Object.new
+    fragments = provider.call(request(vars: { history: [
+      { role: "user", content: "image", attachments: [attachment] }
+    ] }))
+    expect(fragments.first.content[:attachments]).to eq([attachment])
+  end
+
   it "no source -> []" do
     expect(provider.call(request)).to eq([])
   end
