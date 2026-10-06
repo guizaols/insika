@@ -129,6 +129,23 @@ module Insika
       end
     end
 
+    # Durable attachment bytes from a checkpoint; hydrate only at the gem boundary.
+    def self.hydrate_attachment(value)
+      return value unless value.is_a?(Hash)
+      require 'base64'
+      require 'stringio'
+      require 'ruby_llm'
+      unless (value.keys - %w[base64 filename]).empty? && value['base64'].is_a?(String) && value['filename'].is_a?(String)
+        raise Insika::MediaError, 'invalid stored attachment'
+      end
+      raise Insika::MediaError, 'stored attachment too large' if value['base64'].bytesize > 14*1024*1024
+      bytes = Base64.strict_decode64(value['base64'])
+      raise Insika::MediaError, 'stored attachment too large' if bytes.bytesize > MAX_DOCUMENT_BYTES
+      RubyLLM::Attachment.new(StringIO.new(bytes), filename: value['filename'])
+    rescue ArgumentError
+      raise Insika::MediaError, 'invalid stored attachment'
+    end
+
     # An inbound URL -> a RubyLLM::Attachment over bytes WE fetched (egress-
     # guarded, size-capped — the `media_attachment` recipe). Shared by the
     # Executor (inbound image/document parts) and `Output.generate_image`

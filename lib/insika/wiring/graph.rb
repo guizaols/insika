@@ -217,6 +217,10 @@ module Insika
       # the profile's `reliability` data gates it, so the bare wiring is unchanged.
       reliability = Insika::Reliability.new(circuit_store: spine.circuit_state,
                                             event_stream: spine.event_stream)
+      if (url = Insika::Coercion.presence(Insika::EnvSchema.read("INSIKA_CONVERSATIONS_URL")))
+        executor_extra = {shared_conversations: Insika::SharedConversations.new(
+          url: url, token: Insika::EnvSchema.read("INSIKA_CONVERSATIONS_TOKEN"), store: spine.backend)}.merge(executor_extra)
+      end
       executor = Insika::Executor.new(
         context_builder: context_builder, policy_engine: policy_engine,
         middleware: middleware, hooks: spine.hooks,

@@ -153,7 +153,7 @@ module Insika
         # A message carrying MEDIA never joins another turn: `collect`/`steer`
         # move TEXT into a task that is already at the door, and its parts would
         # be left behind — the customer's photo would silently not exist.
-        if coalescable?(command) && !media?(p[:parts])
+        if !profile.shared_conversations && coalescable?(command) && !media?(p[:parts])
           if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
             return { task_id: joined, merged: true }
           end
@@ -181,7 +181,7 @@ module Insika
         # task and its own reply (that is why it needs no verdict and no surface gate), and
         # the cancel is posted after `create` so the event can name what replaced what.
         # No-op in every other mode.
-        @executor.interrupt_running(p[:session_id], profile: profile, replaced_by: task.id)
+        @executor.interrupt_running(p[:session_id], profile: profile, replaced_by: task.id) unless profile.shared_conversations
         @executor.spawn_in_session(task, profile: profile,
                                           timing: channel_inbound_timing(command))
         { task_id: task.id }

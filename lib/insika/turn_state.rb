@@ -111,6 +111,7 @@ module Insika
     # to serialize the turn's real exchange — user + assistant(tool_calls) + tool
     # results + final assistant — into the transcript. nil = no chat recorded
     # (workflow/halt) → persist_turn falls back to the {user, assistant} pair.
+    attr_accessor :shared_conversations
     attr_accessor :chat_baseline
     attr_accessor :tool_halt
 

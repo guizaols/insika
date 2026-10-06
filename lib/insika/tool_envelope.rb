@@ -142,6 +142,7 @@ module Insika
       # For a declared-evidence tool: reshape to the lean envelope, record the ids
       # on the ledger, hoard the attachments. No evidence = the result passes
       # through untouched (one nil-check — parity).
+      capture_shared_result(call_id, result)
       result = process_evidence(result)
       result = fence(result)
       if side_effect?
@@ -271,7 +272,14 @@ module Insika
     # Records the call for debugging in the Studio (name + model args + result +
     # ms), keyed by the SESSION. Masking/truncation is the ToolTraceStore's job;
     # here we only collect. NEVER breaks the turn (trace is observability).
+    def capture_shared_result(call_id, result)
+      return unless @state.respond_to?(:shared_conversations) && @state.shared_conversations
+
+      @state.shared_conversations.record_tool_result(task: @state.task, call_id: call_id, result: result)
+    end
+
     def trace(call_id, args, result, started)
+      capture_shared_result(call_id, result)
       timing = Thread.current[TIMING_KEY] || {}
       Thread.current[TIMING_KEY] = nil
       return unless @trace_recorder && @state.task&.session_id

@@ -1,0 +1,37 @@
+---
+layout: default
+title: Shared conversations
+---
+
+# Shared conversations
+
+`shared_conversations: true` opts an agent into required central history. The
+DSL accepts `shared_conversations true`; stored profiles preserve the flag.
+Default is false. Configure `INSIKA_CONVERSATIONS_URL`, a scoped
+`INSIKA_CONVERSATIONS_TOKEN`, and a durable native backend (`INSIKA_DB` or
+`INSIKA_DATABASE_URL`). The client provisions the central conversation first.
+
+The tenant-authenticated `/v1/responses` request adds `user_text` (original speech)
+and `shared_conversation` with UUID `tenant_id`, `user_id`, `agent_id`,
+`conversation_id`, `turn_id`, `message_id`, and integer `generation`. Keep the
+same turn/message IDs across retries. Existing `input` still contains the
+presenter/context text used for this request. The authenticated tenant must match.
+
+Upload incoming media to the central attachment endpoint first. Optional
+`shared_conversation.content` carries canonical text/media parts with attachment
+IDs; its text must match `user_text`. Generated image/audio bytes upload before
+completion. Native checkpoints store attachment bytes and hydrate them at the
+RubyLLM boundary. Full tool results retain secret-key masking without prompt caps.
+
+Admission precedes model/tool work. Delivery follows central completion. A lost
+completion acknowledgment reuses the native durable result; it never reruns tools.
+An uncertain execution stays blocked for operator reconciliation. Only the same
+native waiting approval can resume from its checkpoint under the current generation.
+Unresolved customer confirmations block switching. Central deletion/outage fails
+before cached history is used. Local native purge still requires an explicit cleanup.
+
+Run the isolated HTTP proof (synthetic model/tools, temporary databases):
+
+```sh
+SHARED_CONVERSATIONS_SOURCE=/path/to/agentshop-memory bundle exec rspec spec/insika/shared_conversations_http_spec.rb
+```
