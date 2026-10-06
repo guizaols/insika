@@ -373,6 +373,8 @@ module Insika
           next
         end
         attrs = { role: (m[:role] || m["role"]).to_sym, content: m[:content] || m["content"] }
+        attachments = m[:attachments] || m["attachments"]
+        attrs[:attachments] = attachments if attachments && !attachments.empty?
         tool_calls = m[:tool_calls] || m["tool_calls"]
         tool_call_id = m[:tool_call_id] || m["tool_call_id"]
         attrs[:tool_calls] = rehydrate_tool_calls(tool_calls) if tool_calls && !Array(tool_calls).empty?

@@ -23,7 +23,9 @@ module Insika
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
                     contact_store: nil, followup_store: nil, model_visible_trace_store: nil,
-                    knowledge_store: nil)
+                    knowledge_store: nil, shared_conversations: nil)
+      @shared_conversations = shared_conversations
+      @shared_turns = {}
       @context_builder = context_builder
       @policy_engine = policy_engine
       @middleware = middleware
@@ -633,6 +635,13 @@ module Insika
       @task_store.start_execution(task.id)
       emit(:task_started, started_data(task, profile), task: task)
 
+      if profile.respond_to?(:shared_conversations) && profile.shared_conversations
+        @shared_turns[task.id] = { committed: false }
+        raise StoreError, "shared conversation service is not configured" unless @shared_conversations
+        raise StoreError, "shared conversation resume requires reconciliation" if resume_from
+
+        @shared_turns[task.id][:history] = @shared_conversations.begin_turn(task: task, profile: profile)
+      end
       actor.drain!
       run_pipeline(task, profile, actor, resume_from, timing) { |current| state = current }
     # SINGLE capture at the top of the fiber: a single place maps
@@ -692,6 +701,7 @@ module Insika
         fail_task(task, e, stage: :unknown, usage: state&.usage)
       end
     ensure
+      @shared_turns.delete(task.id)
       llm_entries = @llm_buffers.delete(task.id)
       @running.delete(task.id) # ALWAYS deregister (a false-positive running? would break the resume)
       # after deregistering: the writes may wait on the store, and a resume or an
@@ -2117,7 +2127,7 @@ module Insika
     def build_context_request(task, profile, state, resume_from)
       session = task.session_id ? @session_store.find(task.session_id) : nil
       state.session = session # create_chat reads it for the per-chat model pin
-      hist = command_history(task)
+      hist = @shared_turns.dig(task.id, :history) || command_history(task)
       # `vars` reconciles the seam (the Request/Session provider already
       # called request.vars): session metadata + the explicit `history` in the
       # convention the Session provider consumes (vars["history"]).
@@ -2669,6 +2679,12 @@ module Insika
       # the edge-blocked halt (see complete_with_halt).
       @session_store.append_messages(task.session_id, new_messages, agent: profile.id) if session && task.session_id
 
+      if (shared = @shared_turns[task.id])
+        @shared_conversations.complete(task: task, messages: new_messages)
+        shared[:committed] = true
+        emit(:content, { delta: content }, task: task) unless content.empty?
+      end
+
       # closes the Execution and moves to :completed in one write.
       @task_store.complete_execution(task.id, outcome: :completed)
       # prune is best-effort cleanup: a failure here must NOT re-fail an
@@ -3166,6 +3182,10 @@ module Insika
     # event without a task has no tenant and never matches a tenant stream);
     # absent tenant -> the meta is byte-identical to before.
     def emit(type, data, task:)
+      # Required mode releases only the accepted final answer after its durable ack.
+      if (shared = @shared_turns[task.id]) && !shared[:committed]
+        return if type == :content || type == :intermediate
+      end
       meta = { task_id: task.id, session_id: task.session_id,
                seq: (@seqs[task.id] += 1), at: Time.now.utc.iso8601(6) }
       tenant = task_tenant(task)

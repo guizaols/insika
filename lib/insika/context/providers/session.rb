@@ -74,6 +74,8 @@ module Insika
           return msg if msg["native_compaction"]
 
           h = { role: msg[:role] || msg["role"], content: msg[:content] || msg["content"] }
+          attachments = msg[:attachments] || msg["attachments"]
+          h[:attachments] = attachments if attachments && !attachments.empty?
           tool_calls = msg[:tool_calls] || msg["tool_calls"]
           tool_call_id = msg[:tool_call_id] || msg["tool_call_id"]
           h[:tool_calls] = tool_calls if tool_calls
