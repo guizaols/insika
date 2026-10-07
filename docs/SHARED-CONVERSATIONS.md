@@ -13,6 +13,13 @@ Default is false. Configure `INSIKA_CONVERSATIONS_URL`, a scoped
 An old chat with `history_required:true` waits for its native history to be
 imported; an empty central record never replaces that history.
 
+For Rails, set `INSIKA_TENANCY=multi_tenant`, provision the store tenant and
+issue its incoming tenant token. This Rails-facing token is different from
+`INSIKA_CONVERSATIONS_TOKEN`, which authenticates Insika to central storage.
+The current central token is scoped to one tenant, so use a dedicated pilot
+instance for that store. Railway source download, local import and all engine
+variables are in the [migration runbook](https://github.com/oitedi/agentshop-memory/blob/feat/shared-conversations/docs/railway-migration.md).
+
 The tenant-authenticated `/v1/responses` request adds `user_text` (original speech)
 and `shared_conversation` with UUID `tenant_id`, `user_id`, `agent_id`,
 `conversation_id`, `turn_id`, and `message_id`. Keep the
