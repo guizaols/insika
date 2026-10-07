@@ -66,6 +66,11 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- LLM providers authored at runtime reach every worker process, and survive a
+  restart: each chat re-applies the stored providers when they changed. Before,
+  only the worker that served the edit had the key, so a fallback on that
+  provider failed as unconfigured. A cleared key stops being used; a key from
+  the environment is never cleared by it.
 - Native chat usage includes tool rounds and retries, and failed turns expose
   recorded usage. Responses projects cache-inclusive totals; negotiated pricing
   no longer subtracts cache reads from already non-cached input.

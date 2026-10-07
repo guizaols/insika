@@ -40,8 +40,10 @@ RSpec.describe "Executor native chat reliability" do
       tool_registry: FakeToolRegistry.new(side_effect_names: ["write"]), skill_catalog: Insika::SkillCatalog.new([]),
       profiles: { "a" => profile }, session_store: sessions, task_store: tasks,
       checkpoint_store: checkpoints, event_stream: events, llm: context,
-      content_filter_factory: Insika::Safety::Factory.new.content_filter_factory, reliability: reliability)
+      content_filter_factory: Insika::Safety::Factory.new.content_filter_factory, reliability: reliability,
+      llm_refresh: llm_refresh)
   end
+  let(:llm_refresh) { nil }
 
   def response(text)
     RubyLLM::Message.new(role: :assistant, content: text, input_tokens: 5, output_tokens: 1)
@@ -121,5 +123,27 @@ RSpec.describe "Executor native chat reliability" do
     expect(attempts).to eq(2)
     expect(models).to eq(%w[deepseek-v4-flash deepseek-v4-pro])
     expect(events.events.count { |event| event.type == :provider_failure }).to eq(1)
+  end
+
+  context "with providers authored at runtime" do
+    let(:policy) { { "retries" => 0, "fallback" => ["deepseek/deepseek-v4-pro"] } }
+    let(:keys) { [] }
+    # Stands in for LLMConfigurator#refresh: another worker stored a new key.
+    let(:llm_refresh) { -> { context.config.deepseek_api_key = "authored-#{keys.size}" } }
+
+    it "refreshes them before every chat it builds, so a fallback sees a key stored a moment ago" do
+      attempts = 0
+      allow_any_instance_of(RubyLLM::Providers::DeepSeek).to receive(:complete) do |provider, *, **, &stream|
+        keys << provider.config.deepseek_api_key
+        attempts += 1
+        raise Faraday::ConnectionFailed, "down" if attempts == 1
+
+        stream.call(RubyLLM::Chunk.new(role: :assistant, content: "from the fallback"))
+        response("from the fallback")
+      end
+
+      expect(run_turn.fetch(:content)).to eq("from the fallback")
+      expect(keys).to eq(%w[authored-0 authored-1])
+    end
   end
 end

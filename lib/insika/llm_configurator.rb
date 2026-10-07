@@ -61,6 +61,28 @@ module Insika
       { applied: applied, skipped: skipped }
     end
 
+    # Re-applies the stored providers when they changed since THIS process last
+    # applied them. The Studio's `apply` reaches only the worker that served the
+    # edit; every other worker (and every worker after a restart) gets the
+    # provider here. Called per chat build, so it mutates the config only when the
+    # store changed, which is rare. Inside a turn the read comes from the
+    # ConfigStore cache. A provider this method applied and that no longer has a
+    # key (deleted, or its key cleared) is unapplied; a key it never applied, such
+    # as one from the environment, is never cleared. A store error keeps the
+    # current config: the next call retries, and the chat is not failed for it.
+    def refresh
+      records = @provider_store.all_raw
+      digest = records.hash
+      return if digest == @refreshed_digest
+
+      applied = apply(records)[:applied].map(&:to_s)
+      (Array(@refreshed_apis) - applied).each { |api| unapply(api) }
+      @refreshed_apis = applied
+      @refreshed_digest = digest
+    rescue StandardError => e
+      warn "[insika] LLM providers not refreshed, keeping the current ones: #{e.class}: #{e.message}"
+    end
+
     # UNDOES a provider's config in RubyLLM at runtime (delete without a restart,
     # clears `<api>_api_key`/`<api>_api_base`. A provider that RubyLLM
     # doesn't recognize (no accessor) -> unapplied: false (nothing applied, nothing to undo).
