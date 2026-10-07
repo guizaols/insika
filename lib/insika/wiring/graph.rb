@@ -193,6 +193,12 @@ module Insika
         # expose it. The gem's require lives IN the factory block (loaded on
         # the 1st instance, turn time -> wiring-load stays gem-free).
         register_artifact_tool(spine)
+        # Turns read profiles with the platform agent defaults applied; the
+        # authoring commands the roots register keep the agent's own record.
+        if (settings_store = executor_extra[:settings_store])
+          profiles = Insika::AgentDefaults::ProfileSource.new(Insika::ProfileSource.coerce(profiles),
+                                                              settings_store: settings_store)
+        end
         spine.hooks.register(:task, after: guardrails.output_validator)
         middleware = Insika::MiddlewareStack.new([edge_limiter, guardrails.input_guardrail].compact)
 

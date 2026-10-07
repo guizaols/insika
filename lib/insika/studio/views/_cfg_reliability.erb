@@ -1,0 +1,33 @@
+      <fieldset class="subgroup">
+        <legend>reliability <span class="muted">— retries, fallback chain, circuit breaker</span></legend>
+<%== inherit_toggle("reliability") %>
+        <% rel = @agent.reliability || {}; brk = rel["circuit_breaker"] || {} %>
+        <div class="grid-3">
+          <label>retries
+            <input type="text" name="reliability_retries" value="<%= rel["retries"] %>" inputmode="numeric">
+          </label>
+          <label>backoff
+            <select name="reliability_backoff">
+              <option value="">none</option>
+              <% %w[constant exponential].each do |m| %>
+                <option value="<%= m %>"<%== ' selected' if rel["backoff"] == m %>><%= m %></option>
+              <% end %>
+            </select>
+          </label>
+          <label>timeout (s)
+            <input type="text" name="reliability_timeout" value="<%= rel["timeout"] %>" placeholder="30" inputmode="numeric">
+          </label>
+          <label>breaker after <span class="muted">(failures)</span>
+            <input type="text" name="reliability_breaker_after" value="<%= brk["after"] %>" inputmode="numeric">
+          </label>
+          <label>breaker within (s)
+            <input type="text" name="reliability_breaker_within" value="<%= brk["within"] %>" inputmode="numeric">
+          </label>
+          <label>breaker cooldown (s)
+            <input type="text" name="reliability_breaker_cooldown" value="<%= brk["cooldown"] %>" inputmode="numeric">
+          </label>
+        </div>
+        <label>fallback models <span class="muted">(comma-separated refs, tried after retries)</span>
+          <input type="text" name="reliability_fallback" value="<%= agent_list(rel["fallback"]) %>" placeholder="openai/gpt-4o-mini">
+        </label>
+      </fieldset>

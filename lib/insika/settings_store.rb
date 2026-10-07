@@ -110,6 +110,10 @@ module Insika
       # steer_max 5, raw text). Same keys the agent config form writes into
       # profile.limits, so one deploy-wide answer no longer means editing every
       # agent. Additive key — reads overlay DEFAULTS.
+      # Platform defaults for agent fields (Insika::AgentDefaults): an agent with
+      # no value of its own for one of AgentDefaults::FIELDS runs with this one.
+      # Written through #put_agent_defaults. Additive key.
+      "agent_defaults" => {},
       "queue" => {
         "queue_mode" => nil,
         "debounce_ms" => nil,
@@ -134,6 +138,18 @@ module Insika
       merged = deep_merge(get, stringify(patch || {}))
       @cs.put(SCOPE, KEY, merged)
       merged
+    end
+
+    # Replaces the platform agent defaults per FIELD (AgentDefaults): a sent field
+    # replaces its whole value (unlike #update, which deep-merges and could never
+    # drop a key the form removed); nil drops it; fields not sent stay.
+    # -> Hash (the resulting agent_defaults).
+    def put_agent_defaults(patch)
+      data = get
+      defaults = (data["agent_defaults"] || {}).merge(stringify(patch || {})).compact
+      data["agent_defaults"] = defaults
+      @cs.put(SCOPE, KEY, data)
+      defaults
     end
 
     # RAW persisted schema version (bypasses the DEFAULTS overlay, which would always

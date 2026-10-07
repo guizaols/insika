@@ -68,6 +68,14 @@ RSpec.describe "Settings + masking" do
       expect(events.map(&:type)).to eq([:settings_updated])
     end
 
+    it "agent_defaults replaces each sent field whole and rejects a field agents cannot inherit" do
+      handler.call(cmd("patch" => { "agent_defaults" => { "reliability" => { "timeout" => 45, "retries" => 1 } } }))
+      result = handler.call(cmd("patch" => { "agent_defaults" => { "reliability" => { "timeout" => 30 } } }))
+      expect(result["agent_defaults"]).to eq("reliability" => { "timeout" => 30 })
+      expect { handler.call(cmd("patch" => { "agent_defaults" => { "tools_allow" => [] } })) }
+        .to raise_error(Insika::ValidationError, /tools_allow/)
+    end
+
     it "patch absent/empty -> ValidationError" do
       expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError, /patch/)
       expect { handler.call(cmd("patch" => {})) }.to raise_error(Insika::ValidationError, /empty/)
