@@ -193,6 +193,12 @@ module Insika
         # expose it. The gem's require lives IN the factory block (loaded on
         # the 1st instance, turn time -> wiring-load stays gem-free).
         register_artifact_tool(spine)
+        # Turns read profiles with the platform agent defaults applied; the
+        # authoring commands the roots register keep the agent's own record.
+        if (settings_store = executor_extra[:settings_store])
+          profiles = Insika::AgentDefaults::ProfileSource.new(Insika::ProfileSource.coerce(profiles),
+                                                              settings_store: settings_store)
+        end
         spine.hooks.register(:task, after: guardrails.output_validator)
         middleware = Insika::MiddlewareStack.new([edge_limiter, guardrails.input_guardrail].compact)
 
@@ -409,7 +415,8 @@ module Insika
           tool_catalog: tool_catalog, skill_catalog: skill_catalog, prompt_catalog: prompt_catalog,
           hooks: spine.hooks, guardrails: guardrails, middleware: middleware,
           context_providers: context_providers, context_builder: context_builder,
-          policy_engine: policy_engine, profiles: profiles, executor: executor, bus: bus
+          # the agent's own records: the Studio and the roots author through them
+          policy_engine: policy_engine, profiles: Insika::AgentDefaults.own(profiles), executor: executor, bus: bus
         )
       end
 
@@ -621,7 +628,7 @@ module Insika
                        harvest_store: spine.harvest_store,
                        skill_store: skill_catalog.store,
                        skill_catalog: skill_catalog,
-                       profile_source: profiles, criterion: nil, conversion_gate: nil,
+                       profile_source: Insika::AgentDefaults.own(profiles), criterion: nil, conversion_gate: nil,
                        event_stream: spine.event_stream
                      ))
         bus.register(:rollback_harvest,
@@ -629,7 +636,7 @@ module Insika
                        harvest_store: spine.harvest_store,
                        skill_store: skill_catalog.store,
                        skill_catalog: skill_catalog,
-                       profile_source: profiles, event_stream: spine.event_stream
+                       profile_source: Insika::AgentDefaults.own(profiles), event_stream: spine.event_stream
                      ))
         bus.register(:reject_harvest,
                      Insika::Commands::RejectHarvest.new(
@@ -647,7 +654,7 @@ module Insika
         # dispatches this bus command; nothing else writes the demo agent.
         config_store = Insika::ConfigStore.new(store: spine.backend)
         demo_seeder = Insika::Demo::Seeder.new(
-          profiles: profiles, store: spine.backend, session_store: spine.session_store,
+          profiles: Insika::AgentDefaults.own(profiles), store: spine.backend, session_store: spine.session_store,
           task_store: spine.task_store, outcome_store: spine.outcome_store,
           funnel_store: spine.funnel_store, followup_store: spine.followup_store,
           refinement_store: spine.refinement_store, pending_action_store: spine.pending_action_store,

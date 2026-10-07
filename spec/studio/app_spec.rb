@@ -820,6 +820,51 @@ RSpec.describe Studio::App do
     expect(bus.last(:update_agent).payload[:limits][:tool_concurrency]).to eq(1) # DEFAULT_LIMITS
   end
 
+  describe "agent defaults" do
+    let(:defaults) { { "agent_defaults" => { "reliability" => { "timeout" => 45, "fallback" => ["openai/gpt-x"] } } } }
+
+    it "the settings page edits them with the agent's own sections" do
+      app, bus = build_app(settings: defaults)
+      client = login(app)
+      body = client.get("/settings?s=agents").body
+      expect(body).to include('name="reliability_timeout" value="45"', 'name="guardrail_input"', 'name="knowledge_extract"')
+      expect(body).not_to include('name="memory"', 'name="inherit[]"')
+      client.post("/settings/agent-defaults", params: { "reliability_timeout" => "40", "reliability_fallback" => "openrouter/x",
+                                                       "knowledge_retrieve" => "1", "_csrf" => csrf_from(body) })
+      saved = bus.last(:update_settings).payload[:patch]["agent_defaults"]
+      expect(saved.keys).to match_array(Insika::AgentDefaults::FIELDS)
+      expect(saved["reliability"]).to include("timeout" => 40, "fallback" => ["openrouter/x"])
+      expect(saved["knowledge"]).to include("retrieve" => true)
+    end
+
+    it "an agent with no value shows the platform's, marked as inherited" do
+      app, = build_app(settings: defaults)
+      body = login(app).get("/agents/bia?cfg=budget_rel").body
+      expect(body).to include('name="reliability_timeout" value="45"')
+      expect(body).to match(/name="inherit\[\]" value="reliability" checked/)
+    end
+
+    it "unchecking the box starts from the platform's value, keeping the keys the form does not show" do
+      app, bus = build_app(settings: { "agent_defaults" => { "knowledge" => { "extract" => true, "index" => "shared" } } })
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/config", params: { "model" => "x", "knowledge_retrieve" => "1", "_csrf" => csrf })
+      expect(bus.last(:update_agent).payload[:knowledge]).to include("index" => "shared", "retrieve" => true)
+    end
+
+    it "saving with the box checked keeps the agent inheriting; unchecked saves its own" do
+      app, bus = build_app(settings: defaults)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/config", params: { "model" => "x", "reliability_timeout" => "45", "inherit" => ["reliability"], "_csrf" => csrf })
+      expect(bus.last(:update_agent).payload[:reliability]).to be_nil
+
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/config", params: { "model" => "x", "reliability_timeout" => "20", "_csrf" => csrf })
+      expect(bus.last(:update_agent).payload[:reliability]).to include("timeout" => 20)
+    end
+  end
+
   it "config without the memory checkbox writes memory=false" do
     app, bus = build_app
     client = login(app)

@@ -48,7 +48,7 @@ RSpec.describe "the domain boundary " do
     "lib/insika/safety/corpus.rb"         => "the shipped guardrail corpus data (C2) — cleared via guardrails.corpora",
     "lib/insika/safety/safe_responses.rb" => "pt-BR neutral fallback replies — cleared via guardrails.responses",
     "lib/insika/packaging.rb"             => "the audit's own token table (see the allowlist comment)",
-    "lib/insika/studio/views/_agent_tab_config.erb" => "the agent config form's EXAMPLE placeholder — the default cancel-keyword " \
+    "lib/insika/studio/views/_cfg_followup.erb" => "the agent config form's EXAMPLE placeholder — the default cancel-keyword " \
                                                        "('não quero mais contato') shown as the field's hint, data-like like the " \
                                                        "docs' neutral references, not engine vocabulary (was agent_detail.erb " \
                                                        "until the tab-partials split)"

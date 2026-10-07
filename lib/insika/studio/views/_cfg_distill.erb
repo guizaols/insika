@@ -1,0 +1,26 @@
+<fieldset class="subgroup">
+  <legend>distillation <span class="muted">— finished conversations → proposed customer facts (Facts page)</span></legend>
+<%== inherit_toggle("distill") %>
+  <% dist = @agent.distill || {} %>
+  <label class="check">
+    <input type="checkbox" name="distill_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(dist["enabled"]) %>>
+    distillation on — idle sessions are read back as fact proposals; a human always approves
+  </label>
+  <div class="grid-3">
+    <label>idle hours <span class="muted">(blank = 6)</span>
+      <input type="text" name="distill_idle_hours" value="<%= dist["idle_hours"] %>" placeholder="6" inputmode="numeric">
+    </label>
+    <label>min messages <span class="muted">(blank = 3)</span>
+      <input type="text" name="distill_min_messages" value="<%= dist["min_messages"] %>" placeholder="3" inputmode="numeric">
+    </label>
+    <label>max proposals <span class="muted">(blank = 10)</span>
+      <input type="text" name="distill_max_proposals" value="<%= dist["max_proposals"] %>" placeholder="10" inputmode="numeric">
+    </label>
+  </div>
+  <label>model <span class="muted">(blank = the platform utility_model)</span>
+    <input type="text" name="distill_model" value="<%= dist["model"] %>" placeholder="deepseek-v4-flash">
+  </label>
+  <label>prompt <span class="muted">— what counts as a fact for THIS store (blank = the engine default)</span>
+    <textarea name="distill_prompt" rows="3" placeholder="what counts as a customer fact for this store"><%= dist["prompt"] %></textarea>
+  </label>
+</fieldset>

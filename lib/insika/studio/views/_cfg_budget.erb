@@ -1,0 +1,20 @@
+      <fieldset class="subgroup">
+        <legend>budget <span class="muted">— WS2: calendar spend caps per (tenant, agent)</span></legend>
+<%== inherit_toggle("budget") %>
+        <% bd = @agent.budget || {} %>
+        <div class="grid-3">
+          <label>daily (tokens)
+            <input type="text" name="budget_daily" value="<%= bd["daily"] %>" inputmode="numeric">
+          </label>
+          <label>monthly (tokens)
+            <input type="text" name="budget_monthly" value="<%= bd["monthly"] %>" inputmode="numeric">
+          </label>
+          <label>alert at <span class="muted">(0–1 of the cap)</span>
+            <input type="text" name="budget_alert_at" value="<%= bd["alert_at"] %>" placeholder="0.8" inputmode="decimal">
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" name="budget_soft" value="1"<%== " checked" if bd["soft"] %>>
+          soft cap <span class="muted">— crossing it warns and runs; hard (default) fails the turn</span>
+        </label>
+      </fieldset>

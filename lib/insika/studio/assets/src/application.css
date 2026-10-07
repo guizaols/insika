@@ -1148,6 +1148,10 @@
   /* ── Config subgroup: generation params (surfacing) ─────────────── */
   fieldset.subgroup { border:1px solid var(--line-1); border-radius:var(--radius); padding:.4rem 1rem .9rem; margin:1.1rem 0 .3rem; background:var(--surface-1); }
   fieldset.subgroup legend { padding:0 .5rem; font-size:.625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--faint); font-weight:600; font-family:var(--mono); }
+/* An agent section that uses the platform default: its own fields are inert
+   until "use the platform default" is unchecked (a value typed there is not saved). `.own` marks a field the section keeps
+   per agent either way. */
+fieldset.subgroup:has(> label.inherit input:checked) > :not(legend, label.inherit, .own) { opacity:.5; pointer-events:none; }
   details.pin { margin:.6rem 0 0; }
   details.pin > summary { cursor:pointer; font-size:var(--text-sm); color:var(--dim); }
   details.pin > summary:hover { color:var(--fg); }
