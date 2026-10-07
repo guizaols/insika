@@ -47,3 +47,11 @@ Run the isolated HTTP proof (synthetic model/tools, temporary databases):
 ```sh
 SHARED_CONVERSATIONS_SOURCE=/path/to/agentshop-memory bundle exec rspec spec/insika/shared_conversations_http_spec.rb
 ```
+
+
+OpenClaw migration imports all registered native sessions without consulting Rails
+or requiring a per-chat identity map, even if the Rails chat was deleted. Central
+schema 4 allows imported history without a known customer. On first use the engine
+assigns the request customer once through the normal conversation PUT, then reads
+the existing transcript. Existing resolved customers cannot be replaced. Deploy
+central schema 4 before the updated engine; native mode remains independent.
