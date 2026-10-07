@@ -63,6 +63,23 @@ RSpec.describe 'Shared conversation HTTP bridge' do
     expect(calls.none? { _1[1].end_with?('/turns') }).to eq(true)
   end
 
+  it 'acquires the next turn without a client generation and persists the acquired generation for completion' do
+    ids.delete('generation')
+    conversation['assigned_harness'] = 'openclaw'
+    allow(bridge).to receive(:request).with('POST', /\/turns$/, anything) do |_method, path, body|
+      calls << ['POST', path, body]
+      expect(body).to include('acquire'=>true, 'generation'=>1, 'native_session_id'=>task.session_id)
+      conversation.merge!('assigned_harness'=>'insika', 'generation'=>2)
+      {'state'=>'running', 'generation'=>2}
+    end
+    expect(bridge.begin_turn(task: task, profile: profile)).to eq([])
+    bridge.complete(task: task, messages: [{'role'=>'assistant','content'=>'answer'}])
+    expect(calls.find { _1[1].end_with?('/complete') }.last['generation']).to eq(2)
+    expect { bridge.begin_turn(task: task, profile: profile) }.to raise_error(Insika::SharedConversations::Recovered)
+    conversation.merge!('assigned_harness'=>'openclaw', 'generation'=>3)
+    expect { bridge.begin_turn(task: task, profile: profile) }.to raise_error(Insika::StoreError, /identity/)
+  end
+
   it 'retains the exact native result after a lost completion acknowledgment' do
     bridge.begin_turn(task: task, profile: profile)
     final = [{'role'=>'user','content'=>'injected'}, {'role'=>'assistant','content'=>'answer'}]
