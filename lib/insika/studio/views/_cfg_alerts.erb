@@ -1,0 +1,4 @@
+<%== inherit_toggle("alerts") %>
+          <label>alerts webhook <span class="muted">(budget_warning / breaker_open / delivery_failed)</span>
+            <input type="text" name="alerts_webhook" value="<%= @agent.alerts && @agent.alerts["webhook"] %>" placeholder="https://ops.example.com/insika-alerts">
+          </label>

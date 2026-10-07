@@ -133,67 +133,11 @@
           </div>
 
           <div class="config-group" data-config-group="guardrails"<%== " hidden" unless @config_group == "guardrails" %>>
-    <fieldset class="subgroup">
-      <legend>guardrails <span class="muted">— content safety</span></legend>
-      <label class="check">
-        <input type="checkbox" name="guardrail_input" value="1"<%== " checked" if guardrail_field(@guardrails, :input, true) %>>
-        input guardrail <span class="muted">— block injection / abuse / inappropriate before the LLM</span>
-      </label>
-      <label class="check">
-        <input type="checkbox" name="guardrail_output" value="1"<%== " checked" if guardrail_field(@guardrails, :output, true) %>>
-        output guardrail <span class="muted">— redact PII/secret in the stream + flag policy slips</span>
-      </label>
-      <div class="grid-2">
-        <label>strictness
-          <% strictness = guardrail_field(@guardrails, :strictness, "medium").to_s %>
-          <select name="guardrail_strictness">
-            <% %w[low medium high].each do |lvl| %>
-              <option value="<%= lvl %>"<%== " selected" if lvl == strictness %>><%= lvl %></option>
-            <% end %>
-          </select>
-        </label>
-        <label>LLM moderator <span class="muted">(model ref, or <code>on</code> for the platform utility_model; blank = deterministic only)</span>
-          <input type="text" name="guardrail_moderator" value="<%= guardrail_field(@guardrails, :moderator, "") %>" placeholder="deepseek/deepseek-v4-flash">
-        </label>
-      </div>
-      <details class="newfile">
-        <summary>safe replies — override per category <span class="muted">(blank = engine default; this agent's voice/language)</span></summary>
-        <% gr_resp = (@guardrails["responses"] || @guardrails[:responses] || {}) %>
-        <label>default <span class="muted">(catch-all for any blocked category)</span>
-          <textarea name="guardrail_response_default" rows="2" placeholder="I can't help with that particular request…"><%= guardrail_field(gr_resp, :default, "") %></textarea>
-        </label>
-        <div class="grid-2">
-          <% %w[injection sexual abuse escalate].each do |cat| %>
-            <label><%= cat %>
-              <textarea name="guardrail_response_<%= cat %>" rows="2"><%= guardrail_field(gr_resp, cat, "") %></textarea>
-            </label>
-          <% end %>
-        </div>
-      </details>
-    </fieldset>
+            <%== render("_cfg_guardrails") %>
           </div>
 
           <div class="config-group" data-config-group="grounding"<%== " hidden" unless @config_group == "grounding" %>>
-    <fieldset class="subgroup">
-      <legend>grounding <span class="muted">— product claims must point at evidence the session actually saw</span></legend>
-      <% gr = @agent.grounding || {} %>
-      <div class="grid-2">
-        <label>mode <span class="muted">(blank = off)</span>
-          <select name="grounding_mode">
-            <option value="">off</option>
-            <% %w[flag enforce].each do |m| %>
-              <option value="<%= m %>"<%== ' selected' if gr["mode"] == m %>><%= m %></option>
-            <% end %>
-          </select>
-        </label>
-        <label>matcher SKU <span class="muted">(evidence id prefix, e.g. <code>sku:</code>)</span>
-          <input type="text" name="grounding_matcher_sku" value="<%= gr.dig("matcher", "sku") %>" placeholder="sku:">
-        </label>
-        <label>name keys <span class="muted">(comma-separated metadata keys with product names)</span>
-          <input type="text" name="grounding_name_keys" value="<%= agent_list(gr.dig("matcher", "name_keys")) %>" placeholder="product, name">
-        </label>
-      </div>
-    </fieldset>
+            <%== render("_cfg_grounding") %>
           </div>
 
           <div class="config-group" data-config-group="funnel"<%== " hidden" unless @config_group == "funnel" %>>
@@ -221,35 +165,7 @@
           </div>
 
           <div class="config-group" data-config-group="followups"<%== " hidden" unless @config_group == "followups" %>>
-<fieldset class="subgroup">
-  <legend>follow-ups <span class="muted">— the seller who comes back (blank arm = off)</span></legend>
-  <% fu = @agent.followup || {}; fup = fu["policy"] || {}; fqh = fup["quiet_hours"] || {} %>
-  <div class="grid-2">
-    <label>arm
-      <input type="text" name="followup_arm" value="<%= fu["arm"] %>" placeholder="schedule">
-    </label>
-    <label>max frequency <span class="muted">(e.g. <code>2/24h</code>)</span>
-      <input type="text" name="followup_max_frequency" value="<%= fup["max_frequency"] %>" placeholder="2/24h">
-    </label>
-    <label>quiet hours timezone <span class="muted">(blank = no quiet hours)</span>
-      <input type="text" name="followup_tz" value="<%= fqh["timezone"] %>" placeholder="America/Sao_Paulo">
-    </label>
-    <div class="grid-2">
-      <label>quiet start
-        <input type="text" name="followup_quiet_start" value="<%= fqh["start"] %>" placeholder="21:30">
-      </label>
-      <label>quiet end
-        <input type="text" name="followup_quiet_end" value="<%= fqh["end"] %>" placeholder="09:00">
-      </label>
-    </div>
-    <label>cancel keywords <span class="muted">(comma-separated)</span>
-      <input type="text" name="followup_cancel_keywords" value="<%= agent_list(fup["cancel_keywords"]) %>" placeholder="não quero mais contato">
-    </label>
-    <label>silence after N sends
-      <input type="text" name="followup_silence_after_sends" value="<%= fup["silence_after_sends"] %>" placeholder="3" inputmode="numeric">
-    </label>
-  </div>
-</fieldset>
+            <%== render("_cfg_followup") %>
           </div>
 
           <div class="config-group" data-config-group="schedules"<%== " hidden" unless @config_group == "schedules" %>>
@@ -282,68 +198,11 @@
           </div>
 
           <div class="config-group" data-config-group="distill"<%== " hidden" unless @config_group == "distill" %>>
-<fieldset class="subgroup">
-  <legend>distillation <span class="muted">— finished conversations → proposed customer facts (Facts page)</span></legend>
-  <% dist = @agent.distill || {} %>
-  <label class="check">
-    <input type="checkbox" name="distill_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(dist["enabled"]) %>>
-    distillation on — idle sessions are read back as fact proposals; a human always approves
-  </label>
-  <div class="grid-3">
-    <label>idle hours <span class="muted">(blank = 6)</span>
-      <input type="text" name="distill_idle_hours" value="<%= dist["idle_hours"] %>" placeholder="6" inputmode="numeric">
-    </label>
-    <label>min messages <span class="muted">(blank = 3)</span>
-      <input type="text" name="distill_min_messages" value="<%= dist["min_messages"] %>" placeholder="3" inputmode="numeric">
-    </label>
-    <label>max proposals <span class="muted">(blank = 10)</span>
-      <input type="text" name="distill_max_proposals" value="<%= dist["max_proposals"] %>" placeholder="10" inputmode="numeric">
-    </label>
-  </div>
-  <label>model <span class="muted">(blank = the platform utility_model)</span>
-    <input type="text" name="distill_model" value="<%= dist["model"] %>" placeholder="deepseek-v4-flash">
-  </label>
-  <label>prompt <span class="muted">— what counts as a fact for THIS store (blank = the engine default)</span>
-    <textarea name="distill_prompt" rows="3" placeholder="what counts as a customer fact for this store"><%= dist["prompt"] %></textarea>
-  </label>
-</fieldset>
+            <%== render("_cfg_distill") %>
           </div>
 
           <div class="config-group" data-config-group="harvest"<%== " hidden" unless @config_group == "harvest" %>>
-<fieldset class="subgroup">
-  <legend>harvest <span class="muted">— finished traffic → proposed SKILLs, double-gated, human-promoted (Harvest page)</span></legend>
-  <% hv = @agent.harvest || {}; hvm = hv["miner"] || {} %>
-  <label class="check">
-    <input type="checkbox" name="harvest_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(hv["enabled"]) %>>
-    harvest on — idle conversations are mined for skills; a human promotes every one
-  </label>
-  <div class="grid-3">
-    <label>idle hours <span class="muted">(blank = 24)</span>
-      <input type="text" name="harvest_idle_hours" value="<%= hv["idle_hours"] %>" placeholder="24" inputmode="numeric">
-    </label>
-    <label>min messages <span class="muted">(blank = 3)</span>
-      <input type="text" name="harvest_min_messages" value="<%= hv["min_messages"] %>" placeholder="3" inputmode="numeric">
-    </label>
-    <label>miner model <span class="muted">(blank = the platform utility_model)</span>
-      <input type="text" name="harvest_miner_model" value="<%= hvm["model"] %>" placeholder="deepseek-v4-flash">
-    </label>
-    <label>miner window <span class="muted">(last N conversations)</span>
-      <input type="text" name="harvest_miner_window" value="<%= hvm.dig("window", "last_sessions") %>" placeholder="200" inputmode="numeric">
-    </label>
-    <label>miner max proposals
-      <input type="text" name="harvest_miner_max_proposals" value="<%= hvm["max_proposals"] %>" placeholder="10" inputmode="numeric">
-    </label>
-    <label>miner budget (tokens)
-      <input type="text" name="harvest_miner_budget_tokens" value="<%= hvm.dig("budget", "tokens") %>" placeholder="20000" inputmode="numeric">
-    </label>
-  </div>
-  <label>negative list <span class="muted">— JSON: <code>[{ "rule": "…", "pattern": "…" }]</code> (blank = the deployment seed)</span>
-    <textarea name="harvest_negative_list" rows="3" spellcheck="false" class="mono" placeholder='[ { "rule": "no-competitor-prices", "pattern": "concorrente" } ]'><%= agent_json(hv["negative_list"]) %></textarea>
-  </label>
-  <label>prompt <span class="muted">— what a harvestable skill is for THIS store (blank = the engine default)</span>
-    <textarea name="harvest_prompt" rows="3" placeholder="what makes a skill harvestable for this store"><%= hv["prompt"] %></textarea>
-  </label>
-</fieldset>
+            <%== render("_cfg_harvest") %>
           </div>
 
           <div class="config-group" data-config-group="refinement"<%== " hidden" unless @config_group == "refinement" %>>
@@ -382,58 +241,8 @@
           </div>
 
           <div class="config-group" data-config-group="budget_rel"<%== " hidden" unless @config_group == "budget_rel" %>>
-      <fieldset class="subgroup">
-        <legend>budget <span class="muted">— WS2: calendar spend caps per (tenant, agent)</span></legend>
-        <% bd = @agent.budget || {} %>
-        <div class="grid-3">
-          <label>daily (tokens)
-            <input type="text" name="budget_daily" value="<%= bd["daily"] %>" inputmode="numeric">
-          </label>
-          <label>monthly (tokens)
-            <input type="text" name="budget_monthly" value="<%= bd["monthly"] %>" inputmode="numeric">
-          </label>
-          <label>alert at <span class="muted">(0–1 of the cap)</span>
-            <input type="text" name="budget_alert_at" value="<%= bd["alert_at"] %>" placeholder="0.8" inputmode="decimal">
-          </label>
-        </div>
-        <label class="check">
-          <input type="checkbox" name="budget_soft" value="1"<%== " checked" if bd["soft"] %>>
-          soft cap <span class="muted">— crossing it warns and runs; hard (default) fails the turn</span>
-        </label>
-      </fieldset>
-
-      <fieldset class="subgroup">
-        <legend>reliability <span class="muted">— retries, fallback chain, circuit breaker</span></legend>
-        <% rel = @agent.reliability || {}; brk = rel["circuit_breaker"] || {} %>
-        <div class="grid-3">
-          <label>retries
-            <input type="text" name="reliability_retries" value="<%= rel["retries"] %>" inputmode="numeric">
-          </label>
-          <label>backoff
-            <select name="reliability_backoff">
-              <option value="">none</option>
-              <% %w[constant exponential].each do |m| %>
-                <option value="<%= m %>"<%== ' selected' if rel["backoff"] == m %>><%= m %></option>
-              <% end %>
-            </select>
-          </label>
-          <label>timeout (s)
-            <input type="text" name="reliability_timeout" value="<%= rel["timeout"] %>" placeholder="30" inputmode="numeric">
-          </label>
-          <label>breaker after <span class="muted">(failures)</span>
-            <input type="text" name="reliability_breaker_after" value="<%= brk["after"] %>" inputmode="numeric">
-          </label>
-          <label>breaker within (s)
-            <input type="text" name="reliability_breaker_within" value="<%= brk["within"] %>" inputmode="numeric">
-          </label>
-          <label>breaker cooldown (s)
-            <input type="text" name="reliability_breaker_cooldown" value="<%= brk["cooldown"] %>" inputmode="numeric">
-          </label>
-        </div>
-        <label>fallback models <span class="muted">(comma-separated refs, tried after retries)</span>
-          <input type="text" name="reliability_fallback" value="<%= agent_list(rel["fallback"]) %>" placeholder="openai/gpt-4o-mini">
-        </label>
-      </fieldset>
+            <%== render("_cfg_budget") %>
+            <%== render("_cfg_reliability") %>
           </div>
 
           <div class="config-group" data-config-group="routing"<%== " hidden" unless @config_group == "routing" %>>
@@ -449,9 +258,7 @@
           <input type="text" name="stt_prompt" value="<%= @agent.stt_prompt %>" placeholder="Ocean Drop, tênis, boné trucker, chinelo">
         </label>
         <div class="grid-2">
-          <label>alerts webhook <span class="muted">(budget_warning / breaker_open / delivery_failed)</span>
-            <input type="text" name="alerts_webhook" value="<%= @agent.alerts && @agent.alerts["webhook"] %>" placeholder="https://ops.example.com/insika-alerts">
-          </label>
+          <%== render("_cfg_alerts") %>
           <label class="check">
             <input type="checkbox" name="stuck_signal" value="1"<%== " checked" if @agent.stuck_signal %>>
             stuck signal <span class="muted">— the model may end a turn <code>stuck</code></span>

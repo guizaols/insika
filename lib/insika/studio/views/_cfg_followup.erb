@@ -1,0 +1,30 @@
+<fieldset class="subgroup">
+  <legend>follow-ups <span class="muted">— the seller who comes back (blank arm = off)</span></legend>
+<%== inherit_toggle("followup") %>
+  <% fu = @agent.followup || {}; fup = fu["policy"] || {}; fqh = fup["quiet_hours"] || {} %>
+  <div class="grid-2">
+    <label>arm
+      <input type="text" name="followup_arm" value="<%= fu["arm"] %>" placeholder="schedule">
+    </label>
+    <label>max frequency <span class="muted">(e.g. <code>2/24h</code>)</span>
+      <input type="text" name="followup_max_frequency" value="<%= fup["max_frequency"] %>" placeholder="2/24h">
+    </label>
+    <label>quiet hours timezone <span class="muted">(blank = no quiet hours)</span>
+      <input type="text" name="followup_tz" value="<%= fqh["timezone"] %>" placeholder="America/Sao_Paulo">
+    </label>
+    <div class="grid-2">
+      <label>quiet start
+        <input type="text" name="followup_quiet_start" value="<%= fqh["start"] %>" placeholder="21:30">
+      </label>
+      <label>quiet end
+        <input type="text" name="followup_quiet_end" value="<%= fqh["end"] %>" placeholder="09:00">
+      </label>
+    </div>
+    <label>cancel keywords <span class="muted">(comma-separated)</span>
+      <input type="text" name="followup_cancel_keywords" value="<%= agent_list(fup["cancel_keywords"]) %>" placeholder="não quero mais contato">
+    </label>
+    <label>silence after N sends
+      <input type="text" name="followup_silence_after_sends" value="<%= fup["silence_after_sends"] %>" placeholder="3" inputmode="numeric">
+    </label>
+  </div>
+</fieldset>

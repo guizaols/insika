@@ -1,0 +1,21 @@
+    <fieldset class="subgroup">
+      <legend>grounding <span class="muted">— product claims must point at evidence the session actually saw</span></legend>
+<%== inherit_toggle("grounding") %>
+      <% gr = @agent.grounding || {} %>
+      <div class="grid-2">
+        <label>mode <span class="muted">(blank = off)</span>
+          <select name="grounding_mode">
+            <option value="">off</option>
+            <% %w[flag enforce].each do |m| %>
+              <option value="<%= m %>"<%== ' selected' if gr["mode"] == m %>><%= m %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>matcher SKU <span class="muted">(evidence id prefix, e.g. <code>sku:</code>)</span>
+          <input type="text" name="grounding_matcher_sku" value="<%= gr.dig("matcher", "sku") %>" placeholder="sku:">
+        </label>
+        <label>name keys <span class="muted">(comma-separated metadata keys with product names)</span>
+          <input type="text" name="grounding_name_keys" value="<%= agent_list(gr.dig("matcher", "name_keys")) %>" placeholder="product, name">
+        </label>
+      </div>
+    </fieldset>

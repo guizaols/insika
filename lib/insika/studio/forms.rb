@@ -114,7 +114,20 @@ module Studio
         prompt_refs: list_patch(r, "prompt_refs"),
         capabilities_declared: list_patch(r, "capabilities_declared"),
         skills_eager: skills_eager_patch(r)
-      }
+      }.merge(inherited_fields(r))
+    end
+
+    # The sections whose "use the platform default" box is checked save nil, so
+    # the agent keeps inheriting (Insika::AgentDefaults).
+    def inherited_fields(r)
+      (Array(r.params["inherit"]) & Insika::AgentDefaults::FIELDS).to_h { |field| [field.to_sym, nil] }
+    end
+
+    # The platform agent defaults form: the same sections and parsers as the
+    # agent form, read against the current defaults (so pack-only keys survive).
+    def agent_defaults_patch(r)
+      @agent = agent_defaults_profile
+      Insika::AgentDefaults::FIELDS.to_h { |field| [field, public_send(:"#{field}_patch", r)] }
     end
 
     def memory_retrieval_patch(r)

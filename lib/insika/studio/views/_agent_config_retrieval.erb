@@ -3,11 +3,14 @@
 <% [["memory", "Memory", @agent.memory_retrieval || {}], ["knowledge", "Knowledge", knowledge]].each do |source, title, config| %>
   <fieldset class="subgroup">
     <legend><%= title %></legend>
+    <%== inherit_toggle(source == "memory" ? "memory_retrieval" : "knowledge") %>
     <% if source == "memory" %>
-      <label class="check">
+      <% unless @agent_defaults_form %>
+      <label class="check own">
         <input type="checkbox" name="memory" value="1"<%== " checked" if @agent.memory %>>
         Remember across conversations
       </label>
+      <% end %>
       <p class="muted">Without reranking, memory uses saved facts and the ten most recent notes. Turning memory off does not delete them.</p>
     <% else %>
       <label class="check">
