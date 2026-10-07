@@ -190,6 +190,7 @@ require_relative "insika/overlay_tool_registry"
 require_relative "insika/settings_store"
 require_relative "insika/llm_provider_store"
 require_relative "insika/llm_configurator"
+require_relative "insika/agent_defaults"
 # LLM-first onboarding surface: serves start.md + models.json + the
 # public docs. Reads the settings/provider stores above at call-time (order is free).
 require_relative "insika/onboarding"

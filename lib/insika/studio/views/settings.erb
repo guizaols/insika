@@ -5,6 +5,7 @@
      ["models",  "Model defaults", "platform model layer (Chat › Agent › platform)"],
      ["edge",    "Edge limits", "rate-limit per chat, token ceiling per agent"],
      ["burst",   "Burst policy", "what happens to a message that lands on a busy session"],
+     ["agents",  "Agent defaults", "what an agent with no value of its own runs with"],
      ["evals",   "Evals", "who grades a rubric, and how a panel agrees"],
      ["llm",     "LLM providers", "keys, base URL, models per provider"],
      ["demo",    "Demo data", "see every loop working at once"]
@@ -140,6 +141,30 @@
           <label>steer_join <span class="muted">(template framing an absorbed message — at the door and mid-run; must carry <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>; blank = the raw text)</span><input type="text" name="steer_join" value="<%= @settings.dig("queue", "steer_join") %>" placeholder="the customer just added: <%= Insika::QueuePolicy::JOIN_PLACEHOLDER %>"></label>
         </form>
       </div>
+
+<% elsif @section == "agents" %>
+  <div class="drill-pane-head">
+    <div class="title"><strong>Agent defaults</strong></div>
+    <button type="submit" form="set-agent-defaults" class="btn primary" data-turbo-submits-with="Saving…">Save agent defaults</button>
+  </div>
+  <div class="drill-pane-body">
+    <p class="muted">An agent with no value of its own for one of these sections runs with this one. An agent that sets the section keeps its own, whole. In an agent's config, the <em>use the platform default</em> box says which one applies.</p>
+    <form id="set-agent-defaults" method="post" action="/studio/settings/agent-defaults" data-controller="dirty-guard">
+      <%== csrf_tag %>
+      <%== render("_cfg_reliability") %>
+      <%== render("_cfg_budget") %>
+      <%== render("_agent_config_retrieval") %>
+      <%== render("_cfg_guardrails") %>
+      <%== render("_cfg_grounding") %>
+      <%== render("_cfg_followup") %>
+      <%== render("_cfg_distill") %>
+      <%== render("_cfg_harvest") %>
+      <fieldset class="subgroup">
+        <legend>alerts</legend>
+        <%== render("_cfg_alerts") %>
+      </fieldset>
+    </form>
+  </div>
 
 <% elsif @section == "evals" %>
   <div class="drill-pane-head">

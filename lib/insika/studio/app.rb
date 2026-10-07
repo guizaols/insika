@@ -356,6 +356,10 @@ module Studio
           # Config/model → :update_agent (patch merge).
           r.post "config" do
             check_csrf!
+            # A section the agent stops inheriting starts from the platform's
+            # value, so the keys its form does not show (knowledge index,
+            # guardrails corpora) carry over.
+            @agent = Insika::AgentDefaults.apply_safely(@agent, platform_agent_defaults)
             with_flash("Configuration saved.") do
               dispatch(:update_agent, config_patch(r))
             end
@@ -726,6 +730,15 @@ module Studio
         # Burst policy: the platform QueuePolicy layer. Its own form for the same
         # reason as edge — and so "apply to every agent" is one save instead of
         # one edit per agent (each agent still overrides in its config).
+        # Platform agent defaults: what an agent with no value of its own runs with.
+        r.post "agent-defaults" do
+          check_csrf!
+          with_flash("Agent defaults saved.") do
+            dispatch(:update_settings, { patch: { "agent_defaults" => agent_defaults_patch(r) } })
+          end
+          r.redirect("/studio/settings?s=agents")
+        end
+
         r.post "queue" do
           check_csrf!
           with_flash("Burst policy saved.") do
@@ -1691,6 +1704,10 @@ end
 
     def render_agent_detail
       id = @agent.id
+      # The config sections show what the agent runs with: its own values, or
+      # the platform's where it inherits (the inherit boxes read @agent_own).
+      @agent_own = @agent
+      @agent = Insika::AgentDefaults.apply_safely(@agent, platform_agent_defaults)
       # Which subnav tab the frame should land on. Selecting a prompt file or
       # a config group is a real navigation (advances the frame + history),
       # which reconnects the `tabs` Stimulus controller — but Turbo's history
@@ -1763,6 +1780,33 @@ end
       JSON.pretty_generate(config)
     rescue StandardError
       config.to_s
+    end
+
+    # "Use the platform default" box of an inheritable config section, on the
+    # agent page only. Checked while the agent has no value of its own.
+    def inherit_toggle(field)
+      return "" if @agent_own.nil?
+
+      checked = @agent_own.public_send(field).nil? ? " checked" : ""
+      %(<label class="check inherit"><input type="checkbox" name="inherit[]" value="#{field}"#{checked}> ) +
+        %(use the platform default <span class="muted">(Settings › Agent defaults)</span></label>)
+    end
+
+    def platform_agent_defaults
+      store = insika[:settings_store]
+      (store ? store.get : Insika::SettingsStore::DEFAULTS)["agent_defaults"] || {}
+    end
+
+    # The platform defaults as a profile, so the agent's sections render them.
+    # A field that no longer builds (a rerank model the registry dropped) shows
+    # blank, so this page stays the place to fix it.
+    def agent_defaults_profile
+      fields = platform_agent_defaults.slice(*Insika::AgentDefaults::FIELDS).select do |field, value|
+        Insika::AgentDefaults.validate!(field => value)
+      rescue Insika::ValidationError
+        false
+      end
+      Insika::AgentProfile.build(id: "agent-defaults", model: nil, **fields.transform_keys(&:to_sym))
     end
 
     # A list field as comma-joined text for the form's textarea.
@@ -2349,12 +2393,17 @@ end
     # same keys; a bogus ?cfg= falls back to the first group.
     CONFIG_SECTIONS = %w[model retrieval guardrails grounding funnel followups schedules distill harvest refinement budget_rel routing advanced].freeze
 
-    SETTINGS_SECTIONS = %w[general models edge burst evals llm demo].freeze
+    SETTINGS_SECTIONS = %w[general models edge burst agents evals llm demo].freeze
     def render_settings
       store = insika[:settings_store]
       @settings = store ? store.get : Insika::SettingsStore::DEFAULTS
       @providers = insika[:llm_provider_store] ? insika[:llm_provider_store].all : []
       @section = SETTINGS_SECTIONS.include?(request.params["s"]) ? request.params["s"] : "general"
+      if @section == "agents"
+        @agent = agent_defaults_profile
+        @guardrails = @agent.guardrails || {}
+        @agent_defaults_form = true
+      end
       @persistence = insika[:config][:persistence].to_s
       view("settings")
     end
