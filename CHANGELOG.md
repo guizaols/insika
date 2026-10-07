@@ -71,6 +71,11 @@ it is released. Entries land with the pull request that makes the change.
   only the worker that served the edit had the key, so a fallback on that
   provider failed as unconfigured. A cleared key stops being used; a key from
   the environment is never cleared by it.
+- Deleting an LLM provider authored at runtime puts back the key and base the
+  process started with (for example from the environment) instead of leaving
+  the provider without credentials; a worker that never applied the provider
+  leaves its config alone. Delete no longer disables a provider that also has a
+  key from the environment.
 - Native chat usage includes tool rounds and retries, and failed turns expose
   recorded usage. Responses projects cache-inclusive totals; negotiated pricing
   no longer subtracts cache reads from already non-cached input.
