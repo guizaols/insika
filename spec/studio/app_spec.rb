@@ -844,6 +844,14 @@ RSpec.describe Studio::App do
       expect(body).to match(/name="inherit\[\]" value="reliability" checked/)
     end
 
+    it "unchecking the box starts from the platform's value, keeping the keys the form does not show" do
+      app, bus = build_app(settings: { "agent_defaults" => { "knowledge" => { "extract" => true, "index" => "shared" } } })
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/config", params: { "model" => "x", "knowledge_retrieve" => "1", "_csrf" => csrf })
+      expect(bus.last(:update_agent).payload[:knowledge]).to include("index" => "shared", "retrieve" => true)
+    end
+
     it "saving with the box checked keeps the agent inheriting; unchecked saves its own" do
       app, bus = build_app(settings: defaults)
       client = login(app)

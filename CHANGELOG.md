@@ -16,7 +16,11 @@ it is released. Entries land with the pull request that makes the change.
   grounding, follow-ups, distillation or harvest runs with the platform's. The
   agent's own value wins whole. Each of those sections in the agent config has
   a "use the platform default" box; saving with it checked keeps the agent
-  inheriting.
+  inheriting. A default is validated on save, and one that stops building
+  later leaves agents on their own values instead of failing turns. Agents
+  saved in the Studio before this have their own knowledge, guardrails,
+  distillation and harvest values (the form always wrote them): check the box
+  to make them inherit.
 
 - **Optional Postgres store** (`INSIKA_DATABASE_URL`, `INSIKA_DATABASE_POOL`). It passes the
   same store contract as SQLite; `pg` is not a gem dependency and loads only when the

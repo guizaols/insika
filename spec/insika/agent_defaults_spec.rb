@@ -52,4 +52,19 @@ RSpec.describe Insika::AgentDefaults do
     settings.put_agent_defaults("reliability" => { "timeout" => 5 })
     expect(source.fetch("plain").reliability).to eq("timeout" => 5)
   end
+
+  it "never writes through: the agent's own source is the only door, and own() returns it" do
+    expect { source.put(stored.fetch("plain")) }.to raise_error(Insika::Error, /own source/)
+    expect(described_class.own(source)).to be(stored)
+    expect(described_class.own(stored)).to be(stored)
+  end
+
+  it "a default that no longer builds leaves the agent on its own values instead of failing the turn" do
+    bad = { "rerank" => { "provider" => nil } }
+    allow(settings).to receive(:get).and_wrap_original { |m| m.call.merge("agent_defaults" => { "knowledge" => bad }) }
+    profile = nil
+    expect { profile = source.fetch("plain") }.to output(/agent defaults/).to_stderr
+    expect(profile.knowledge).to be_nil
+    expect { source.all }.to output(/agent defaults/).to_stderr
+  end
 end

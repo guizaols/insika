@@ -356,6 +356,10 @@ module Studio
           # Config/model → :update_agent (patch merge).
           r.post "config" do
             check_csrf!
+            # A section the agent stops inheriting starts from the platform's
+            # value, so the keys its form does not show (knowledge index,
+            # guardrails corpora) carry over.
+            @agent = Insika::AgentDefaults.apply_safely(@agent, platform_agent_defaults)
             with_flash("Configuration saved.") do
               dispatch(:update_agent, config_patch(r))
             end
@@ -1703,7 +1707,7 @@ end
       # The config sections show what the agent runs with: its own values, or
       # the platform's where it inherits (the inherit boxes read @agent_own).
       @agent_own = @agent
-      @agent = Insika::AgentDefaults.apply(@agent, platform_agent_defaults)
+      @agent = Insika::AgentDefaults.apply_safely(@agent, platform_agent_defaults)
       # Which subnav tab the frame should land on. Selecting a prompt file or
       # a config group is a real navigation (advances the frame + history),
       # which reconnects the `tabs` Stimulus controller — but Turbo's history
@@ -1794,9 +1798,15 @@ end
     end
 
     # The platform defaults as a profile, so the agent's sections render them.
+    # A field that no longer builds (a rerank model the registry dropped) shows
+    # blank, so this page stays the place to fix it.
     def agent_defaults_profile
-      fields = platform_agent_defaults.slice(*Insika::AgentDefaults::FIELDS).transform_keys(&:to_sym)
-      Insika::AgentProfile.build(id: "agent-defaults", model: nil, **fields)
+      fields = platform_agent_defaults.slice(*Insika::AgentDefaults::FIELDS).select do |field, value|
+        Insika::AgentDefaults.validate!(field => value)
+      rescue Insika::ValidationError
+        false
+      end
+      Insika::AgentProfile.build(id: "agent-defaults", model: nil, **fields.transform_keys(&:to_sym))
     end
 
     # A list field as comma-joined text for the form's textarea.

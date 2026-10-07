@@ -30,10 +30,35 @@ module Insika
       AgentProfile.build(**profile.to_h.merge(fill))
     end
 
+    # Like #apply, but a default the agent cannot be built with (saved before it
+    # was validated, or a rerank model the registry dropped since) leaves the
+    # agent on its own values: one bad default must not stop every turn.
+    def apply_safely(profile, defaults)
+      apply(profile, defaults)
+    rescue Insika::ValidationError => e
+      warn "[insika] agent defaults not applied to #{profile.id}: #{e.message}"
+      profile
+    end
+
+    # Raises ValidationError unless an agent can be built with these defaults.
+    def validate!(defaults)
+      fields = defaults.to_h { |field, value| [field.to_sym, value] }
+      AgentProfile.build(id: "agent-defaults", model: nil, **fields)
+      defaults
+    end
+
+    # The agent's own records behind a profile source: what authoring reads and
+    # writes. A plain source is its own.
+    def own(source) = source.is_a?(ProfileSource) ? source.source : source
+
     # A ProfileSource that hands out profiles with the platform defaults applied.
-    # Anything else (put, delete, all_raw) goes to the wrapped source untouched.
+    # Read-only: writing a profile read here would save the defaults into the
+    # agent, so put/delete refuse; writers use #source (AgentDefaults.own).
+    # Other reads (all_raw) go to the wrapped source untouched.
     class ProfileSource
       include Insika::ProfileSource
+
+      attr_reader :source
 
       def initialize(source, settings_store:)
         @source = source
@@ -42,15 +67,18 @@ module Insika
 
       def fetch(id)
         profile = @source.fetch(id)
-        profile && AgentDefaults.apply(profile, defaults)
+        profile && AgentDefaults.apply_safely(profile, defaults)
       end
 
       def all
         d = defaults
-        @source.all.map { |profile| AgentDefaults.apply(profile, d) }
+        @source.all.map { |profile| AgentDefaults.apply_safely(profile, d) }
       end
 
       def ids = @source.ids
+
+      def put(*) = raise(Insika::Error, "agent profiles are written through their own source (AgentDefaults.own)")
+      def delete(*) = put
 
       def respond_to_missing?(name, include_private = false) = @source.respond_to?(name, include_private) || super
 
