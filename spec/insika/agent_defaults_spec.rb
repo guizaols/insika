@@ -65,6 +65,23 @@ RSpec.describe Insika::AgentDefaults do
     profile = nil
     expect { profile = source.fetch("plain") }.to output(/agent defaults/).to_stderr
     expect(profile.knowledge).to be_nil
-    expect { source.all }.to output(/agent defaults/).to_stderr
+    expect(source.all.map(&:knowledge)).to all(be_nil) # warned once per change, not per read
+  end
+
+  it "normalizes the defaults once per change, not once per read" do
+    static = Insika::StaticProfileSource.new("plain" => Insika::AgentProfile.build(id: "plain", model: "m"))
+    reads = described_class::ProfileSource.new(static, settings_store: settings)
+    builds = 0
+    allow(Insika::AgentProfile).to receive(:build).and_wrap_original { |m, **kw| builds += 1; m.call(**kw) }
+    reads.fetch("plain")
+    after_first = builds
+    3.times { reads.fetch("plain") }
+    reads.all
+    expect(builds).to eq(after_first)
+    expect(reads.fetch("plain").reliability).to eq(platform_reliability)
+    expect(reads.fetch("plain").reliability).to be_frozen
+
+    settings.put_agent_defaults("reliability" => { "timeout" => 7 })
+    expect(reads.fetch("plain").reliability).to eq("timeout" => 7)
   end
 end
