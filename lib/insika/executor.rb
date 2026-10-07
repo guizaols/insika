@@ -2244,15 +2244,16 @@ module Insika
 
     # Turn context: the ids the data-tools resolve via
     # {{ctx.*}} to emit X-Chat-Id/X-Store-Id/X-Agent-Id to /api/internal/*. They
-    # come from the TURN, never from the model args (R2). chat_id = the session
-    # (the /v1/responses adapter creates the session with id = user = chat.id);
+    # come from the TURN, never from the model args (R2). chat_id is the external
+    # session id, without the server-added tenant namespace;
     # tenant = the Command tenant (memory) OR chat_id (drop-in default); agent_id =
     # profile; store_id = the profile metadata (stable per store, from the pack).
     # Absent fields -> nil (the data-tool emits an empty header; in the pilot the
     # profile carries store_id). Generic: nothing here mentions a consumer.
     def build_turn_context(task, profile, state)
+      tenant = command_tenant(task)
       {
-        chat_id: task.session_id,
+        chat_id: tenant ? task.session_id&.delete_prefix("#{tenant}:") : task.session_id,
         agent_id: profile.id,
         # the DATA-TOOL header tenant stays the merchant (or the chat), even when
         # the memory scope carries a customer — the backend identifies the store,

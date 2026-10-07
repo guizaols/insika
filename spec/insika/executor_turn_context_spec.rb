@@ -58,6 +58,24 @@ RSpec.describe "Insika::Executor — turn context" do
       expect(ctx[:chat_id]).to eq("chat-42")
     end
 
+    [
+      ["acme:chat-42", "acme", "chat-42"],
+      ["acme:channel:chat-42", "acme", "channel:chat-42"],
+      ["other:chat-42", "acme", "other:chat-42"],
+      ["channel:chat-42", nil, "channel:chat-42"],
+      [nil, "acme", nil]
+    ].each do |session_id, tenant, chat_id|
+      it "exposes external chat #{chat_id.inspect} for session #{session_id.inspect} and tenant #{tenant.inspect}" do
+        task = task_with(session_id: session_id)
+        task.command["meta"]["tenant"] = tenant
+
+        ctx = executor.send(:build_turn_context, task, profile, state_with(tenant: tenant))
+
+        expect(ctx[:chat_id]).to eq(chat_id)
+        expect(task.session_id).to eq(session_id)
+      end
+    end
+
     it "no store_id in the profile -> store_id nil (header will be empty)" do
       bare = Insika::AgentProfile.build(id: "a", model: "m")
       ctx = executor.send(:build_turn_context, task_with(session_id: "c1"), bare, state_with(tenant: "c1"))
