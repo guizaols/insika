@@ -229,6 +229,7 @@ module Deploy
       edge_limiter: EDGE_LIMITER,
       executor_extra: {
         llm: LLM_CONTEXT,
+        llm_refresh: -> { LLM_CONFIGURATOR.refresh }, # a provider stored by another worker
         settings_store: SETTINGS_STORE,  # v2 model resolution: platform default_model + fallbacks
         tool_trace_store: TOOL_TRACE_STORE,
         context_trace_store: CONTEXT_TRACE_STORE,

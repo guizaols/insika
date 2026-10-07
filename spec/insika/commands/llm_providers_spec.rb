@@ -74,6 +74,65 @@ RSpec.describe "LLM providers" do
       expect(fake_config.calls["deepseek_api_key"]).to be_nil
       expect(fake_config.calls["deepseek_api_base"]).to be_nil
     end
+
+    describe "#refresh" do
+      # Another worker process authored the provider: only the shared store saw it.
+      let(:other_worker) { Insika::LLMProviderStore.new(config_store: config_store) }
+
+      it "applies a provider written by another process" do
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-or")
+        configurator.refresh
+        expect(fake_config.calls["openrouter_api_key"]).to eq("sk-or")
+      end
+
+      it "applies a changed key, and leaves the config alone while nothing changed" do
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-1")
+        configurator.refresh
+        fake_config.calls.clear
+        configurator.refresh
+        expect(fake_config.calls).to be_empty
+
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-2")
+        configurator.refresh
+        expect(fake_config.calls["openrouter_api_key"]).to eq("sk-2")
+      end
+
+      it "unapplies a provider deleted elsewhere, never a key it did not apply" do
+        fake_config.calls["deepseek_api_key"] = "from-env"
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-or")
+        configurator.refresh
+        other_worker.delete("openrouter")
+        configurator.refresh
+        expect(fake_config.calls["openrouter_api_key"]).to be_nil
+        expect(fake_config.calls["deepseek_api_key"]).to eq("from-env")
+      end
+
+      it "deleting a record that carried no key leaves the environment's key alone" do
+        fake_config.calls["deepseek_api_key"] = "from-env"
+        other_worker.upsert("api" => "deepseek", "base_url" => "https://x") # no key: env key stays
+        configurator.refresh
+        other_worker.delete("deepseek")
+        configurator.refresh
+        expect(fake_config.calls["deepseek_api_key"]).to eq("from-env")
+      end
+
+      it "a key cleared elsewhere stops being used" do
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-leaked")
+        configurator.refresh
+        other_worker.upsert("api" => "openrouter", "api_key" => "")
+        configurator.refresh
+        expect(fake_config.calls["openrouter_api_key"]).to be_nil
+      end
+
+      it "a store error keeps the current config and is retried on the next call" do
+        other_worker.upsert("api" => "openrouter", "api_key" => "sk-or")
+        allow(store).to receive(:all_raw).and_raise(Insika::Error, "busy")
+        expect { configurator.refresh }.to output(/busy/).to_stderr
+        allow(store).to receive(:all_raw).and_call_original
+        configurator.refresh
+        expect(fake_config.calls["openrouter_api_key"]).to eq("sk-or")
+      end
+    end
   end
 
   describe Insika::Commands::UpsertLLMProvider do

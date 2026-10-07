@@ -23,7 +23,7 @@ module Insika
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
                     contact_store: nil, followup_store: nil, model_visible_trace_store: nil,
-                    knowledge_store: nil, shared_conversations: nil)
+                    knowledge_store: nil, shared_conversations: nil, llm_refresh: nil)
       @shared_conversations = shared_conversations
       @shared_turns = {}
       @context_builder = context_builder
@@ -73,6 +73,10 @@ module Insika
       # process-wide RubyLLM constant (the historic single-graph deployment).
       # Duck-typed: Context#chat and RubyLLM.chat take the same keywords.
       @llm = llm
+      # ->() re-applies the LLM providers authored at runtime when they changed
+      # (LLMConfigurator#refresh), so a key stored through another worker reaches
+      # this one before its next chat. nil = credentials fixed at boot.
+      @llm_refresh = llm_refresh
       # stability for the turn's single agent interaction (WS3): retries /
       # fallback / circuit breaker, all DATA on AgentProfile#reliability.
       # nil = the plain single ask (parity).
@@ -3152,6 +3156,7 @@ module Insika
     def build_chat(selection, params_source, state: nil)
       model = selection.respond_to?(:model) ? selection.model : selection[:model]
       provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
+      @llm_refresh&.call
       chat = llm_operation_context(state, model).chat(
         model: model,
         provider: provider,
