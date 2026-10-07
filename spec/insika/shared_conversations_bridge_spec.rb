@@ -68,6 +68,21 @@ RSpec.describe 'Shared conversation HTTP bridge' do
     expect(calls).to include(['PUT', "/v1/conversations/#{ids['conversation_id']}", ids.slice('user_id','agent_id').merge('harness'=>'insika')])
   end
 
+  it 'binds the customer of imported history before reserving the next turn' do
+    ids.delete('generation')
+    ids['history_required'] = true
+    conversation.merge!('user_id'=>ids['conversation_id'],'user_id_pending'=>1,'last_sequence'=>2)
+    allow(bridge).to receive(:request).with('PUT', "/v1/conversations/#{ids['conversation_id']}", anything) do |_method,path,data|
+      calls << ['PUT',path,data]
+      conversation.merge!('user_id'=>data.fetch('user_id'),'user_id_pending'=>0)
+    end
+    allow(bridge).to receive(:request).with('GET', /messages\?/).and_return(
+      {'messages'=>[{'role'=>'user','content'=>[{'type'=>'text','text'=>'old question'}]},
+        {'role'=>'assistant','content'=>[{'type'=>'text','text'=>'old answer'}]}],'next_sequence'=>2})
+    expect(bridge.begin_turn(task: task, profile: profile).last['content']).to eq('old answer')
+    expect(calls.find { _1[0]=='PUT' }.last['user_id']).to eq(ids['user_id'])
+  end
+
   it 'holds an old chat until migration without creating an empty record' do
     ids.delete('generation')
     ids['history_required'] = true

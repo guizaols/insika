@@ -38,6 +38,10 @@ module Insika
         request('PUT', path, data.slice('user_id','agent_id').merge('harness'=>'insika'))
         conversation = request('GET', path)
       end
+      if conversation['user_id_pending'] == 1
+        raise StoreError, 'shared conversation identity mismatch' unless conversation.values_at('tenant_id','agent_id') == data.values_at('tenant_id','agent_id')
+        conversation = request('PUT', path, data.slice('user_id','agent_id').merge('harness'=>'insika'))
+      end
       if data['history_required'] && conversation['last_sequence'].zero?
         raise StoreError, 'migrate existing chat history before shared execution'
       end
