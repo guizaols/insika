@@ -221,8 +221,8 @@ module Insika
       end
       path = path_for(data)+"/turns/#{data['turn_id']}"
       prefix = record.fetch('messages')[0...-1]
-      unless prefix.empty?
-        request('POST', path+'/messages', {'generation'=>data['generation'],'expected_sequence'=>record['sequence'],'messages'=>prefix})
+      prefix.each_with_index do |message, index|
+        request('POST', path+'/messages', {'generation'=>data['generation'],'expected_sequence'=>record['sequence']+index,'messages'=>[message]})
       end
       request('POST', path+'/complete', {'generation'=>data['generation'],
         'expected_sequence'=>record['sequence']+prefix.length,'message'=>record['messages'].last,'pending_approval'=>record.fetch('pending_approval',false)})
