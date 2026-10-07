@@ -32,7 +32,15 @@ module Insika
       data, payload = identity(task)
       acquire = !payload.fetch('shared_conversation').key?('generation')
       path = path_for(data)
-      conversation = request('GET', path)
+      conversation = request('GET', path, missing: true)
+      unless conversation
+        raise StoreError, 'migrate existing chat history before shared execution' if data['history_required']
+        request('PUT', path, data.slice('user_id','agent_id').merge('harness'=>'insika'))
+        conversation = request('GET', path)
+      end
+      if data['history_required'] && conversation['last_sequence'].zero?
+        raise StoreError, 'migrate existing chat history before shared execution'
+      end
       key = key_for(data)
       old = @store.get(SCOPE,key)
       check_identity!(data, conversation, ownership: !acquire || !!old)
@@ -144,6 +152,7 @@ module Insika
         record = @store.get(SCOPE,key_for(data))
         data = data.merge('generation'=>record.fetch('generation')) if record
       end
+      raise StoreError, 'invalid shared history_required' unless [nil, true, false].include?(data['history_required'])
       raise StoreError, 'original user_text required' unless payload['user_text'].is_a?(String)
       content = data['content']
       if content
