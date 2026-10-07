@@ -17,9 +17,10 @@ RSpec.describe "LLM providers" do
     Class.new do
       attr_reader :calls
       def initialize = (@calls = {})
-      def respond_to_missing?(name, _ = false) = name.to_s.end_with?("=")
+      def respond_to_missing?(name, _ = false) = name.to_s.end_with?("_api_key=", "_api_base=", "_api_key", "_api_base")
       def method_missing(name, *args)
-        return super unless name.to_s.end_with?("=")
+        return super unless respond_to_missing?(name)
+        return @calls[name.to_s] unless name.to_s.end_with?("=")
 
         @calls[name.to_s.chomp("=")] = args.first
       end
@@ -166,6 +167,21 @@ RSpec.describe "LLM providers" do
       configurator.apply
       handler.call(cmd("api" => "deepseek"))
       expect(fake_config.calls["deepseek_api_key"]).to be_nil # unapply zeroed it
+    end
+
+    it "leaves the config alone on a worker that never applied the provider" do
+      fake_config.calls["deepseek_api_key"] = "from-env"
+      store.upsert("api" => "deepseek", "api_key" => "sk-studio") # applied by another worker
+      handler.call(cmd("api" => "deepseek"))
+      expect(fake_config.calls["deepseek_api_key"]).to eq("from-env")
+    end
+
+    it "puts back the key and base the process booted with, not nil" do
+      fake_config.calls.merge!("deepseek_api_key" => "from-env", "deepseek_api_base" => "https://boot")
+      store.upsert("api" => "deepseek", "api_key" => "sk-studio", "base_url" => "https://studio")
+      configurator.apply
+      handler.call(cmd("api" => "deepseek"))
+      expect(fake_config.calls).to include("deepseek_api_key" => "from-env", "deepseek_api_base" => "https://boot")
     end
 
     it "undoes nothing if it did not exist (idempotent, without touching config)" do
