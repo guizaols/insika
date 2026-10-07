@@ -67,12 +67,12 @@ module Insika
 
       def fetch(id)
         profile = @source.fetch(id)
-        profile && AgentDefaults.apply_safely(profile, defaults)
+        profile && fill(profile, normalized)
       end
 
       def all
-        d = defaults
-        @source.all.map { |profile| AgentDefaults.apply_safely(profile, d) }
+        values = normalized
+        @source.all.map { |profile| fill(profile, values) }
       end
 
       def ids = @source.ids
@@ -90,7 +90,37 @@ module Insika
 
       private
 
-      def defaults = @settings_store.get["agent_defaults"] || {}
+      # Every inheritable field is normalized on its own by AgentProfile.build,
+      # so a profile takes the normalized values as they are (Data#with) and is
+      # not rebuilt per read.
+      def fill(profile, values)
+        missing = values.select { |field, _| profile.public_send(field).nil? }
+        missing.empty? ? profile : profile.with(**missing)
+      end
+
+      # The defaults as AgentProfile.build normalizes them, rebuilt only when the
+      # stored defaults change. Frozen: every profile shares them. A field that
+      # does not build is left out (warned once per change), so one bad default
+      # cannot stop every turn.
+      def normalized
+        raw = @settings_store.get["agent_defaults"] || {}
+        digest = raw.hash
+        return @normalized if digest == @normalized_digest
+
+        @normalized = build_values(raw.slice(*FIELDS).compact)
+        @normalized_digest = digest
+        @normalized
+      end
+
+      def build_values(raw)
+        raw.filter_map do |field, value|
+          built = AgentProfile.build(id: "agent-defaults", model: nil, field.to_sym => value)
+          [field.to_sym, Ractor.make_shareable(built.public_send(field))]
+        rescue Insika::ValidationError => e
+          warn "[insika] agent defaults: #{field} not applied: #{e.message}"
+          nil
+        end.to_h
+      end
     end
   end
 end
