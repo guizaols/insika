@@ -28,6 +28,11 @@ module Insika
       end
 
       def execute(value:, key: nil)
+        if @state.shared_conversations
+          kind = key.to_s.strip.empty? ? 'note' : 'fact'
+          record = @state.shared_conversations.propose_memory(task:@state.task,id:kind == 'note' ? SecureRandom.uuid : key.to_s,value:value.to_s,kind:kind)
+          return {proposed:kind,id:record['id'],revision:record['revision']}
+        end
         if key.to_s.strip.empty?
           note = @store.add_note(tenant: @tenant, text: value.to_s)
           emit("note", note.id)

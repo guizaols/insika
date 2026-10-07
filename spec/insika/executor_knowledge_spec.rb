@@ -83,6 +83,19 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     expect(metric).to include("task_id" => task.id, "turn" => 7)
   end
 
+  it "proposes shared concepts without writing native permanent knowledge" do
+    stub_extractor(concepts: [{"name"=>"sizing","description"=>"Sizes","type"=>"fact","body"=>"Blue shirts fit small"}], dropped:{},cost:nil)
+    executor = build_executor
+    bridge = double('shared memory')
+    executor.instance_variable_set(:@shared_conversations,bridge)
+    task = task_for
+    expect(bridge).to receive(:propose_memory).with(task:task,id:'sizing',kind:'knowledge',value:include('Blue shirts fit small'))
+    expect(knowledge_store).not_to receive(:write)
+    executor.send(:finalize_knowledge_extraction,task,profile.with(shared_conversations:true),long_messages)
+    expect(event_stream.types).to include(:knowledge_conflict)
+    expect(event_stream.types).not_to include(:knowledge_learned)
+  end
+
   it "writes the extracted concept to the knowledge store and emits :knowledge_learned" do
     stub_extractor(concepts: [{ "name" => "cep-13-campinas", "description" => "d", "type" => "fact", "body" => "b" }],
                    dropped: {}, cost: nil)

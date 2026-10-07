@@ -50,4 +50,12 @@ RSpec.describe Insika::Tools::Remember do
     tool(tenant: "acme").execute(value: "v", key: "k")
     expect(mem.get_fact(tenant: "outro", key: "k")).to be_nil
   end
+  it 'proposes shared facts without changing the permanent native store' do
+    shared = double('shared memory')
+    state.shared_conversations = shared
+    expect(shared).to receive(:propose_memory).with(task: task, id: 'size', value: 'M', kind: 'fact').and_return({'id'=>'size','revision'=>1})
+    expect(tool.execute(key: 'size', value: 'M')).to eq(proposed: 'fact', id: 'size', revision: 1)
+    expect(mem.facts(tenant: 'acme')).to eq([])
+  end
+
 end

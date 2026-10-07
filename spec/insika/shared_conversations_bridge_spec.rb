@@ -24,6 +24,7 @@ RSpec.describe 'Shared conversation HTTP bridge' do
     allow(bridge).to receive(:request) do |method, path, data = nil, **_options|
       calls << [method,path,data]
       case path
+      when /\/memories\/conversation\// then {'memories'=>[]}
       when /\/messages\?/ then {'messages'=>[], 'through_sequence'=>0, 'next_sequence'=>0}
       when /\/native-run$/ then {'native_run_id'=>task.id,'state'=>'running'}
       when /\/turns$/ then {'id'=>ids['turn_id'],'state'=>'running','native_run_id'=>nil}
@@ -33,6 +34,19 @@ RSpec.describe 'Shared conversation HTTP bridge' do
       else conversation
       end
     end
+  end
+
+  it 'namespaces historical tool IDs by turn before RubyLLM checks answered calls' do
+    turns = 2.times.map { SecureRandom.uuid }
+    history = turns.flat_map { |turn| [
+      {'turn_id'=>turn,'role'=>'assistant','content'=>[],'tool_calls'=>[{'id'=>'remember-call','name'=>'remember','arguments'=>{}}]},
+      {'turn_id'=>turn,'role'=>'tool','content'=>[],'tool_call_id'=>'remember-call'}] }
+    projected = bridge.send(:project, history, '/unused')
+    ids = projected.select { _1['tool_calls'] }.map { _1['tool_calls'].first['id'] }
+    expect(ids.uniq.size).to eq(2)
+    expect(ids).not_to include('remember-call')
+    expect(projected.filter_map { _1['tool_call_id'] }).to eq(ids)
+    expect(history.last['tool_call_id']).to eq('remember-call')
   end
 
   it 'reserves original speech before registering execution and ignores local history' do
@@ -107,4 +121,17 @@ RSpec.describe 'Shared conversation HTTP bridge' do
     bridge.begin_turn(task: task, profile: profile)
     expect { bridge.begin_turn(task: task, profile: profile) }.to raise_error(Insika::StoreError, /reconciliation/)
   end
+  it 'reads canonical user facts and proposes edits with central revision and message provenance' do
+    prefix = "/v1/memories/user/#{ids['user_id']}"
+    record = {'id'=>'size','value'=>'M','kind'=>'fact','revision'=>2,'origin'=>'operator'}
+    allow(bridge).to receive(:request).with('GET',prefix+'?limit=50').and_return({'memories'=>[{'id'=>'size'}]})
+    allow(bridge).to receive(:request).with('GET',prefix+'/size',missing:true).and_return(record)
+    expect(bridge.memory_context(task:task,profile:profile.with(memory:true))['facts']).to eq([record])
+    allow(bridge).to receive(:request).with('GET',prefix+'/size?include_proposed=true',missing:true).and_return(record)
+    expect(bridge).to receive(:request).with('PUT',prefix+'/size',hash_including(
+      'expected_revision'=>2,'status'=>'proposed','origin'=>'insika',
+      'sources'=>[ids.slice('conversation_id').merge('message_id'=>ids['message_id'])]))
+    bridge.propose_memory(task:task,id:'size',value:'L')
+  end
+
 end

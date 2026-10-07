@@ -152,6 +152,45 @@ module Insika
       [data,payload]
     end
 
+    def memory_context(task:, profile:)
+      data, payload = identity(task)
+      result = {}
+      if profile.memory
+        refs = request('GET', "/v1/memories/user/#{data['user_id']}?limit=50")['memories']
+        result['facts'] = refs.filter_map { memory_get(task:task,id:_1['id']) }
+        path = "/v1/memories/conversation/#{data['conversation_id']}"
+        request('GET',path+'?limit=50')['memories'].each do |ref|
+          record = request('GET',path+'/'+URI.encode_www_form_component(ref['id']),missing:true)
+          result['facts'] << record.merge('id'=>"conversation.#{record['id']}") if record
+        end
+      end
+      if Coercion.truthy?(profile.knowledge&.dig('retrieve'))
+        query = URI.encode_www_form_component(payload['user_text'][0, 200])
+        result['knowledge'] = request('GET', "/v1/memories/agent/#{data['agent_id']}?limit=5&query=#{query}")['memories']
+      end
+      result
+    end
+
+    def memory_get(task:, id:, kind: 'fact', include_proposed: false)
+      data, = identity(task)
+      scope, owner = kind == 'knowledge' ? ['agent',data['agent_id']] : ['user',data['user_id']]
+      path = "/v1/memories/#{scope}/#{owner}/#{URI.encode_www_form_component(id)}"
+      path += '?include_proposed=true' if include_proposed
+      request('GET', path, missing:true)
+    end
+
+    def propose_memory(task:, id:, value:, kind: 'fact')
+      data, = identity(task)
+      scope, owner = kind == 'knowledge' ? ['agent',data['agent_id']] : ['user',data['user_id']]
+      current = memory_get(task:task,id:id,kind:kind,include_proposed:true)
+      recorded = @store.get(SCOPE,key_for(data))
+      source_ids = [data['message_id']] + Array(recorded && recorded['messages']).map { _1['id'] }
+      clean = value.is_a?(String) ? Safety::Detectors.redact(value).first : ToolTraceStore.mask(value)
+      request('PUT', "/v1/memories/#{scope}/#{owner}/#{URI.encode_www_form_component(id)}",
+        {'value'=>clean,'kind'=>kind,'origin'=>'insika','status'=>'proposed','expected_revision'=>current ? current['revision'] : 0,
+         'sources'=>source_ids.uniq.map { {'conversation_id'=>data['conversation_id'],'message_id'=>_1} }})
+    end
+
     private
 
     def check_identity!(data, conversation)
@@ -217,11 +256,16 @@ module Insika
             attachments << {'base64'=>Base64.strict_encode64(bytes),'filename'=>"#{id}.#{extension}"}
           end
         end
-        message.slice('role','tool_calls','tool_call_id','origin').merge('content'=>text.join("\n"),'attachments'=>attachments)
+        projected = message.slice('role','origin').merge('content'=>text.join("\n"),'attachments'=>attachments)
+        # RubyLLM checks answered call IDs across its entire chat, not per turn.
+        call_id = ->(id) { "history_#{Digest::SHA256.hexdigest("#{message.fetch('turn_id')}:#{id}")[0, 48]}" }
+        projected['tool_calls'] = message['tool_calls'].map { _1.merge('id'=>call_id.call(_1['id'])) } if message['tool_calls']
+        projected['tool_call_id'] = call_id.call(message['tool_call_id']) if message['tool_call_id']
+        projected
       end
     end
 
-    def request(method, path, data = nil, raw: false, headers: {})
+    def request(method, path, data = nil, raw: false, headers: {}, missing: false)
       require 'net/http'
       uri = @url.dup
       uri.path = @url.path.delete_suffix('/') + path.split('?',2).first
@@ -234,6 +278,7 @@ module Insika
       Net::HTTP.start(uri.host, uri.port, nil, use_ssl: uri.scheme == 'https', open_timeout: 5, read_timeout: 10, write_timeout: 10) do |http|
         http.max_retries = 0
         http.request(request) do |response|
+          return nil if missing && response.code == '404'
           raise StoreError, "shared conversation HTTP #{response.code}" unless response.code == '200'
           bytes = +''.b
           response.read_body do |chunk|
