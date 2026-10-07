@@ -38,9 +38,7 @@ module Insika
     end
 
     # -> [Hash] all with REAL api_key (for the configurator). Never goes to the screen.
-    def all_raw
-      apis.filter_map { |a| raw(a) }
-    end
+    def all_raw = @cs.all(SCOPE).compact
 
     # Upsert with secret reconciliation. `attrs` (string|symbol keys):
     #   api (required), base_url, auth_header, api_key (sentinel-aware), models[]

@@ -193,7 +193,7 @@ RSpec.describe "Insika::Executor + media (WS9)" do
 
   describe "#media_transcribe (STT vocabulary prompt)" do
     [false, true].each do |delegated|
-      it "transcribes on its own current key and refuses deletion (delegated context: #{delegated})" do
+      it "transcribes on its own current key and, once the authored key is deleted, on its boot key, never the global one (delegated context: #{delegated})" do
         global = RubyLLM.config.dup
         global.openai_api_key = "spec-global"
         global.default_transcription_model = "whisper-1"
@@ -223,9 +223,8 @@ RSpec.describe "Insika::Executor + media (WS9)" do
         expect(executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state)).to eq("heard")
         expect(keys).to eq(["Bearer spec-graph", "Bearer spec-rotated"])
         configurator.unapply("openai")
-        expect { executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state) }
-          .to raise_error(RubyLLM::ConfigurationError)
-        expect(keys.size).to eq(2)
+        expect(executor.send(:media_transcribe, "https://cdn.example.com/voice.ogg", state)).to eq("heard")
+        expect(keys.last).to eq("Bearer spec-graph")
         expect(global.openai_api_key).to eq("spec-global")
       end
 
