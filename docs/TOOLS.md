@@ -55,6 +55,9 @@ write path (`POST /v1/tools/manifest`) — writing this same shape via the DSL
 or Studio needs the literal header value instead; see
 "[The one gotcha](#the-one-gotcha-envsecret-templating-is-manifest-only)" below.
 
+`{{ctx.chat_id}}` is the external session ID. In multi-tenant mode, it excludes
+the authenticated tenant prefix used by Insika to isolate stored sessions.
+
 ### Parameters: the schema is the contract
 
 `parameters` is **JSON Schema**, and it reaches the provider verbatim — it is the only
