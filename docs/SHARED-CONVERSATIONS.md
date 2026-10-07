@@ -13,9 +13,12 @@ Default is false. Configure `INSIKA_CONVERSATIONS_URL`, a scoped
 
 The tenant-authenticated `/v1/responses` request adds `user_text` (original speech)
 and `shared_conversation` with UUID `tenant_id`, `user_id`, `agent_id`,
-`conversation_id`, `turn_id`, `message_id`, and integer `generation`. Keep the
+`conversation_id`, `turn_id`, and `message_id`. Keep the
 same turn/message IDs across retries. Existing `input` still contains the
 presenter/context text used for this request. The authenticated tenant must match.
+Omit `generation` to acquire a settled conversation automatically when admitting
+the next turn. The engine reads and writes the acquired generation internally.
+An explicit integer `generation` retains the legacy ownership check.
 
 Upload incoming media to the central attachment endpoint first. Optional
 `shared_conversation.content` carries canonical text/media parts with attachment

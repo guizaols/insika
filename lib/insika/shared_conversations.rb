@@ -30,11 +30,12 @@ module Insika
 
     def begin_turn(task:, profile:)
       data, payload = identity(task)
+      acquire = !payload.fetch('shared_conversation').key?('generation')
       path = path_for(data)
       conversation = request('GET', path)
-      check_identity!(data, conversation)
       key = key_for(data)
       old = @store.get(SCOPE,key)
+      check_identity!(data, conversation, ownership: !acquire || !!old)
       if old
         raise StoreError, 'shared turn input differs' unless old['input_digest'] == input_digest(payload)
         raise StoreError, 'shared turn requires native reconciliation' unless old['messages']
@@ -42,21 +43,25 @@ module Insika
         raise Recovered.new(old['messages'].last['content'].filter_map { _1['text'] }.join("\n"), output_parts: old.fetch('output_parts', []), attachments: old.fetch('delivery_attachments', []))
       end
       raise StoreError, 'shared turn requires native reconciliation' if conversation['active_turn']
+      data = data.merge('generation'=>conversation['generation'] + (conversation['assigned_harness'] == 'insika' ? 0 : 1)) if acquire
       history = history_at(path, conversation.fetch('last_sequence'))
       request('PUT', path+'/bindings/insika', {'generation'=>data['generation'], 'native_session_id'=>task.session_id || task.id,
-        'synchronized_sequence'=>conversation['last_sequence']})
+        'synchronized_sequence'=>conversation['last_sequence']}) unless acquire
       input = canonical(task, {'role'=>'user','content'=>payload.fetch('user_text')}, id: data['message_id'])
       input['origin'] = payload['origin'] || 'customer'
       input['content'] = data['content'] if data['content']
-      record = {'native_run_id'=>task.id, 'input_digest'=>input_digest(payload), 'sequence'=>conversation['last_sequence'] + 1}
+      record = {'native_run_id'=>task.id, 'input_digest'=>input_digest(payload), 'sequence'=>conversation['last_sequence'] + 1, 'generation'=>data['generation']}
       # Write first: an ambiguous admission or registration must never authorize
       # another execution. Only a recorded result can be flushed automatically.
       @store.transaction do
         raise StoreError, 'shared turn requires native reconciliation' if @store.get(SCOPE,key)
         @store.set(SCOPE,key,record)
       end
-      turn = request('POST', path+'/turns', {'id'=>data['turn_id'],'generation'=>data['generation'],
-        'expected_sequence'=>conversation['last_sequence'],'message'=>input})
+      admission = {'id'=>data['turn_id'],'generation'=>data['generation'],
+        'expected_sequence'=>conversation['last_sequence'],'message'=>input}
+      admission.merge!('acquire'=>true, 'generation'=>conversation['generation'], 'native_session_id'=>task.session_id || task.id) if acquire
+      turn = request('POST', path+'/turns', admission)
+      raise StoreError, 'shared acquired generation differs' if acquire && turn['generation'] != data['generation']
       raise StoreError, 'shared turn requires native reconciliation' if turn['native_run_id'] || turn['state'] != 'running'
       request('PUT', path+"/turns/#{data['turn_id']}/native-run", {'generation'=>data['generation'],'native_run_id'=>task.id})
       project(history, path)
@@ -133,7 +138,12 @@ module Insika
       %w[tenant_id user_id agent_id conversation_id turn_id message_id].each do |name|
         raise StoreError, "invalid shared #{name}" unless data[name].is_a?(String) && UUID.match?(data[name])
       end
-      raise StoreError, 'invalid shared generation' unless data['generation'].is_a?(Integer) && data['generation'].positive?
+      if data.key?('generation')
+        raise StoreError, 'invalid shared generation' unless data['generation'].is_a?(Integer) && data['generation'].positive?
+      else
+        record = @store.get(SCOPE,key_for(data))
+        data = data.merge('generation'=>record.fetch('generation')) if record
+      end
       raise StoreError, 'original user_text required' unless payload['user_text'].is_a?(String)
       content = data['content']
       if content
@@ -193,9 +203,9 @@ module Insika
 
     private
 
-    def check_identity!(data, conversation)
-      unless conversation.values_at('tenant_id','user_id','agent_id','assigned_harness','generation') ==
-             [data['tenant_id'],data['user_id'],data['agent_id'],'insika',data['generation']]
+    def check_identity!(data, conversation, ownership: true)
+      unless conversation.values_at('tenant_id','user_id','agent_id') == data.values_at('tenant_id','user_id','agent_id') &&
+             (!ownership || conversation.values_at('assigned_harness','generation') == ['insika',data['generation']])
         raise StoreError, 'shared conversation identity or generation mismatch'
       end
     end
