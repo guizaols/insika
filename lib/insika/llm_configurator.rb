@@ -48,6 +48,7 @@ module Insika
             next
           end
 
+          remember_boot(config, api)
           if set_accessor(config, "#{api}_api_key", key)
             base = fetch(rec, :base_url)
             set_accessor(config, "#{api}_api_base", base) if base && !base.to_s.empty?
@@ -83,16 +84,21 @@ module Insika
       warn "[insika] LLM providers not refreshed, keeping the current ones: #{e.class}: #{e.message}"
     end
 
-    # UNDOES a provider's config in RubyLLM at runtime (delete without a restart,
-    # clears `<api>_api_key`/`<api>_api_base`. A provider that RubyLLM
+    # UNDOES a provider's config in RubyLLM at runtime (delete without a restart):
+    # `<api>_api_key`/`<api>_api_base` go back to what they were before this
+    # configurator first set them (nil when nothing was). A provider that RubyLLM
     # doesn't recognize (no accessor) -> unapplied: false (nothing applied, nothing to undo).
     # -> { unapplied: bool }.
     def unapply(api)
       api = api.to_s
+      # never applied here (another worker served the edit): nothing of ours to undo
+      return { unapplied: false } unless boot_values.key?(api)
+
       unapplied = false
       with_config do |config|
-        unapplied = set_accessor(config, "#{api}_api_key", nil)
-        set_accessor(config, "#{api}_api_base", nil)
+        key, base = boot_values[api]
+        unapplied = set_accessor(config, "#{api}_api_key", key)
+        set_accessor(config, "#{api}_api_base", base)
       end
       { unapplied: unapplied }
     end
@@ -107,6 +113,20 @@ module Insika
         RubyLLM.configure(&blk)
       end
     end
+
+    # The key/base a provider had before this configurator first overrode it (the
+    # environment's, or nil), so removing the authored one puts those back instead
+    # of leaving the provider without credentials.
+    def remember_boot(config, api)
+      return if boot_values.key?(api.to_s)
+
+      boot_values[api.to_s] = %w[key base].map do |part|
+        getter = "#{api}_api_#{part}"
+        config.public_send(getter) if config.respond_to?(getter)
+      end
+    end
+
+    def boot_values = (@boot_values ||= {})
 
     def set_accessor(config, name, value)
       setter = "#{name}="
