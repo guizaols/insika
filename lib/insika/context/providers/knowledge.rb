@@ -29,6 +29,12 @@ module Insika
         # required? == false (default): a store failure degrades to a
         # :provider_warning, never aborts the turn.
         def call(request)
+          if request.vars&.key?('shared_memory')
+            records = request.vars['shared_memory'].fetch('knowledge', [])
+            hits = records.map { [{name:_1['id'],description:_1['excerpt'],confidence:0.6,provenance:_1['origin'] == 'operator' ? 'curated' : 'observed'}, 'shared'] }
+            return [] if hits.empty?
+            return [ContextFragment.build(content:format_block(hits,true),placement: :system,priority:Context::Priority::KNOWLEDGE,source:id)]
+          end
           config = request.profile.knowledge
           return [] unless config
 

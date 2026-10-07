@@ -47,7 +47,11 @@ module Insika
       private
 
       def load(name)
-        content = @store.get(@agent_id, name.to_s, tenant: @tenant)
+        content = if @state&.respond_to?(:shared_conversations) && @state.shared_conversations
+          @state.shared_conversations.memory_get(task:@state.task,id:name.to_s,kind:'knowledge')&.fetch('value')
+        else
+          @store.get(@agent_id, name.to_s, tenant: @tenant)
+        end
         return { error: "concept '#{name}' not found" } unless content
 
         content

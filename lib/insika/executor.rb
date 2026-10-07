@@ -638,6 +638,7 @@ module Insika
       if profile.respond_to?(:shared_conversations) && profile.shared_conversations
         @shared_turns[task.id] = { committed: false }
         raise StoreError, "shared conversation service is not configured" unless @shared_conversations
+        @shared_turns[task.id][:memory] = (profile.memory || profile.knowledge) ? @shared_conversations.memory_context(task:task,profile:profile) : {}
         @shared_turns[task.id][:history] = if resume_from
           @shared_conversations.resume_turn(task: task, profile: profile, checkpoint: resume_from)
         else
@@ -2151,6 +2152,7 @@ module Insika
       # convention the Session provider consumes (vars["history"]).
       vars = (session&.vars || {}).dup
       vars["history"] = hist if hist
+      vars["shared_memory"] = @shared_turns[task.id][:memory] if @shared_turns[task.id]
       # The single type is Insika::ContextRequest (Data); the explicit `history`
       # travels in vars["history"] (Session provider convention), not in a field
       # of its own. `memory_scope` is the WS8 customer cell (nil = the providers
@@ -2844,6 +2846,13 @@ module Insika
       prompt = knowledge_prompt(config, new_messages, agent_brief)
       result = extractor.extract(prompt: prompt)
       result[:concepts].each do |concept|
+        if profile.shared_conversations
+          redacted, = Safety::Detectors.redact(concept['body'].to_s)
+          @shared_conversations.propose_memory(task:task,id:concept['name'],kind:'knowledge',
+            value:Knowledge.first_sighting(concept,redacted,rebuild_command(task).payload.dig('shared_conversation','conversation_id')))
+          emit(:knowledge_conflict, {name:concept['name'],agent:profile.id}, task:task)
+          next
+        end
         outcome = Knowledge.write_concept(
           store: @knowledge_store, agent_id: profile.id, concept: concept, session_id: task.session_id,
           tenant: task_tenant(task), consolidator: consolidator

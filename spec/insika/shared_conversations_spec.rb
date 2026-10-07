@@ -82,4 +82,16 @@ RSpec.describe 'Required shared conversation persistence' do
     expect(tasks.find(task.id).status).to eq(:completed)
     expect(events.types).to include(:content, :task_completed)
   end
+  it 'fails closed on shared memory outage before reserving or invoking the model' do
+    expect(bridge).to receive(:memory_context).and_raise(Insika::StoreError, 'memory unavailable')
+    expect(bridge).not_to receive(:begin_turn)
+    expect(executor).not_to receive(:create_chat)
+    Sync do
+      executor.spawn(task, profile: profile.with(memory:true))
+      executor.instance_variable_get(:@running)[task.id]&.wait
+    end
+    expect(tasks.find(task.id).status).to eq(:failed)
+    expect(events.types & %i[content task_completed]).to eq([])
+  end
+
 end

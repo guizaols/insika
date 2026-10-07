@@ -20,6 +20,13 @@ module Insika
         # required? == false (default): a failure (store unavailable) becomes a
         # :provider_warning + graceful degradation — never aborts the turn.
         def call(request)
+          if request.vars&.key?('shared_memory')
+            records = request.vars['shared_memory'].fetch('facts', [])
+            facts = records.reject { _1['kind'] == 'note' }.map { MemoryStore::Fact.new(key:_1['id'],value:_1['value'].to_s,origin:_1['origin'],created_at:_1['created_at'],updated_at:_1['updated_at'],expires_at:_1['expires_at']) }
+            notes = records.select { _1['kind'] == 'note' }.map { MemoryStore::Note.new(id:_1['id'],text:_1['value'].to_s,created_at:_1['created_at']) }
+            return [] if records.empty?
+            return [ContextFragment.build(content:format_block(facts,notes,true),placement: :system,priority:Context::Priority::MEMORY,source:id)]
+          end
           tenant = memory_scope(request)
           facts = @store.facts(tenant: tenant)
           config = request.profile.memory_retrieval
