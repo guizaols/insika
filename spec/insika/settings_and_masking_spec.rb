@@ -76,6 +76,11 @@ RSpec.describe "Settings + masking" do
         .to raise_error(Insika::ValidationError, /tools_allow/)
     end
 
+    it "agent_defaults rejects a value an agent could not run with" do
+      bad = { "knowledge" => { "retrieve" => true, "rerank" => { "provider" => nil } } }
+      expect { handler.call(cmd("patch" => { "agent_defaults" => bad })) }.to raise_error(Insika::ValidationError)
+    end
+
     it "patch absent/empty -> ValidationError" do
       expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError, /patch/)
       expect { handler.call(cmd("patch" => {})) }.to raise_error(Insika::ValidationError, /empty/)

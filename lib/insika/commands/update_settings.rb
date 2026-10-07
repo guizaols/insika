@@ -45,7 +45,7 @@ module Insika
         unknown = defaults.keys.map(&:to_s) - Insika::AgentDefaults::FIELDS
         raise Insika::ValidationError, "agent_defaults cannot set #{unknown.join(", ")}" unless unknown.empty?
 
-        defaults
+        Insika::AgentDefaults.validate!(defaults.compact)
       end
     end
   end

@@ -29,5 +29,7 @@ RSpec.describe Insika::Wiring::Graph do
     Insika::Wiring::GraphChat.new(graph: graph).chat("hi", agent: "demo")
 
     expect(seen).to eq([{ "webhook" => "https://ops.example/hook" }])
+    # what the graph hands out (the Studio, the roots) is the agent's own record
+    expect(graph.profiles.fetch("demo").alerts).to be_nil
   end
 end
