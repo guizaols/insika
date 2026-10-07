@@ -9,7 +9,9 @@ title: Shared conversations
 DSL accepts `shared_conversations true`; stored profiles preserve the flag.
 Default is false. Configure `INSIKA_CONVERSATIONS_URL`, a scoped
 `INSIKA_CONVERSATIONS_TOKEN`, and a durable native backend (`INSIKA_DB` or
-`INSIKA_DATABASE_URL`). The client provisions the central conversation first.
+`INSIKA_DATABASE_URL`). A new chat is created centrally on its first turn.
+An old chat with `history_required:true` waits for its native history to be
+imported; an empty central record never replaces that history.
 
 The tenant-authenticated `/v1/responses` request adds `user_text` (original speech)
 and `shared_conversation` with UUID `tenant_id`, `user_id`, `agent_id`,
