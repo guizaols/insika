@@ -114,7 +114,8 @@ module Insika
           edge_limiter: c[:edge_limiter],
           executor_extra: { settings_store: c[:settings_store], tool_trace_store: c[:tool_trace_store],
                             context_trace_store: c[:context_trace_store],
-                            cache_series_store: c[:cache_series_store], llm: @llm }
+                            cache_series_store: c[:cache_series_store], llm: @llm,
+                            llm_refresh: -> { c[:configurator].refresh } }
         )
         register_authoring_commands(graph, c)
         register_workflows(graph)
