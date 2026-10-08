@@ -31,7 +31,11 @@ module Insika
     module_function
 
     # -> nil (allowed) | String (block reason).
-    def violation(url, allow_http: false, host_allowlist: nil, allow_private: false)
+    #
+    # `pin_private_only:` applies the allowlist to private destinations only, for
+    # a URL the operator fixed and the model cannot shape (an MCP server): a
+    # public host passes, a private one still needs allow_private AND the list.
+    def violation(url, allow_http: false, host_allowlist: nil, allow_private: false, pin_private_only: false)
       uri = begin
         URI.parse(url.to_s)
       rescue URI::InvalidURIError
@@ -43,13 +47,17 @@ module Insika
 
       host = uri.host
       return "missing host" if host.nil? || host.empty?
-      return "host not in allowlist" if host_allowlist && !host_allowlist.include?(host)
+      listed = host_allowlist.nil? || host_allowlist.include?(host)
+      return "host not in allowlist" unless listed || pin_private_only
 
       addrs = resolve(host)
       return "host did not resolve" if addrs.empty?
+      return nil unless addrs.any? { |ip| blocked?(ip) }
+
       # allow_private skips the private-network block (trusted internal API,
       # Without it, a private/loopback/metadata target is always blocked.
-      return "private-network destination blocked" if !allow_private && addrs.any? { |ip| blocked?(ip) }
+      return "private-network destination blocked" unless allow_private
+      return "host not in allowlist" unless listed
 
       nil
     end
