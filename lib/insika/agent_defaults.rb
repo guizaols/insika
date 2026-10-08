@@ -51,7 +51,8 @@ module Insika
     # writes. A plain source is its own.
     def own(source) = source.is_a?(ProfileSource) ? source.source : source
 
-    # A ProfileSource that hands out profiles with the platform defaults applied.
+    # A ProfileSource that hands out profiles with the platform defaults and the
+    # agent's kits (Insika::Kits) applied.
     # Read-only: writing a profile read here would save the defaults into the
     # agent, so put/delete refuse; writers use #source (AgentDefaults.own).
     # Other reads (all_raw) go to the wrapped source untouched.
@@ -67,12 +68,13 @@ module Insika
 
       def fetch(id)
         profile = @source.fetch(id)
-        profile && fill(profile, normalized)
+        profile && Insika::Kits.apply(fill(profile, normalized), kits)
       end
 
       def all
         values = normalized
-        @source.all.map { |profile| fill(profile, values) }
+        by_name = kits
+        @source.all.map { |profile| Insika::Kits.apply(fill(profile, values), by_name) }
       end
 
       def ids = @source.ids
@@ -89,6 +91,9 @@ module Insika
       end
 
       private
+
+      # Settings["kits"] — applied after the defaults (Insika::Kits).
+      def kits = @settings_store.get["kits"] || {}
 
       # Every inheritable field is normalized on its own by AgentProfile.build,
       # so a profile takes the normalized values as they are (Data#with) and is
