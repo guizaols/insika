@@ -40,7 +40,8 @@ end
 provider = Class.new(RubyLLM::Provider) do
   define_singleton_method(:slug) { "profile_offline" }
   define_method(:api_base) { "http://offline.invalid" }
-  define_method(:preprocess_message) { |message, **| message }
+  define_method(:preprocess_message) { |message, **| message }    # up to 2.0
+  define_method(:preprocess_messages) { |messages, **| messages } # 2.1+
   define_method(:complete) do |messages, model:, **|
     @calls = @calls.to_i + 1
     round = messages.count { |message| message.role == :tool }

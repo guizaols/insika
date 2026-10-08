@@ -118,12 +118,11 @@ RSpec.describe Insika::McpLiveTool do
       expect(plain.execute(query: "creme")).to eq(body)
     end
 
-    # The gem hands back its own content object, not a String — the shape that made
-    # a working store read to the model as "the catalogue is down".
-    it "reads the text out of the gem's content object too" do
+    # The gem hands back its own Result, not a String — the shape that made a
+    # working store read to the model as "the catalogue is down".
+    it "reads the text out of the gem's Result too" do
       body = JSON.generate("products" => [{ "product_id" => "SKU-1" }])
-      content = Object.new
-      content.define_singleton_method(:text) { body }
+      content = RubyLLM::MCP::Result.new("content" => [{ "type" => "text", "text" => body }])
       out = tool(search, { "evidence" => { "kind" => "products", "items" => "products" } }, result: content)
                 .execute(query: "creme")
       expect(out).to eq("products" => [{ "product_id" => "SKU-1" }])

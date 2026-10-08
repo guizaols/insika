@@ -56,8 +56,10 @@ RSpec.describe "Native MCP integration" do
               headers[key.downcase] = value.strip
             end
             headers_seen << headers
-            message = JSON.parse(socket.read(Integer(headers.fetch("content-length"))))
-            response = McpContractServer.reply(message, legacy: legacy)
+            # A legacy session ends with a bodyless DELETE.
+            length = headers["content-length"].to_i
+            message = length.positive? ? JSON.parse(socket.read(length)) : {}
+            response = length.positive? && McpContractServer.reply(message, legacy: legacy)
             body = response ? "event: message\ndata: #{JSON.generate(response)}\n\n" : ""
             status = response ? "200 OK" : "202 Accepted"
             session = message["method"] == "initialize" ? "Mcp-Session-Id: fixture-session\r\n" : ""

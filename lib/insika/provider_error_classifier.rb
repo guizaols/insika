@@ -7,11 +7,12 @@ module Insika
   # poisoned credential; a fatal is retried only after the operator fixes the
   # cause):
   #
-  #   :fatal              401/402/403/400 (auth, billing, permanent quota,
-  #                       bad request, context too long) — retrying does not help.
+  #   :fatal              401/402/403/400 (auth, billing, bad request,
+  #                       context too long) — retrying does not help.
   #   :retryable          5xx/529/socket/timeout — the same call may succeed
   #                       moments later.
-  #   :rate_limited_short a 429 that says "back off briefly" (RPM-scale).
+  #   :rate_limited_short a 429 that says "back off briefly" (RPM-scale), or a
+  #                       400 quota message RubyLLM raises as RateLimitError.
   #   :rate_limited_long  a 429 with a long retry-after — quota-scale.
   #
   # The classification is STRING-based (class names, no constant references):
