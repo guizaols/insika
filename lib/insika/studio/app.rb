@@ -2147,6 +2147,21 @@ end
       end
     end
 
+    # Kits as stored (Settings["kits"]), read once per request.
+    def kits_by_name = (@kits_by_name ||= insika[:settings_store]&.kits || {})
+
+    # { item name => kit name } for what the agent gets from its kits (key "tools" or
+    # "skills"). The views show these on and locked: they come from the kit at turn
+    # time, never from the agent's own list, so a save must not post them.
+    def kit_sources(profile, key)
+      Array(profile.kits).each_with_object({}) do |name, acc|
+        kit = kits_by_name[name]
+        next unless kit.is_a?(Hash)
+
+        Array(kit[key]).each { |item| acc[item] ||= name }
+      end
+    end
+
     # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
     def tool_allowed_for?(profile, tool_name)
       profile.tools_allow.nil? || Array(profile.tools_allow).map(&:to_s).include?(tool_name.to_s)

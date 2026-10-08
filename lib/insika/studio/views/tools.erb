@@ -84,10 +84,15 @@
           </label>
         </div>
         <p class="muted">Save tools to apply this selection to <strong><%= a.id %></strong> on its next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
+        <% open_all = a.tools_allow.nil? && a.tools_allow_groups.nil? %>
+        <% kit_tools = open_all ? {} : kit_sources(a, "tools") %>
         <% if Array(a.kits).any? %>
-          <p class="muted">Also gets every tool in its kits:
-            <% a.kits.each do |k| %><a class="pill info" href="/studio/kits/<%= Rack::Utils.escape(k) %>"><%= k %></a> <% end %>
-          </p>
+          <% kit_links = a.kits.map { |k| %(<a class="pill info" href="/studio/kits/#{Rack::Utils.escape(k)}">#{h(k)}</a>) }.join(" ") %>
+          <% if open_all %>
+            <p class="muted">Its kits <%== kit_links %> add nothing here: this agent already gets every tool. Turn off <strong>all tools</strong> to limit it to its own list plus its kits.</p>
+          <% else %>
+            <p class="muted">Tools marked <span class="pill info">kit</span> come from its kits <%== kit_links %> and are edited there.</p>
+          <% end %>
         <% end %>
         <input type="search" class="filter-input" placeholder="Search to add tools…" aria-label="Search tools or servers"
                data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
@@ -110,14 +115,15 @@
                   <div class="check-grid tool-grid">
               <% tools.each do |t| %>
                 <% denied = tool_denied_for?(a, t.name) %>
-                <label class="check tool-check<%== " locked" if denied %>" title="<%= denied ? "denied — deny wins" : t.description %>"
+                <% from_kit = !denied && !tool_allowed_for?(a, t.name) && kit_tools[t.name] %>
+                <label class="check tool-check<%== " locked" if denied %>" title="<%= denied ? "denied — deny wins" : from_kit ? "from kit #{from_kit}" : t.description %>"
                        data-list-filter-target="item" data-filter-text="<%= "#{label} #{t.name}" %>">
                   <input type="checkbox" name="tools[]" value="<%= t.name %>"
-                         <%== " checked" if tool_allowed_for?(a, t.name) && !denied %>
-                         <%== " disabled" if denied %>
-                         data-toggle-counter-target="tool" data-locked="<%= denied %>"
+                         <%== " checked" if (tool_allowed_for?(a, t.name) && !denied) || from_kit %>
+                         <%== " disabled" if denied || from_kit %>
+                         data-toggle-counter-target="tool" data-locked="<%= denied || !!from_kit %>"
                          data-action="change->toggle-counter#update">
-                  <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %><% if denied %> <span class="pill locked">locked</span><% end %>
+                  <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %><% if denied %> <span class="pill locked">locked</span><% end %><% if from_kit %> <span class="pill info">kit</span><% end %>
                 </label>
               <% end %>
                   </div>

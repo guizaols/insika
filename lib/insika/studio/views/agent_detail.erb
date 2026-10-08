@@ -32,6 +32,9 @@
         <div class="title">
           <strong class="mono"><%= @agent.id %></strong>
           <span class="count"><%= @agent.model %><%== " · #{h(@agent.provider)}" if @agent.provider %></span>
+          <% Array(@agent.kits).each do |k| %>
+            <a class="pill info" href="/studio/kits/<%= Rack::Utils.escape(k) %>" data-turbo-frame="_top" title="kit">kit: <%= k %></a>
+          <% end %>
         </div>
         <a class="btn btn-sm" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Test in playground</a>
       </div>
