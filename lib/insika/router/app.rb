@@ -79,7 +79,14 @@ module Insika
           return nil
         end
 
-        SessionKey.extract(method, segments, body: -> { JSON.parse(raw_body) })
+        SessionKey.extract(method, segments, body: -> { parse_body(req, raw_body) })
+      end
+
+      # JSON for the machine routes; the Studio's forms post urlencoded.
+      def parse_body(req, raw_body)
+        return Rack::Utils.parse_query(raw_body) if req.media_type == "application/x-www-form-urlencoded"
+
+        JSON.parse(raw_body)
       end
 
       # Reads the WHOLE body (it must be forwarded intact) — `body_max_bytes`
