@@ -3551,6 +3551,29 @@ RSpec.describe Studio::App do
     expect(body).to match(/<input type="checkbox" name="memory" value="1">/)
   end
 
+  describe "agents list at volume" do
+    let(:kits) { { "kits" => { "grocery" => { "description" => "", "skills" => %w[x], "tools" => %w[calc], "tool_groups" => [] } } } }
+
+    it "each row shows its kits and how many tools and skills it gets, and the filter matches kit names" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], skills: %w[pedido], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kits)
+      body = login(app).get("/agents").body
+      expect(body).to include("2 tools · 2 skills")
+      expect(body).to match(/data-filter-text="chef[^"]*grocery/)
+      expect(body).to include('<span class="pill info">grocery</span>')
+    end
+
+    it "flags agents on 'all' in the row and lists them on the landing pane" do
+      open = Insika::AgentProfile.build(id: "open", model: "m", tools_allow: nil, skills: [])
+      tidy = Insika::AgentProfile.build(id: "tidy", model: "m", tools_allow: [], skills: [])
+      app, = build_app(agents: [open, tidy])
+      body = login(app).get("/agents").body
+      expect(body).to include("all tools · 0 skills")
+      expect(body).to include("1 agent can call every tool or skill")
+      expect(body).to include('href="/studio/agents/open?tab=tools"')
+    end
+  end
+
   it "empty agents opens the creation form (authoring empty-state)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body

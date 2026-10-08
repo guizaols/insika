@@ -24,18 +24,19 @@
         <a class="drill-item<%== ' active' if a.id == active_id %>"
            href="/studio/agents/<%= Rack::Utils.escape(a.id) %>"
            data-turbo-frame="agent-detail" data-turbo-action="advance"
-           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>"
+           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %> <%= Array(a.kits).join(" ") %>"
            data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-name">
             <span class="avatar sm <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
             <span class="txt" title="<%= a.id %>"><%= a.id %></span>
+            <% Array(a.kits).each do |k| %><span class="pill info"><%= k %></span><% end %>
             <% if a.memory %><span class="pill plain">memory</span><% end %>
             <% if show_outcomes && (latest = @latest_outcomes&.dig(a.id)) %>
               <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
                     title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
             <% end %>
           </div>
-          <div class="drill-item-sub"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
+          <div class="drill-item-sub"><%= a.model %> · <span<%== ' class="warn-text" title="gets every tool or skill — limit it in its Tools or Skills tab"' if agent_open?(a) %>><%= agent_reach(a) %></span></div>
         </a>
       <% end %>
       <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>

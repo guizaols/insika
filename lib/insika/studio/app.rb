@@ -1811,8 +1811,8 @@ end
         "prompts"
       elsif request.params["cfg"]
         "config"
-      elsif request.params["tab"] == "tools"
-        "tools"
+      elsif %w[tools skills].include?(request.params["tab"])
+        request.params["tab"]
       end
       @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
       store = insika[:agent_file_store]
@@ -2217,6 +2217,22 @@ end
         Array(kit[key]).each { |item| acc[item] ||= name }
       end
     end
+
+    # "3 tools · 2 skills" (own lists + kits; "all" when the list is open) for the
+    # agents master row.
+    def agent_reach(own)
+      p = Insika::Kits.apply(own, kits_by_name)
+      groups = Array(p.tools_allow_groups).size
+      tools = if p.tools_allow.nil? && p.tools_allow_groups.nil? then "all tools"
+              else "#{Array(p.tools_allow).size} tools#{" + #{groups} #{groups == 1 ? "server" : "servers"}" if groups.positive?}"
+              end
+      skills = p.skills.nil? ? "all skills" : "#{Array(p.skills).size} skills"
+      "#{tools} · #{skills}"
+    end
+
+    # The agent can call every tool or load every skill: kits add nothing to it and
+    # any tool or skill added later reaches it without anyone deciding.
+    def agent_open?(own) = (own.tools_allow.nil? && own.tools_allow_groups.nil?) || own.skills.nil?
 
     # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
     def tool_allowed_for?(profile, tool_name)

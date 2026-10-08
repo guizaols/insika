@@ -19,6 +19,20 @@
       </div>
     </div>
     <div class="drill-pane-body">
+      <% open_agents = @agents.select { |a| agent_open?(a) } %>
+      <% if open_agents.any? %>
+        <div class="section">
+          <div class="section-head">
+            <h2><%= open_agents.size %> <%= open_agents.size == 1 ? "agent can" : "agents can" %> call every tool or skill</h2>
+            <p class="muted">Kits add nothing to these agents, and any tool or skill added later reaches them without anyone deciding. Open each one and turn off <strong>all tools</strong> or <strong>all skills</strong>.</p>
+          </div>
+          <p>
+            <% open_agents.each do |a| %>
+              <a class="pill warn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>?tab=<%= a.skills.nil? && !(a.tools_allow.nil? && a.tools_allow_groups.nil?) ? "skills" : "tools" %>" data-turbo-frame="_top"><%= a.id %></a>
+            <% end %>
+          </p>
+        </div>
+      <% end %>
       <% if @templates&.any? %>
         <details class="section newfile"<%== " open" if @agents.empty? %>>
           <summary>Start from a template <span class="count"><%= @templates.size %></span></summary>
