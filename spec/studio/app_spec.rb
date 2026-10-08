@@ -1457,8 +1457,9 @@ end
 
     it "every filtered page renders the agent select" do
       app, = build_app
-      # customers has its own drill (a real MemoryStore) — covered by its spec above
-      %w[home chats tasks approvals evals funnel followups facts].each do |path|
+      # customers has its own drill (a real MemoryStore) — covered by its spec above;
+      # chats filters through its agents column (operation_ui_spec)
+      %w[home tasks approvals evals funnel followups facts].each do |path|
         body = login(app).get("/#{path}").body
         expect(body).to include('name="agent"'), "#{path} lacks the agent filter"
       end

@@ -1,8 +1,23 @@
-<%# Master column of the Chats miller shell — rendered by the index
+<%# Agents column + master column of the Chats miller shell — rendered by the index
     (chats.erb) and the detail (session.erb, the read-only viewer). Rows target
     the session-detail turbo-frame with data-turbo-action="advance": the detail
     loads beside the list while the URL moves, so refresh/deep-link render the
     same screen. Local: active_id lights the current row (nil on the index). %>
+<aside class="drill-pane drill-master">
+  <div class="drill-pane-head">
+    <div class="title"><strong>Agents <span class="count"><%= @chat_agents.size %></span></strong></div>
+  </div>
+  <nav class="drill-pane-body drill-list" aria-label="agents">
+    <a class="drill-item<%== ' active' unless @agent %>" href="<%= chats_path(agent: nil, limit: nil) %>"<%== ' aria-current="page"' unless @agent %>>
+      <%== render("_identity", locals: { id: "all", name: "All agents", sub: "#{@chats_all} conversations" }) %>
+    </a>
+    <% @chat_agents.each do |id, count, last| %>
+      <a class="drill-item<%== ' active' if id == @agent %>" href="<%= chats_path(agent: id, limit: nil) %>"<%== ' aria-current="page"' if id == @agent %>>
+        <%== render("_identity", locals: { id: id, name: id, sub: "#{count} conversations · #{time_ago(last)}" }) %>
+      </a>
+    <% end %>
+  </nav>
+</aside>
 <aside class="drill-pane drill-master">
   <div class="drill-pane-head">
     <div class="title"><strong>Conversations <span class="count"><%= @chats_total || @sessions.size %></span></strong></div>
