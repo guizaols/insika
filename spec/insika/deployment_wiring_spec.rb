@@ -496,4 +496,33 @@ RSpec.describe Deploy::Wiring do
       expect(w.claim_recovery_sweep).to be(true) # not a one-shot without a generation
     end
   end
+
+  # config.ru (the deploy) and the DSL's ServerBoot each hand the Studio its
+  # stores. A store only one of them passes is a Studio page that works in
+  # one boot and 404s in the other (the Artifacts tab did, on the deploy).
+  describe "Studio wiring parity between config.ru and ServerBoot" do
+    def studio_keys(path)
+      src = File.read(File.expand_path("../../#{path}", __dir__))
+      start = src.index("(", src.index("Studio::App.configure"))
+      depth = 0
+      body = src[start..].each_char.take_while do |c|
+        depth += 1 if c == "("
+        depth -= 1 if c == ")"
+        depth.positive?
+      end.join
+      body.gsub(/#.*$/, "").scan(/(?<![\w:])([a-z_]+):\s/).flatten.uniq
+    end
+
+    # DSL-only (the pack's criterion) / deploy-only (refinement, golden cases).
+    DSL_ONLY = %w[parity_criterion].freeze
+    DEPLOY_ONLY = %w[refinement_store golden_store].freeze
+
+    it "config.ru passes the Studio every store ServerBoot passes" do
+      expect(studio_keys("lib/insika/dsl/server_boot.rb") - DSL_ONLY - studio_keys("config.ru")).to eq([])
+    end
+
+    it "ServerBoot passes every store config.ru passes" do
+      expect(studio_keys("config.ru") - DEPLOY_ONLY - studio_keys("lib/insika/dsl/server_boot.rb")).to eq([])
+    end
+  end
 end
