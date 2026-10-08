@@ -206,7 +206,7 @@ if REAL_CHAT
 
     def self.slug = "bench_offline"
     def api_base = "http://benchmark.invalid"
-    def preprocess_message(message, **) = message
+    def preprocess_messages(messages, **) = messages
 
     def complete(messages, tools:, model:, **)
       COUNTS[:provider_calls] += 1

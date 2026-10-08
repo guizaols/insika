@@ -46,29 +46,25 @@ module Insika
       live = @client_for.call.tools.find { |tool| tool.name == @tool["name"] }
       raise Insika::NotFoundError, "tool '#{@tool["name"]}' no longer offered" if live.nil?
 
-      parsed(live.call(**params))
+      result = live.call(**params)
+      # Hand the envelope what a chat would send the model (text, JSON of the
+      # structured content, or text plus attachments), not the gem's Result.
+      parsed(result.is_a?(RubyLLM::MCP::Result) ? result.content : result)
     rescue StandardError => e
       { error: "MCP instance '#{@instance_name}' tool '#{@tool["name"]}' failed: #{e.message}" }
     end
 
     private
 
-    # An MCP result arrives as text — sometimes a String, sometimes the gem's own
-    # content object wrapping one. Only a tool someone declared evidence for is
+    # An MCP result arrives as a String, text plus attachments (an Array), or
+    # {error:}. Only a tool someone declared evidence for is
     # parsed into the object the extractor can dig into; everywhere else the result
     # reaches the model exactly as it did before.
     def parsed(result)
-      return result unless @evidence
-
-      text = case result
-             when String then result
-             when Hash then nil
-             else result.respond_to?(:text) ? result.text : nil
-             end
-      return result if text.nil?
+      return result unless @evidence && result.is_a?(String)
 
       object = begin
-        JSON.parse(text)
+        JSON.parse(result)
       rescue JSON::ParserError
         nil
       end

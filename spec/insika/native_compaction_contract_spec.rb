@@ -52,8 +52,8 @@ RSpec.describe "Native compaction persistence boundaries" do
     raw = [{ "type" => "reasoning", "summary" => [{ "type" => "summary_text", "text" => "private reasoning" }] },
       { "type" => "message", "role" => "assistant",
         "content" => [{ "type" => "output_text", "text" => "unredacted answer" }] }]
-    message = RubyLLM::Message.new(role: :assistant, content: "[REDACTED]",
-      thinking: "private reasoning", raw_content: raw).without_thinking
+    # Top-level thinking already removed; the raw content still carries it.
+    message = RubyLLM::Message.new(role: :assistant, content: "[REDACTED]", raw_content: raw)
 
     restored = reload_message(message)
     expect(restored.thinking).to be_nil
