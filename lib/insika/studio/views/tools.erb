@@ -17,6 +17,11 @@
     <div class="drill-search">
       <input type="search" class="filter-input" placeholder="Search tools…" aria-label="Search tools"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <label class="switch" title="show only tools no agent can call">
+        <input type="checkbox" id="only-unused">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">only unused</span>
+      </label>
     </div>
     <nav class="drill-pane-body drill-list" aria-label="tools" data-controller="active-link">
       <% @tool_groups.each do |label, tools| %>
@@ -26,7 +31,7 @@
             <% data = @data_tool_names.include?(t.name) %>
             <% users = @tool_reach[t.name].size %>
             <a class="drill-item drill-item-sm<%== ' active' if @selected == t.name %>"
-               href="/studio/tools/<%= data ? "def" : "info" %>/<%= Rack::Utils.escape(t.name) %>"
+               href="/studio/tools/<%= data ? "def" : "info" %>/<%= Rack::Utils.escape(t.name) %>"<%== " data-unused" if users.zero? %>
                data-turbo-frame="tool-detail" data-turbo-action="advance"
                data-list-filter-target="item" data-filter-text="<%= "#{t.name} #{label}" %>"
                data-active-link-target="item" data-action="click->active-link#select" title="<%= t.description %>">

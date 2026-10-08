@@ -3574,6 +3574,36 @@ RSpec.describe Studio::App do
     end
   end
 
+  describe "skills and tools catalogs at volume" do
+    let(:skill_list) do
+      %w[grocery-core grocery-offers pedido].map { |n| SkillEntry.new(name: n, description: "d #{n}") }
+    end
+
+    it "groups skills by shared prefix and shows how many agents can load each" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", skills: %w[grocery-core])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: %w[grocery-core pedido])
+      app, = build_app(agents: [bia, chef], skills: skill_list)
+      body = login(app).get("/skills").body
+      expect(body).to match(%r{<summary[^>]*>grocery <span class="count">2</span>})
+      expect(body).to match(%r{<summary[^>]*>Other <span class="count">1</span>})
+      expect(body).to match(%r{/studio/skills/grocery-core".*?2 agents<}m)
+    end
+
+    it "marks unused skills and tools so 'only unused' can show just those" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], skills: %w[grocery-core])
+      app, = build_app(agents: [bia], skills: skill_list,
+                       tools: [SkillEntry.new(name: "menu", description: "m"), SkillEntry.new(name: "calc", description: "c")])
+      client = login(app)
+      skills = client.get("/skills").body
+      expect(skills).to include('id="only-unused"')
+      expect(skills).to match(%r{href="/studio/skills/pedido"[^>]*data-unused})
+      expect(skills).not_to match(%r{href="/studio/skills/grocery-core"[^>]*data-unused})
+      tools = client.get("/tools").body
+      expect(tools).to include('id="only-unused"')
+      expect(tools).to match(%r{href="/studio/tools/info/calc"[^>]*data-unused})
+    end
+  end
+
   it "empty agents opens the creation form (authoring empty-state)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body

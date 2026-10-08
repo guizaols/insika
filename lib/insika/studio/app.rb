@@ -2062,6 +2062,28 @@ end
       # Which agents specialized THIS skill — the availability grid shows it, so an
       # override is discoverable from the shared skill it overrides.
       @specialized = insika[:skill_store] ? specialized_by : {}
+      @skill_reach = skill_reach(@agents, @skills)
+      @skill_groups = skill_groups(@skills)
+    end
+
+    # { skill name => [agent ids that can load it] }: own list + kits, or "all".
+    def skill_reach(agents, skills)
+      reach = Hash.new { |h, k| h[k] = [] }
+      agents.each do |own|
+        p = Insika::Kits.apply(own, kits_by_name)
+        allowed = p.skills.nil? ? nil : Array(p.skills).map(&:to_s)
+        skills.each { |s| reach[s.name] << p.id if allowed.nil? || allowed.include?(s.name) }
+      end
+      reach
+    end
+
+    # [[label, skills]]: skills sharing a name prefix ("grocery-core",
+    # "grocery-offers" -> "grocery") group together; the rest go to "Other", last.
+    def skill_groups(skills)
+      prefix = ->(s) { s.name.include?("-") ? s.name.split("-").first : nil }
+      shared = skills.filter_map { |s| prefix.(s) }.tally.select { |_, n| n > 1 }.keys
+      skills.group_by { |s| shared.include?(prefix.(s)) ? prefix.(s) : "Other" }
+            .sort_by { |label, _| [label == "Other" ? 1 : 0, label] }
     end
 
     # Kits drill: master = every kit; the editor checks skills/tools/groups from the
