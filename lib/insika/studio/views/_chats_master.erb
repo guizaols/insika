@@ -5,16 +5,18 @@
     same screen. Local: active_id lights the current row (nil on the index). %>
 <aside class="drill-pane drill-master">
   <div class="drill-pane-head">
-    <div class="title"><strong>Conversations <span class="count"><%= @sessions.size %></span></strong></div>
+    <div class="title"><strong>Conversations <span class="count"><%= @chats_total || @sessions.size %></span></strong></div>
   </div>
-  <div class="drill-search">
-    <input type="search" class="filter-input" placeholder="Filter conversations by customer, agent or preview…" aria-label="Filter conversations"
+  <%# Typing filters the rows shown; Enter searches every conversation by id. %>
+  <form class="drill-search" method="get" action="/studio/chats" data-turbo-frame="_top">
+    <% if @agent %><input type="hidden" name="agent" value="<%= @agent %>"><% end %>
+    <input type="search" name="q" value="<%= @query %>" class="filter-input" placeholder="Filter… Enter searches all by id" aria-label="Filter conversations"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-  </div>
+  </form>
   <nav class="drill-pane-body drill-list" aria-label="conversations" data-controller="active-link">
     <% active_id = defined?(active_id) ? active_id : nil %>
     <% if @sessions.empty? %>
-      <div class="empty">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div>
+      <div class="empty"><% if @query || @agent %>No conversations match. <a href="/studio/chats">Show all</a><% else %>No conversations yet. Start one in the <a href="/studio/playground">playground</a>.<% end %></div>
     <% else %>
       <% @sessions.each do |s| %>
         <% customer = presence(session_customer(s)) %>
@@ -34,6 +36,9 @@
         </a>
       <% end %>
       <div class="empty" data-list-filter-target="empty" hidden>No conversations match your filter.</div>
+      <% if @more.to_i.positive? %>
+        <a class="btn" href="<%= chats_path(limit: @limit + @more) %>" data-turbo-frame="_top">Load <%= @more %> more</a>
+      <% end %>
     <% end %>
   </nav>
 </aside>
