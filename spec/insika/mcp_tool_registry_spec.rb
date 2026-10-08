@@ -46,7 +46,7 @@ RSpec.describe Insika::McpToolRegistry do
       registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { raise "never called" })
 
       entry = registry.entries.first
-      expect(entry.name).to eq("list_files")
+      expect(entry.name).to eq("fs__list_files")
       expect(entry.plugin).to eq("mcp:fs")
       expect(entry.metadata).to include(optional: false, side_effect: true, group: "mcp:fs")
     end
@@ -62,7 +62,37 @@ RSpec.describe Insika::McpToolRegistry do
       registry = described_class.new(mcp_store: mcp_store, client_factory: ->(_r) { raise "never called" })
 
       expect(registry.entries.map { |e| [e.name, e.metadata[:side_effect]] })
-        .to eq([["list_files", false], ["write_file", true]])
+        .to eq([["fs__list_files", false], ["fs__write_file", true]])
+    end
+
+    # Two servers can offer the same tool (a store's prod and staging); each name
+    # must reach ITS instance, never whichever was registered first.
+    it "names each tool after its instance, so equal tool names stay distinct" do
+      %w[shop-prd shop-stg].each do |name|
+        seed(name: name)
+        mcp_store.set_tools_cache(name, [{ "name" => "list_products", "inputSchema" => {} }])
+      end
+      clients = %w[shop-prd shop-stg].to_h do |name|
+        [name, FakeRegistryClient.new([FakeRegistryTool.new("list_products", "", {}, name)])]
+      end
+      registry = described_class.new(mcp_store: mcp_store, client_factory: ->(r) { clients.fetch(r["name"]) })
+
+      by_name = registry.entries.to_h { |e| [e.name, e] }
+      expect(by_name.keys).to contain_exactly("shop_prd__list_products", "shop_stg__list_products")
+      expect(by_name["shop_stg__list_products"].factory.call.name).to eq("shop_stg__list_products")
+      expect(clients["shop-stg"].tool_list.first).to receive(:call).and_return("from stg")
+      expect(by_name["shop_stg__list_products"].factory.call.execute).to eq("from stg")
+    end
+
+    it "skips a tool whose qualified name would pass the providers' 64-character limit" do
+      seed(name: "a" * 40)
+      mcp_store.set_tools_cache("a" * 40, [{ "name" => "short", "inputSchema" => {} },
+                                           { "name" => "x" * 30, "inputSchema" => {} }])
+      registry = described_class.new(mcp_store: mcp_store)
+
+      names = nil
+      expect { names = registry.entries.map(&:name) }.to output(/longer than 64/).to_stderr
+      expect(names).to eq(["#{'a' * 40}__short"])
     end
 
     it "excludes a disabled instance's cached tools" do
@@ -234,8 +264,8 @@ RSpec.describe Insika::McpToolRegistry do
       registry = described_class.new(mcp_store: store)
       built = registry.entries.to_h { |e| [e.name, e.factory.call] }
 
-      expect(built["add_to_cart"].requires_evidence).to eq("params" => ["product_id"])
-      expect(built["view_cart"].requires_evidence).to be_nil
+      expect(built["s__add_to_cart"].requires_evidence).to eq("params" => ["product_id"])
+      expect(built["s__view_cart"].requires_evidence).to be_nil
     end
   end
 end
