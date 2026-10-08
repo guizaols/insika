@@ -998,8 +998,7 @@ module Studio
             next_404 unless @session
 
             # master column: recent conversations, current one active
-            @agent = presence(r.params["agent"])
-            @sessions = agent_sessions(recent_sessions(limit: 60), @agent)
+            setup_chat_list(r.params)
             # Session's tool-call trace (debug): grouped by turn in the view.
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
                            .group_by { |t| t["turn"] }
@@ -2683,9 +2682,33 @@ end
     # --- Chats -----------------------------------------------------
 
     def render_chats
-      @agent = presence(request.params["agent"])
-      @sessions = agent_sessions(recent_sessions(limit: 100), @agent)
+      setup_chat_list(request.params)
       view("chats")
+    end
+
+    CHATS_PAGE = 100
+
+    # The Chats master list, shared by the index and the session viewer. Agent
+    # and id search run over EVERY session's stats (a few bytes each), newest
+    # first; only the rows shown are read whole. ?limit= grows the page.
+    def setup_chat_list(params)
+      @agent = presence(params["agent"])
+      @query = presence(params["q"].to_s.strip)
+      @limit = [params["limit"].to_i, CHATS_PAGE].max
+      store = insika[:session_store]
+      return @sessions = [] unless store
+
+      rows = agent_sessions(store.respond_to?(:all_stats) ? store.all_stats : every_record(store), @agent)
+      rows = rows.select { |s| s.id.downcase.include?(@query.downcase) } if @query
+      rows = rows.sort_by { |s| s.updated_at.to_s }.reverse
+      @chats_total = rows.size
+      @sessions = rows.first(@limit).filter_map { |s| store.find(s.id) }
+      @more = [CHATS_PAGE, rows.size - @limit].min
+    end
+
+    def chats_path(**extra)
+      query = Rack::Utils.build_query({ agent: @agent, q: @query, **extra }.compact)
+      query.empty? ? "/studio/chats" : "/studio/chats?#{query}"
     end
 
     # --- Customers  ----------------------------------
