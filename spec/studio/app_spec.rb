@@ -1759,6 +1759,35 @@ RSpec.describe Studio::App do
       expect(bus.last(:delete_kit).payload).to include(name: "grocery")
     end
 
+    it "the tool matrix shows a kit's tools on and locked, so a save never copies them in" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[calc], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings,
+                       tools: [SkillEntry.new(name: "menu", description: "m"), SkillEntry.new(name: "calc", description: "c")])
+      body = login(app).get("/tools?a=chef").body
+      expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked[^>]*disabled/)
+      expect(body).to include("from kit grocery")
+    end
+
+    it "warns that kits add nothing to an agent allowed every tool" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: nil, kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/tools?a=chef").body).to include("already gets every tool")
+    end
+
+    it "the agent page lists its kits and shows kit skills locked on" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: [], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      body = login(app).get("/agents/chef").body
+      expect(body).to include('href="/studio/kits/grocery"')
+      expect(body).to match(/name="skills\[\]" value="pedido"[^>]*checked[^>]*disabled/)
+    end
+
+    it "warns that kits add nothing to an agent allowed every skill" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: nil, kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/agents/chef").body).to include("already gets every skill")
+    end
+
     it "the tool matrix names the agent's kits" do
       chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], kits: %w[grocery])
       app, = build_app(agents: [chef], settings: kit_settings)
