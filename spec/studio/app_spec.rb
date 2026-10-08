@@ -1657,6 +1657,16 @@ RSpec.describe Studio::App do
     expect(body).to include('class="switch"')
   end
 
+  it "opens the matrix showing only enabled tools, with per-section on/total" do
+    app, = build_app(agents: [profile("bia", tools_allow: %w[menu])],
+                     tools: [SkillEntry.new(name: "menu", description: "m"),
+                             SkillEntry.new(name: "calc", description: "c")])
+    body = login(app).get("/tools?a=bia").body
+    expect(body).to match(/id="only-on" checked/)
+    expect(body).to include("only-on-scope")
+    expect(body).to include('<span class="count">1/2</span>')
+  end
+
   it "renders a denied tool as LOCKED (disabled, deny wins) — can't be granted here" do
     denied = Insika::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
     app, = build_app(agents: [denied])
