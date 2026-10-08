@@ -14,11 +14,10 @@ is invisible to it. Do not publish on rspec alone.
 
 ## Before anything
 
-The RubyLLM 2 candidate is not release-ready: native MCP requires a RubyLLM revision
-Git-pinned in the development Gemfile. A gemspec does not carry that Git pin;
-resolve the released dependency before publishing. The measured performance
-tradeoff was explicitly accepted for this migration, not for future regressions;
-see [migration results](RUBYLLM_2_MIGRATION.md).
+RubyLLM comes from RubyGems (`~> 2.1` in the gemspec); the development Gemfile must
+not Git-pin it, or the published gem resolves a different RubyLLM than the suite ran.
+The measured performance tradeoff was explicitly accepted for the RubyLLM 2 migration,
+not for future regressions; see [migration results](RUBYLLM_2_MIGRATION.md).
 
 1. The suite is green: `bundle exec rspec`.
 2. `lib/insika/version.rb` carries the version being published.

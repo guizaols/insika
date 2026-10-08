@@ -48,7 +48,7 @@ module Insika
 
     module_function
 
-    # RubyLLM 2.0 has no public protocol reader. Remove the ivar read when it does;
+    # RubyLLM (2.1) has no public protocol reader. Remove the ivar read when it does;
     # ignoring a per-chat override would replay Responses state on another protocol.
     def native_binding(chat)
       return nil unless defined?(RubyLLM::Chat) && chat.is_a?(RubyLLM::Chat)

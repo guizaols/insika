@@ -60,21 +60,28 @@ it is released. Entries land with the pull request that makes the change.
 - Distillation, harvest, knowledge and refinement use native structured responses.
   Retired MCP import delegates to live discovery instead of generating HTTP snapshots.
 
-- RubyLLM 2.0 migration candidate: native loop control, tool schemas, cache markers,
-  and usage readers. MCP now uses the native RubyLLM client, replacing
-  `ruby_llm-mcp` and the Origin-header patch. Legacy SSE requires migration to
-  Streamable HTTP. Publication remains blocked by the native-MCP RubyLLM release
-  and performance gate; see
+- RubyLLM 2 migration: native loop control, tool schemas, cache markers, and usage
+  readers. MCP now uses the native RubyLLM client, replacing `ruby_llm-mcp` and the
+  Origin-header patch. Legacy SSE requires migration to Streamable HTTP. See
   [migration results](docs/RUBYLLM_2_MIGRATION.md).
+- Requires RubyLLM `~> 2.1` from RubyGems; the Git pin is gone. A provider's 400
+  quota message ("quota exceeded", "wait before trying again") now arrives as
+  `RubyLLM::RateLimitError` and is retried and rotated instead of failing the turn.
 
 - SQLite writes from concurrent turns share one transaction and one commit (group commit),
   so N worker processes take the file's write lock far less often. A turn opens and
   closes its task record in one write each, and skips an empty evidence write.
 - Litestream 0.5 with its blocking checkpoint disabled (`truncate-page-n: 0`); it restores
   backups made by 0.3.
-- Less CPU per turn: the prompt reads an agent's files once per build, provider TLS
-  verifies against one CA store per process, the prompt-echo check caches each squeezed
-  prompt, and streamed events are matched only against their own session's subscriptions.
+- Less CPU per turn: the prompt reads an agent's files once per build, the prompt-echo
+  check caches each squeezed prompt, and streamed events are matched only against their
+  own session's subscriptions.
+
+### Removed
+
+- `Insika::LLMHTTPAdapter` (`faraday_adapter = :insika_net_http`). RubyLLM 2.1 shares
+  one connection per process and settings, so the stock `:net_http` no longer builds a
+  CA store per chat. A deployment that set `:insika_net_http` drops that line.
 
 ### Fixed
 
