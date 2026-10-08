@@ -97,6 +97,17 @@ RSpec.describe "Integration: pack provisioning" do
     expect(skill_catalog.find("recommendation-formatting", agent: "unrelated").body.strip).to eq("shared")
   end
 
+  it "config.skills names shared skills by reference, without copying them" do
+    skill_store.write("guardrails", "---\nname: guardrails\ndescription: safety\n---\nshared body\n")
+    importer.import(Insika::Pack.from_h(
+      config: { id: "loja-7", model: "deepseek-chat", skills: ["guardrails", "escalation"] },
+      skills: { "escalation" => "---\nname: escalation\ndescription: talk to a human\n---\nbody" }
+    ))
+
+    expect(profiles.fetch("loja-7").skills).to contain_exactly("escalation", "guardrails")
+    expect(skill_catalog.find("guardrails", agent: "loja-7").body.strip).to eq("shared body")
+  end
+
   it "re-provisioning with fewer files removes what left the pack (authoritative allowlist)" do
     importer.import(pack)
     slim = Insika::Pack.from_h(
