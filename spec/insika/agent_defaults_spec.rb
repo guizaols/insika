@@ -84,4 +84,42 @@ RSpec.describe Insika::AgentDefaults do
     settings.put_agent_defaults("reliability" => { "timeout" => 7 })
     expect(reads.fetch("plain").reliability).to eq("timeout" => 7)
   end
+
+  describe "kits" do
+    before do
+      stored.put(Insika::AgentProfile.build(id: "member", model: "m", tools_allow: %w[menu], kits: %w[grocery]))
+      settings.put_kit("grocery", "tools" => %w[add_to_cart])
+    end
+
+    it "turns read the kit's tools; the stored agent keeps only its own" do
+      expect(source.fetch("member").tools_allow).to eq(%w[menu add_to_cart])
+      expect(stored.fetch("member").tools_allow).to eq(%w[menu])
+    end
+
+    it "a kit edit reaches the agent on the next read" do
+      settings.put_kit("grocery", "tools" => %w[checkout])
+      expect(source.fetch("member").tools_allow).to eq(%w[menu checkout])
+    end
+
+    it "a deleted kit stops applying" do
+      settings.put_kit("grocery", nil)
+      expect(source.fetch("member").tools_allow).to eq(%w[menu])
+    end
+
+    it "all applies kits too" do
+      expect(source.all.find { |p| p.id == "member" }.tools_allow).to eq(%w[menu add_to_cart])
+    end
+  end
+
+  describe ".for_turns" do
+    it "wraps a source so readers outside the graph see defaults and kits" do
+      settings.put_kit("grocery", "tools" => %w[add_to_cart])
+      stored.put(Insika::AgentProfile.build(id: "member", model: "m", tools_allow: %w[menu], kits: %w[grocery]))
+      expect(described_class.for_turns(stored, settings).fetch("member").tools_allow).to eq(%w[menu add_to_cart])
+    end
+
+    it "returns the source untouched without a settings store" do
+      expect(described_class.for_turns(stored, nil)).to be(stored)
+    end
+  end
 end

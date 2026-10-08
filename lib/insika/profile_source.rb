@@ -98,6 +98,7 @@ module Insika
         tools_allow_groups: h[:tools_allow_groups],
         skills: h[:skills],
         skills_eager: h[:skills_eager],
+        kits: h[:kits],
         context_providers: h[:context_providers],
         workflows_allow: h[:workflows_allow],
         policies: Array(h[:policies]).map(&:to_sym),

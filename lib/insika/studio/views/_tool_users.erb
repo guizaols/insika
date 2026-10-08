@@ -1,0 +1,17 @@
+<%# Which agents can call tool `name` (@tool_reach: own list, kits, groups or "all"). %>
+<% users = @tool_reach[name] %>
+<div class="drill-section">
+  <div class="drill-section-head">
+    <h3>Used by <span class="count"><%= users.size %></span></h3>
+    <span class="muted">Change an agent's access in its Tools tab.</span>
+  </div>
+  <% if users.empty? %>
+    <p class="muted">No agent can call this tool yet.</p>
+  <% else %>
+    <p>
+      <% users.each do |id| %>
+        <a class="pill plain" href="/studio/agents/<%= Rack::Utils.escape(id) %>?tab=tools" data-turbo-frame="_top"><%= id %></a>
+      <% end %>
+    </p>
+  <% end %>
+</div>

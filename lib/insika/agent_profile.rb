@@ -35,6 +35,9 @@ module Insika
     #                                   a per-skill flag forced one decision onto every
     #                                   allowlist holding the skill. NOT `Allowlist`
     #                                   semantics — nil means NONE here (SkillCatalog#eager_for).
+    :kits,                            # kit names (Insika::Kits): bundles of skills/tools applied
+    #                                   at READ time by AgentDefaults::ProfileSource — never
+    #                                   copied into the record. Always a [String] ([] = none).
     :context_providers,               # provider allowlist
     :workflows_allow,                 # applied by WorkflowAllowlist
     :policies,                        # names in the Policy Registry
@@ -337,7 +340,7 @@ module Insika
     # platform `default_model` (Settings) at turn start via the ModelResolver.
     def self.build(id:, model: nil, provider: nil, base_prompt: "", prompt_files: [],
                    tools_allow: nil, tools_deny: [], tools_allow_groups: nil, skills: nil,
-                   skills_eager: nil, context_providers: nil, workflows_allow: nil,
+                   skills_eager: nil, kits: nil, context_providers: nil, workflows_allow: nil,
                    policies: [], prompt_refs: [], limits: {}, approvals_required: nil,
                    customer_confirm: nil,
                    capabilities: nil, subagents: nil, tools_deferred: nil, memory: nil, memory_retrieval: nil, shared_conversations: false,
@@ -352,6 +355,7 @@ outputs: nil, stt_prompt: nil, briefing_fields: nil, grounding: nil, funnel: nil
         prompt_files: Array(prompt_files), tools_allow: tools_allow,
         tools_deny: Array(tools_deny), tools_allow_groups: tools_allow_groups, skills: skills,
         skills_eager: skills_eager,
+        kits: Array(kits).map(&:to_s).uniq,
         context_providers: context_providers, workflows_allow: workflows_allow,
         policies: normalize_policies(policies, tools_allow: tools_allow, tools_deny: tools_deny,
                                      tools_allow_groups: tools_allow_groups),

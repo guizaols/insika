@@ -8,9 +8,7 @@
       <input type="hidden" name="status" value="<%= @status %>">
       <% if @tenant %><input type="hidden" name="tenant" value="<%= @tenant %>"><% end %>
       <label>Agent
-        <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">
-          <% @agents.each do |id| %><option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option><% end %>
-        </select>
+        <%== render("_agent_picker", locals: { name: "agent", options: @agents, value: @agent, auto_submit: true }) %>
       </label>
     </form>
     <% if insika[:knowledge_store] && @agents.any? %>

@@ -19,20 +19,29 @@
         </label>
       <% end %>
     </div>
+    <% kit_skills = @agent_skills.nil? ? {} : kit_sources(@agent, "skills") %>
+    <% if Array(@agent.kits).any? %>
+      <% kit_links = @agent.kits.map { |k| %(<a class="pill info" href="/studio/kits/#{Rack::Utils.escape(k)}" data-turbo-frame="_top">#{h(k)}</a>) }.join(" ") %>
+      <% if @agent_skills.nil? %>
+        <p class="muted">Its kits <%== kit_links %> add nothing here: this agent already gets every skill. Turn off <strong>all skills</strong> to limit it to its own list plus its kits.</p>
+      <% else %>
+        <p class="muted">Skills marked <span class="pill info">kit</span> come from its kits <%== kit_links %> and are edited there.</p>
+      <% end %>
+    <% end %>
     <% unless @all_skills.empty? %>
       <div class="check-grid tool-grid" data-toggle-counter-target="grid">
         <% @all_skills.sort_by(&:name).each do |s| %>
-          <label class="check tool-check">
-            <input type="checkbox" name="skills[]" value="<%= s.name %>"<%== " checked" if @agent_skills&.include?(s.name) %>
-                   data-toggle-counter-target="tool" data-locked="false" data-action="change->toggle-counter#update">
-            <span class="mono"><%= s.name %></span>
+          <% from_kit = !@agent_skills.nil? && !@agent_skills.include?(s.name) && kit_skills[s.name] %>
+          <label class="check tool-check"<%== %( title="from kit #{h(from_kit)}") if from_kit %>>
+            <input type="checkbox" name="skills[]" value="<%= s.name %>"<%== " checked" if @agent_skills&.include?(s.name) || from_kit %><%== " disabled" if from_kit %>
+                   data-toggle-counter-target="tool" data-locked="<%= !!from_kit %>" data-action="change->toggle-counter#update">
+            <span class="mono"><%= s.name %></span><% if from_kit %> <span class="pill info">kit</span><% end %>
           </label>
         <% end %>
       </div>
     <% end %>
     <div class="actions">
       <button type="submit" class="primary" data-turbo-submits-with="Saving…">Save skills</button>
-      <a class="btn ghost" href="/studio/tools" data-turbo-frame="_top">Edit tools</a>
     </div>
   </form>
 </section>

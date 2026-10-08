@@ -15,13 +15,15 @@ RSpec.describe Insika::Server::App do
   def build_app(bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
                 session_store: ServerStoreDouble.new(nil), task_store: ServerStoreDouble.new(nil),
                 config: {}, a2a: nil, provisioner: nil, workflow_registry: nil, onboarding: nil,
-                profiles: nil, logger: nil, token_store: nil, tool_registry: nil, mcp_store: nil)
+                profiles: nil, logger: nil, token_store: nil, tool_registry: nil, mcp_store: nil,
+                settings_store: nil)
     described_class.new(
       command_bus: bus, event_stream: event_stream,
       session_store: session_store, task_store: task_store,
       a2a: a2a, provisioner: provisioner, workflow_registry: workflow_registry,
       onboarding: onboarding, profiles: profiles, logger: logger,
       token_store: token_store, tool_registry: tool_registry, mcp_store: mcp_store,
+      settings_store: settings_store,
       config: { sync_timeout: 0.05, gateway_token: TOKEN }.merge(config)
     )
   end
@@ -962,6 +964,23 @@ RSpec.describe Insika::Server::App do
                                        tools_allow: %w[create_order], tools_deny: %w[create_order])
         _s, _h, body = call(build_app(profiles: profiles_with(p), tool_registry: registry), "GET", "/v1/agents/demo-store")
         expect(json_body(body)["side_effect_tools"]).to eq([])
+      end
+
+      # A kit's tools are reachable on real turns, so the swap list must count them:
+      # a kit-only write tool missing here lets a simulated run write for real.
+      it "counts the side-effect tools the agent gets from its kits" do
+        cs = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+        store = Insika::ToolStore.new(config_store: cs)
+        write_tool(store, "search_products", "GET")
+        write_tool(store, "create_order", "POST")
+        settings = Insika::SettingsStore.new(config_store: cs)
+        settings.put_kit("checkout", "tools" => %w[create_order])
+        p = Insika::AgentProfile.build(id: "demo-store", model: "m", tools_allow: %w[search_products],
+                                       kits: %w[checkout])
+        app = build_app(profiles: profiles_with(p), tool_registry: registry_with(store), settings_store: settings)
+        _s, _h, body = call(app, "GET", "/v1/agents/demo-store")
+        expect(json_body(body)["side_effect_tools"]).to eq(%w[create_order])
+        expect(json_body(body)["tools"]).to include("create_order")
       end
 
       it "omits the field when no registry is wired (view parity)" do

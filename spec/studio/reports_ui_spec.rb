@@ -31,7 +31,7 @@ RSpec.describe "Studio report navigation" do
   it "submits the selected agent and period together, including custom periods" do
     body = get_page("/funnel?agent=reporter&period=14")
     form = body[%r{<form method="get" action="/studio/funnel".*?</form>}m]
-    expect(form).to include('name="agent"', 'value="reporter" selected', 'name="period"', 'value="14" selected')
+    expect(form).to include('name="agent"', 'value="reporter"', 'name="period"', 'value="14" selected')
     expect(form).to include('type="submit"')
   end
 

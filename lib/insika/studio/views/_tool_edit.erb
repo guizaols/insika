@@ -1,10 +1,12 @@
+<%# The data-tool editor, rendered inside the Tools detail pane (tools.erb). %>
 <% new = @tool_name.empty? %>
-<header class="page-head">
-  <div>
-    <nav class="crumbs"><a href="/studio/tools">tools</a></nav>
-    <h1><%= new ? "New data tool" : @tool_name %><span class="sub">an HTTP call described by data — no code</span></h1>
+<div class="drill-pane-head">
+  <div class="title">
+    <strong class="mono"><%= new ? "New data tool" : @tool_name %></strong>
+    <span class="count">an HTTP call described by data — no code</span>
   </div>
-</header>
+</div>
+<div class="drill-pane-body">
 
 <p class="muted matrix-hint">The tool makes an HTTP request when the model calls it. Use <code>{{param}}</code> in any field (url, query, headers, body) to insert arguments — https only, private destinations are blocked. Credential headers listed in <strong>secret_headers</strong> never return in plaintext: they appear as <code><%= secret_sentinel %></code> (keeping it preserves the secret).</p>
 
@@ -99,7 +101,6 @@
   <div class="actions">
     <span class="muted">Saving updates this tool for every agent that uses it.</span>
     <button type="submit" class="primary" data-turbo-submits-with="<%= new ? "Creating…" : "Saving…" %>"><%= new ? "Create tool" : "Save tool" %></button>
-    <a class="btn ghost" href="/studio/tools">← back</a>
   </div>
 </form>
 
@@ -126,3 +127,8 @@
     </details>
   <% end %>
 <% end %>
+
+<% unless new %>
+  <%== render("_tool_users", locals: { name: @tool_name }) %>
+<% end %>
+</div>

@@ -2,9 +2,9 @@
     index (agents.erb) and the detail (agent_detail.erb). Rows target the
     agent-detail turbo-frame with data-turbo-action="advance": the detail
     loads beside the list while the URL moves, so refresh/deep-link render the
-    same screen. Locals: active_id lights the current row (nil on the index);
-    show_outcomes renders the last-outcome pills (index only — the detail's
-    outcomes tab is THAT agent's series, so foreign pills would blur it). %>
+    same screen. Locals: active_id lights the current row (nil on the index).
+    The last outcome lives on the agent's Outcomes tab, not here: in the list
+    it read like a kit or a warning. %>
 <aside class="drill-pane drill-master">
   <div class="drill-pane-head">
     <div class="title"><strong>Agents <span class="count"><%= @agents.size %></span></strong></div>
@@ -16,7 +16,6 @@
   </div>
   <nav class="drill-pane-body drill-list" aria-label="agents" data-controller="active-link">
     <% active_id = defined?(active_id) ? active_id : nil %>
-    <% show_outcomes = defined?(show_outcomes) ? show_outcomes : false %>
     <% if @agents.empty? %>
       <div class="empty">No agents yet. Create your first agent using the new agent form.</div>
     <% else %>
@@ -24,18 +23,15 @@
         <a class="drill-item<%== ' active' if a.id == active_id %>"
            href="/studio/agents/<%= Rack::Utils.escape(a.id) %>"
            data-turbo-frame="agent-detail" data-turbo-action="advance"
-           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %>"
+           data-list-filter-target="item" data-filter-text="<%= a.id %> <%= a.model %> <%= a.provider %> <%= Array(a.kits).join(" ") %>"
            data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-name">
             <span class="avatar sm <%= avatar_class(a.id) %>"><%= a.id[0, 2].upcase %></span>
             <span class="txt" title="<%= a.id %>"><%= a.id %></span>
+            <% Array(a.kits).each do |k| %><span class="pill info"><%= k %></span><% end %>
             <% if a.memory %><span class="pill plain">memory</span><% end %>
-            <% if show_outcomes && (latest = @latest_outcomes&.dig(a.id)) %>
-              <span class="pill <%= latest[:outcome] == "conversion" ? "ok" : "warn" %>"
-                    title="last outcome recorded via /v1/outcomes"><%= latest[:outcome] %><%== format(" · R$ %0.2f", latest[:value]) if latest[:value] && latest[:value].positive? %></span>
-            <% end %>
           </div>
-          <div class="drill-item-sub"><%= a.model %><%== " · #{h(a.provider)}" if a.provider %></div>
+          <div class="drill-item-sub"><%= a.model %> · <span<%== ' class="warn-text" title="gets every tool or skill — limit it in its Tools or Skills tab"' if agent_open?(a) %>><%= agent_reach(a) %></span></div>
         </a>
       <% end %>
       <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>

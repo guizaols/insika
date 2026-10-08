@@ -738,7 +738,9 @@ module Insika
           require "ruby_llm"
           require_relative "../tools/run_persona_eval"
           Insika::Tools::RunPersonaEval.new(
-            golden_store: golden_store, profiles: graph.profiles, tool_registry: graph.tool_registry,
+            golden_store: golden_store, tool_registry: graph.tool_registry,
+            # the target as its turns see it: kit tools count in the derived swap list
+            profiles: Insika::AgentDefaults.for_turns(graph.profiles, settings_store),
             runtime: GraphChat.new(graph: graph), graph: graph, settings_store: settings_store,
             budget_ledger: graph.budget_ledger, event_stream: graph.event_stream, llm: llm
           )

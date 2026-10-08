@@ -19,11 +19,7 @@
       <%== csrf_tag %>
       <label>
         Agent
-        <select name="agent">
-          <% @agents.each do |id| %>
-            <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
-          <% end %>
-        </select>
+        <%== render("_agent_picker", locals: { name: "agent", options: @agents, value: @agent }) %>
       </label>
       <label class="check" title="Ignore the mined markers and re-read the whole window (the ledger dedup still protects).">
         <input type="checkbox" name="full" value="1"> Re-read full window
