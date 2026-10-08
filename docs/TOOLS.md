@@ -474,8 +474,11 @@ responses over Streamable HTTP remain supported; only the old SSE transport is r
 **The stdio gate.** A stdio instance is arbitrary command execution by
 config — it saves, but refuses to start ("stdio disabled by env") until the
 operator sets `INSIKA_MCP_STDIO=1` (config-over-convention, the same pattern
-as the egress envs). `http` needs no such gate; its URL is checked by
-the normal egress allowlist instead. Native MCP additionally refuses plain HTTP
+as the egress envs). `http` needs no such gate; its URL goes through the
+egress guard instead: HTTPS, and a host that resolves to a private address
+needs `INSIKA_EGRESS_ALLOW_PRIVATE` and a place in `INSIKA_EGRESS_HOSTS`. A
+public host is not pinned by that list, since the operator fixed the URL and
+the model cannot change it. Native MCP additionally refuses plain HTTP
 outside loopback, even when `INSIKA_EGRESS_ALLOW_HTTP` is enabled.
 
 **Credentials are never visible in plaintext.** `env` (stdio) and `headers`

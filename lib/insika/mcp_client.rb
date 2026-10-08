@@ -23,11 +23,14 @@ module Insika
       end
     end
 
+    # The operator registers an MCP URL and the model cannot change it, so the
+    # host allowlist (which pins model-shaped data-tool requests) only pins
+    # private destinations: a public server needs no redeploy to be added.
     def egress_options(env_reader)
       hosts = env_reader.read("INSIKA_EGRESS_HOSTS").to_s.split(",").map(&:strip).reject(&:empty?)
       { allow_http: env_reader.truthy?(env_reader.read("INSIKA_EGRESS_ALLOW_HTTP")),
         allow_private: env_reader.truthy?(env_reader.read("INSIKA_EGRESS_ALLOW_PRIVATE")),
-        host_allowlist: (hosts unless hosts.empty?) }.compact
+        host_allowlist: (hosts unless hosts.empty?), pin_private_only: true }.compact
     end
 
     def stdio_client(record, env_reader:)

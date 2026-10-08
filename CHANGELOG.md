@@ -33,6 +33,10 @@ it is released. Entries land with the pull request that makes the change.
   long it waited for the lock versus how long its commit took.
 
 ### Changed
+- `INSIKA_EGRESS_HOSTS` pins an MCP server only when its host resolves to a private
+  address. The operator registers the URL and the model cannot change it, so adding a
+  public server needs no redeploy. HTTPS still applies, and a private server still needs
+  `INSIKA_EGRESS_ALLOW_PRIVATE` and a listed host.
 
 - An input guardrail injection hit no longer replaces the turn with the canned
   refusal by default. The message reaches the model with a per-turn

@@ -108,7 +108,7 @@ module Insika
       spec(name: "INSIKA_A2A_REMOTES", type: :csv, description: "Comma-separated remote A2A endpoints."),
       spec(name: "INSIKA_EGRESS_ALLOW_HTTP", type: :boolean, description: "Allow plain http egress from data-tools, channel callbacks and media fetches (default: https only)."),
       spec(name: "INSIKA_EGRESS_ALLOW_PRIVATE", type: :boolean, description: "Allow egress to private/loopback ranges (SSRF guard off)."),
-      spec(name: "INSIKA_EGRESS_HOSTS", type: :csv, description: "Comma-separated host allowlist for data-tool egress (media fetches are NOT pinned by it)."),
+      spec(name: "INSIKA_EGRESS_HOSTS", type: :csv, description: "Comma-separated host allowlist for data-tool egress (media fetches are NOT pinned by it; MCP servers only when they resolve to a private address)."),
       spec(name: "INSIKA_OTEL", type: :boolean, description: "Turn on OpenTelemetry export (opt-in)."),
       spec(name: "INSIKA_MODEL_PRICING", description: "JSON rates table (USD per million tokens) for the estimated-cost attribute; unset -> no cost reported."),
       spec(name: "INSIKA_SLOW_STORE_MS", type: :integer, description: "Log every SQLite store call that takes at least this many ms, with its caller (off when unset)."),
