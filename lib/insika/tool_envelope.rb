@@ -40,6 +40,11 @@ module Insika
     ToolTimeout = Class.new(StandardError)
     private_constant :ToolTimeout
 
+    # RubyLLM asks the tool's CLASS whether to defer its definition (tool
+    # search), and a delegator's class is this one. No Insika tool defers, so
+    # every envelope is sent as an ordinary tool.
+    def self.deferred? = false
+
     # A gate's refusal. A plain Hash subclass: it reaches the model exactly as the
     # `{status:, gate:, ...}` it always was, and the engine's own readers (the
     # :tool_result outcome, the trace) recognize a refusal by CLASS — a data tool

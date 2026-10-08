@@ -98,7 +98,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     expect(events.count { |name, _| name == "request.ruby_llm" }).to eq(1)
     usage = events.filter_map { |name, payload| payload if name == "usage.ruby_llm" }
     expect(usage.map { |payload| payload[:status] }).to eq(%i[failed succeeded])
-    expect(usage.first.keys).to contain_exactly(:operation, :provider, :model, :status, :tokens, :cost)
+    expect(usage.first.keys).to contain_exactly(:operation, :provider, :model, :status, :tokens, :cost, :owner)
   end
 
   it "bridges a native retry as one request and two correlated usage attempts" do

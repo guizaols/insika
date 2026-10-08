@@ -14,11 +14,6 @@ ruby ">= 3.3"
 # required lazily (spec/insika/load_guard_spec.rb is the guard).
 gemspec
 
-# Native MCP client, DeepSeek image attachments (PRs #959 and #972), shared
-# HTTP connections and per-read stream pricing, pending release.
-gem "ruby_llm", git: "https://github.com/crmne/ruby_llm.git",
-                ref: "0c4cff47b1e95c09f626564019b22317071c85f0"
-
 # OPT-IN observability (Telemetry): OTEL is only REQUIRED lazily in
 # Insika::Telemetry.setup when enabled (INSIKA_OTEL / OTEL_EXPORTER_OTLP_*).
 # These four are NOT gem dependencies — an adopter who wants OTel adds them,
