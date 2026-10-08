@@ -33,7 +33,14 @@ module Insika
         config = Config.from_profile(state.profile)
         return nxt.call(state) unless config.input
 
-        hit = Detectors.scan_input(state.message.to_s, categories: config.input_categories, corpus: config.corpus)
+        hit = scan(state, config, config.input_categories)
+        if hit && hit[:category] == :injection && config.injection == :flag
+          # The model sees the message with a notice; the other families still
+          # block, and the moderator is skipped (the verdict is already in hand).
+          flag_injection(state, hit[:matched])
+          hit = scan(state, config, config.input_categories - [:injection])
+          return hit ? block(state, config, category: hit[:category], source: :deterministic, detail: hit[:matched]) : nxt.call(state)
+        end
         return block(state, config, category: hit[:category], source: :deterministic, detail: hit[:matched]) if hit
 
         if config.moderator? && (mod = build_moderator(config))
@@ -54,6 +61,19 @@ module Insika
       end
 
       private
+
+      def scan(state, config, categories)
+        Detectors.scan_input(state.message.to_s, categories: categories, corpus: config.corpus)
+      end
+
+      # `security_notice` is the matched phrase; the ChatBuilder turns it into a
+      # per-turn message the transcript never keeps.
+      def flag_injection(state, matched)
+        detail = matched.to_s[0, 200]
+        state.security_notice = detail
+        state.guardrail_flags = Array(state.guardrail_flags) +
+                                [{ category: "injection", source: "deterministic", action: "flag", detail: detail }]
+      end
 
       def build_moderator(config)
         @moderator_factory&.call(config)

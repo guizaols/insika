@@ -143,6 +143,9 @@ module Insika
     # Internal (memory): the turn's tenant (from the Command), scope of the write path
     # (`remember` tool). Set in run_pipeline; nil = DEFAULT_TENANT in the MemoryStore.
     attr_accessor :tenant
+    # The phrase an injection-flagging InputGuardrail matched (nil = none). The
+    # ChatBuilder hands the model a per-turn notice built from it.
+    attr_accessor :security_notice
 
     # Internal: turn context deposited into the data-tools to
     # resolve {{ctx.*}} (chat_id/agent_id/tenant/store_id) and emit
