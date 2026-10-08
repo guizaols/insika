@@ -105,7 +105,7 @@
             <div class="tool-grid<%== " is-open" if a.tools_allow.nil? %>" data-toggle-counter-target="grid">
               <% @tool_groups.each do |label, tools| %>
                 <details class="tool-section" aria-label="<%= label %>" data-list-filter-target="group" open>
-                  <summary><%= label %> <span class="count"><%= tools_on_count(a, tools) %>/<%= tools.size %></span></summary>
+                  <summary><%= label %> <span class="count"><%= tools_on_count(a, tools) + tools.count { |t| kit_tools[t.name] && !tool_allowed_for?(a, t.name) && !tool_denied_for?(a, t.name) } %>/<%= tools.size %></span></summary>
                   <div class="matrix-topline">
                     <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectSection" data-checked="true"
                             aria-label="Select all tools in <%= label %>">Select all</button>

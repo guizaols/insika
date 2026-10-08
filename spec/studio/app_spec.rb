@@ -1774,6 +1774,7 @@ RSpec.describe Studio::App do
       body = login(app).get("/tools?a=chef").body
       expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked[^>]*disabled/)
       expect(body).to include("from kit grocery")
+      expect(body).to include('<span class="count">2/2</span>') # kit tool counts as on
     end
 
     it "warns that kits add nothing to an agent allowed every tool" do
