@@ -819,6 +819,9 @@
   label.check.tool-check:has(input:checked) { border-color:color-mix(in srgb,var(--accent-bg) 42%,var(--line-2)); background:var(--accent-weak); }
   label.check.tool-check > .mono { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   label.check.tool-check .pill { flex:0 0 auto; }
+  /* Enabled-only: hide unchecked tools and sections with nothing on, unless a search is typed. */
+  .only-on-scope:has(#only-on:checked):not([data-filtering]) .tool-check:not(:has(input:checked)) { display:none; }
+  .only-on-scope:has(#only-on:checked):not([data-filtering]) .tool-section:not(:has(input:checked)) { display:none; }
   /* checkbox → mini toggle */
   .tool-check input[type=checkbox] {
     appearance:none; -webkit-appearance:none; flex:0 0 auto; margin:0; position:relative;
