@@ -197,6 +197,70 @@ RSpec.describe Insika::McpToolRegistry do
       expect(instance.call).to eq(error: "MCP instance 'fs' tool 'list_files' failed: connection reset")
     end
 
+    describe "one client per conversation (the server keeps state per MCP session)" do
+      def http_registry(built, **opts)
+        seed(transport: "http", url: "https://mcp.example.com/mcp", command: nil)
+        mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }])
+        factory = lambda do |_r|
+          FakeRegistryClient.new([FakeRegistryTool.new("list_files", "d", {})]).tap { |c| built << c }
+        end
+        described_class.new(mcp_store: mcp_store, client_factory: factory, **opts)
+      end
+
+      def call_in(registry, session_id)
+        tool = registry.entries.first.factory.call
+        tool.turn_context = { session_id: session_id }
+        tool.call
+      end
+
+      it "two conversations never share a client; one conversation keeps its own across turns" do
+        built = []
+        registry = http_registry(built)
+
+        2.times { call_in(registry, "chat-a") }
+        call_in(registry, "chat-b")
+
+        expect(built.size).to eq(2)
+      end
+
+      it "closes the least recently used client past the cap" do
+        built = []
+        registry = http_registry(built, max_clients: 2)
+
+        call_in(registry, "chat-a")
+        call_in(registry, "chat-b")
+        call_in(registry, "chat-a") # chat-b is now the oldest use
+        call_in(registry, "chat-c")
+
+        expect(built.map(&:closed)).to eq([nil, true, nil])
+      end
+
+      it "evict closes every conversation's client of that instance" do
+        built = []
+        registry = http_registry(built)
+        call_in(registry, "chat-a")
+        call_in(registry, "chat-b")
+
+        registry.evict("fs")
+
+        expect(built.map(&:closed)).to eq([true, true])
+      end
+
+      it "a stdio instance stays one shared process" do
+        seed
+        mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }])
+        built = []
+        registry = described_class.new(mcp_store: mcp_store, client_factory: lambda { |_r|
+          FakeRegistryClient.new([FakeRegistryTool.new("list_files", "d", {})]).tap { |c| built << c }
+        })
+
+        call_in(registry, "chat-a")
+        call_in(registry, "chat-b")
+
+        expect(built.size).to eq(1)
+      end
+    end
+
     it "the client is memoized: one factory call serves every tool call for that instance" do
       seed
       tool = FakeRegistryTool.new("list_files", "d", {})
