@@ -1727,6 +1727,14 @@ RSpec.describe Studio::App do
       expect(body).to include("not in catalog")
     end
 
+    it "flags member agents whose 'all' list makes the kit add nothing" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: nil, kits: %w[grocery])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], skills: [], kits: %w[grocery])
+      app, = build_app(agents: [bia, chef], settings: kit_settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body.scan("gets every tool or skill").size).to eq(1)
+    end
+
     it "404s an unknown kit" do
       app, = build_app(settings: kit_settings)
       expect(login(app).get("/kits/missing").status).to eq(404)
@@ -3401,6 +3409,16 @@ RSpec.describe Studio::App do
     expect(res.headers["location"]).to eq("/studio/agents/nova")
     cmd = bus.last(:create_agent)
     expect(cmd.payload).to include(id: "nova", model: "deepseek-chat", provider: "deepseek", memory: true)
+  end
+
+  # A Studio agent starts with nothing allowed: kits and the tool/skill pickers decide
+  # what it gets. An "all" start made every kit a no-op for it.
+  it "creates the agent with empty tool and skill lists, not 'all'" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    client.post("/agents", params: { "id" => "nova", "model" => "m", "_csrf" => csrf })
+    expect(bus.last(:create_agent).payload).to include(tools_allow: [], skills: [])
   end
 
   it "empty agents opens the creation form (authoring empty-state)" do

@@ -152,6 +152,9 @@
                     <label class="check tool-check">
                       <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if Array(a.kits).include?(@selected) %>>
                       <span class="mono"><%= a.id %></span>
+                      <% if (a.tools_allow.nil? && a.tools_allow_groups.nil?) || a.skills.nil? %>
+                        <span class="pill warn" title="this agent gets every tool or skill, so the kit adds nothing there — limit it in Tools or in its Skills tab">all</span>
+                      <% end %>
                     </label>
                   <% end %>
                 </div>
