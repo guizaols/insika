@@ -3518,6 +3518,12 @@ RSpec.describe Studio::App do
     expect(bus.last(:create_agent).payload).to include(tools_allow: [], skills: [])
   end
 
+  it "the new-agent form leaves cross-session memory off by default" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to match(/<input type="checkbox" name="memory" value="1">/)
+  end
+
   it "empty agents opens the creation form (authoring empty-state)" do
     app, = build_app(agents: [])
     body = login(app).get("/agents").body
