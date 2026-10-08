@@ -2,7 +2,7 @@
 <section class="section" id="history" data-tabs-target="panel">
   <div class="section-head">
     <h2>History</h2>
-    <p class="muted">recent conversations (all agents — a session doesn't stamp its author).</p>
+    <p class="muted">This agent's most recent conversations. Every conversation is in <a href="/studio/chats?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Chats</a>.</p>
   </div>
   <% if @recent_sessions.empty? %>
     <div class="empty">No conversations yet. Start one in the <a href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">playground</a>.</div>

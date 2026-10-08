@@ -1819,7 +1819,10 @@ end
       mem = insika[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
-      @recent_sessions = recent_sessions
+      # Sessions stamp their agent (vars["agent"]); keep this agent's only.
+      # ponytail: scans the 200 most recent sessions; a per-agent index if an
+      # agent's conversations fall out of that window.
+      @recent_sessions = agent_sessions(recent_sessions(limit: 200), id).first(8)
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
