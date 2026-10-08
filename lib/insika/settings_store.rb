@@ -152,6 +152,23 @@ module Insika
       defaults
     end
 
+    # Kits (Insika::Kits), replaced per kit: a sent kit replaces its whole value,
+    # nil deletes it, other kits stay. -> Hash (all kits).
+    def kits = get["kits"] || {}
+
+    def put_kit(name, kit)
+      data = get
+      all = (data["kits"] || {}).dup
+      if kit.nil?
+        all.delete(name.to_s)
+      else
+        all[name.to_s] = Insika::Kits.validate!(name, kit)
+      end
+      data["kits"] = all
+      @cs.put(SCOPE, KEY, data)
+      all
+    end
+
     # RAW persisted schema version (bypasses the DEFAULTS overlay, which would always
     # report the current one). nil = no settings persisted yet (fresh deploy — nothing
     # to migrate); an Integer otherwise, 0 for a pre-versioning record.

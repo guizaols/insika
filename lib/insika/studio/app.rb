@@ -303,10 +303,6 @@ module Studio
         r.is do
           r.get do
             @agents = insika[:profile_source].all.sort_by(&:id)
-            # WS7 scorecard: the LAST outcome per agent, computed once for the
-            # whole grid (a store scan per card would be n scans). Series live
-            # on the agent detail — one agent's periods, not n charts here.
-            @latest_outcomes = insika[:outcome_store]&.latest_per_agent
             # "New from template" gallery — cheap (frontmatter
             # parse only, no evaluation) so it's safe on every render.
             @templates = Insika::Templates.all
@@ -322,7 +318,10 @@ module Studio
               dispatch(:create_agent, {
                          id: id, model: presence(r.params["model"]),
                          provider: presence(r.params["provider"]),
-                         memory: r.params["memory"] == "1"
+                         memory: r.params["memory"] == "1",
+                         # Starts with nothing allowed: kits and the pickers decide
+                         # what it gets (an "all" start made every kit a no-op).
+                         tools_allow: [], skills: []
                        })
             end
             r.redirect(result ? agent_path(id) : "/studio/agents")
@@ -467,6 +466,30 @@ module Studio
             end
           end
 
+          # POST /studio/agents/:id/tools — the agent's Tools tab. "all" = nil;
+          # otherwise the checked subset. `deny` is preserved.
+          r.post "tools" do
+            check_csrf!
+            profile = insika[:profile_source].fetch(id)
+            next_404 unless profile
+            all = r.params["all_tools"] == "1"
+            allow = all ? nil : Array(r.params["tools"]).map(&:to_s)
+            # "all tools" means every tool: a leftover group list would narrow it to
+            # those groups. Otherwise only the server switches this tab rendered
+            # (managed_groups) change; other groups (a pack's) stay.
+            groups = if all then nil
+                     else
+                       managed = Array(r.params["managed_groups"]).map(&:to_s)
+                       kept = Array(profile.tools_allow_groups).map(&:to_s) - managed
+                       picked = kept | Array(r.params["tool_groups"]).map(&:to_s)
+                       picked.empty? && profile.tools_allow_groups.nil? ? nil : picked
+                     end
+            with_flash("Tools updated.") do
+              dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny), allow_groups: groups })
+            end
+            r.redirect(agent_path(id, nil, "tab=tools"))
+          end
+
           r.on "skills" do
             # POST /studio/agents/:id/skills → :update_agent with the `skills`
             # allowlist. "all" = nil; otherwise the checked subset (possibly []).
@@ -602,10 +625,78 @@ module Studio
           r.post "specialize" do
             check_csrf!
             agent_id = presence(r.params["agent_id"])
+            # the picker is free text (type-to-search), so the id is checked here
+            unless agent_id && insika[:profile_source].fetch(agent_id)
+              flash["error"] = "Agent '#{agent_id}' not found."
+              r.redirect("/studio/skills/#{Rack::Utils.escape(name)}")
+            end
             with_flash("Specialized for #{agent_id}.") do
               dispatch(:write_skill, { name: name, agent: agent_id, content: skill_source(name) })
             end
             r.redirect("/studio/agents/#{Rack::Utils.escape(agent_id.to_s)}/skills/#{Rack::Utils.escape(name)}")
+          end
+        end
+      end
+
+      # --- Kits: named bundles of skills + tools agents subscribe to ----------
+      r.on "kits" do
+        r.is do
+          r.get do
+            load_kits
+            @selected = nil
+            view("kits")
+          end
+          r.post do
+            check_csrf!
+            name = presence(r.params["name"]).to_s
+            payload = { name: name, description: r.params["description"].to_s,
+                        skills: Array(r.params["skills"]).map(&:to_s),
+                        tools: Array(r.params["tools"]).map(&:to_s),
+                        tool_groups: Array(r.params["tool_groups"]).map(&:to_s) }
+            result = with_flash("Kit '#{name}' saved.") { dispatch(:write_kit, payload) }
+            r.redirect(result ? "/studio/kits/#{Rack::Utils.escape(name)}" : "/studio/kits")
+          end
+        end
+
+        r.get "new" do
+          load_kits
+          @selected = ""
+          @kit = {}
+          view("kits")
+        end
+
+        r.on String do |name|
+          name = utf8(name)
+          r.is do
+            r.get do
+              load_kits
+              @kit = @kits[name]
+              next_404 unless @kit
+              @selected = name
+              view("kits")
+            end
+          end
+          # Membership lives on the AGENT (AgentProfile#kits). Only agents whose
+          # membership of THIS kit changed are written, and their other kits stay.
+          r.post "agents" do
+            check_csrf!
+            chosen = Array(r.params["agent_ids"]).map(&:to_s)
+            with_flash("Kit '#{name}' agents updated.") do
+              insika[:profile_source].all.each do |a|
+                has = Array(a.kits).include?(name)
+                want = chosen.include?(a.id)
+                next if has == want
+
+                kits = want ? Array(a.kits) | [name] : Array(a.kits) - [name]
+                dispatch(:update_agent, { id: a.id, kits: kits })
+              end
+            end
+            r.redirect("/studio/kits/#{Rack::Utils.escape(name)}")
+          end
+          r.post "delete" do
+            check_csrf!
+            with_flash("Kit '#{name}' removed.") { dispatch(:delete_kit, { name: name }) }
+            r.redirect("/studio/kits")
           end
         end
       end
@@ -666,20 +757,16 @@ module Studio
           end
         end
 
-        r.is { r.get { render_tools_matrix } }
+        r.is { r.get { render_tools_page } }
 
-        # POST /studio/tools/:id — writes an agent's tools allowlist.
-        # "all" = nil; otherwise the checked subset. `deny` is preserved.
-        r.post String do |id|
-          check_csrf!
-          id = utf8(id)
-          profile = insika[:profile_source].fetch(id)
-          next_404 unless profile
-          allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
-          with_flash("Agent '#{id}' tools updated.") do
-            dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
-          end
-          r.redirect("/studio/tools?a=#{Rack::Utils.escape(id)}")
+        # GET /studio/tools/info/:name — read-only card for a code or MCP tool.
+        r.get "info", String do |name|
+          name = utf8(name)
+          load_tool_catalog
+          @info_tool = @tools.find { |t| t.name == name }
+          next_404 unless @info_tool
+          @info_label = @tool_groups.find { |_, tools| tools.include?(@info_tool) }&.first
+          render_tools_page(detail: :info, selected: name)
         end
       end
 
@@ -1471,6 +1558,7 @@ end
         ["build", [
           ["Agents", "/studio/agents", :agents],
           ["Skills", "/studio/skills", :skills],
+          ["Kits", "/studio/kits", :kits],
           ["Tools", "/studio/tools", :tools],
           ["System files", "/studio/system-files", :system]
         ]],
@@ -1726,6 +1814,8 @@ end
         "prompts"
       elsif request.params["cfg"]
         "config"
+      elsif %w[tools skills].include?(request.params["tab"])
+        request.params["tab"]
       end
       @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
       store = insika[:agent_file_store]
@@ -1738,6 +1828,7 @@ end
       end
       @all_skills = insika[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
+      load_tool_catalog
       # v2 config surfaces: generation params + model fence. AgentProfile.build
       # string-keys these hashes, so the form helpers read plain string keys.
       @params = @agent.params
@@ -1747,7 +1838,10 @@ end
       mem = insika[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
-      @recent_sessions = recent_sessions
+      # Sessions stamp their agent (vars["agent"]); keep this agent's only.
+      # ponytail: scans the 200 most recent sessions; a per-agent index if an
+      # agent's conversations fall out of that window.
+      @recent_sessions = agent_sessions(recent_sessions(limit: 200), id).first(8)
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
@@ -1762,7 +1856,6 @@ end
       # the master column: the detail page IS the shell when
       # visited directly; only a frame request renders the pane alone.
       @agents = insika[:profile_source].all.sort_by(&:id)
-      @latest_outcomes = insika[:outcome_store]&.latest_per_agent
       if turbo_frame?("agent-detail")
         render("agent_detail", locals: { frame_only: true }, layout: false)
       else
@@ -1830,12 +1923,10 @@ end
     # (home, chats, tasks, approvals, customers, evals, funnel, follow-ups,
     # facts, parity). Same markup everywhere: a select that submits on change.
     def agent_filter_form(path, current)
-      ids = insika[:profile_source].ids.sort
-      options = [["", "all"]] + ids.map { |id| [id, id] }
-      rows = options.map do |value, label|
-        %(<option value="#{value}"#{' selected' if value.to_s == current.to_s}>#{label}</option>)
-      end.join
-      %(<form method="get" action="#{path}" class="actions inline"><label>Agent <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">#{rows}</select></label></form>)
+      picker = render("_agent_picker", locals: { name: "agent", options: insika[:profile_source].ids.sort,
+                                                 value: current, blank: "All agents — type to search",
+                                                 auto_submit: true })
+      %(<form method="get" action="#{path}" class="actions inline"><label>Agent #{picker}</label></form>)
     end
 
     # The sessions of one agent — the session stamps its agent in
@@ -1973,6 +2064,38 @@ end
       # Which agents specialized THIS skill — the availability grid shows it, so an
       # override is discoverable from the shared skill it overrides.
       @specialized = insika[:skill_store] ? specialized_by : {}
+      @skill_reach = skill_reach(@agents, @skills)
+      @skill_groups = skill_groups(@skills)
+    end
+
+    # { skill name => [agent ids that can load it] }: own list + kits, or "all".
+    def skill_reach(agents, skills)
+      reach = Hash.new { |h, k| h[k] = [] }
+      agents.each do |own|
+        p = Insika::Kits.apply(own, kits_by_name)
+        allowed = p.skills.nil? ? nil : Array(p.skills).map(&:to_s)
+        skills.each { |s| reach[s.name] << p.id if allowed.nil? || allowed.include?(s.name) }
+      end
+      reach
+    end
+
+    # [[label, skills]]: skills sharing a name prefix ("grocery-core",
+    # "grocery-offers" -> "grocery") group together; the rest go to "Other", last.
+    def skill_groups(skills)
+      prefix = ->(s) { s.name.include?("-") ? s.name.split("-").first : nil }
+      shared = skills.filter_map { |s| prefix.(s) }.tally.select { |_, n| n > 1 }.keys
+      skills.group_by { |s| shared.include?(prefix.(s)) ? prefix.(s) : "Other" }
+            .sort_by { |label, _| [label == "Other" ? 1 : 0, label] }
+    end
+
+    # Kits drill: master = every kit; the editor checks skills/tools/groups from the
+    # live catalogs. @selected nil = none open, "" = new.
+    def load_kits
+      @kits = (insika[:settings_store]&.kits || {}).sort.to_h
+      @skills = (insika[:skill_catalog]&.all || []).sort_by(&:name)
+      @tools = (insika[:tool_catalog]&.all || []).sort_by(&:name)
+      @tool_group_names = @tools.filter_map { |t| t.plugin.to_s if t.plugin.to_s.start_with?("mcp:") }.uniq.sort
+      @agents = insika[:profile_source].all.sort_by(&:id)
     end
 
     # { skill name => [agent ids] } across every agent scope in the store.
@@ -2048,7 +2171,9 @@ end
 
     # --- Tools matrix --------------------------------------------------------
 
-    def render_tools_matrix
+    # The live tool catalog, grouped by origin (Native / HTTP / MCP: x). Feeds the
+    # Tools page and the agent's Tools tab.
+    def load_tool_catalog
       @tools = (insika[:tool_catalog]&.all || []).sort_by(&:name)
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
@@ -2066,19 +2191,72 @@ end
       # (only a stderr warn otherwise). The pane still links its editor, so the panel is
       # where you see it and where you fix it. `insika doctor` reports the same set.
       @dropped_tool_names = @data_tool_names - @tools.map(&:name)
-      @agents = insika[:profile_source].all.sort_by(&:id)
-      # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
-      # default to the first agent so the pane is useful on landing.
-      sel = request.params["a"]
-      @sel_agent = (sel && @agents.find { |a| a.id == sel }) || @agents.first
-      # Miller columns: the master rows frame-navigate (?a=),
-      # so a Turbo-Frame request renders just the detail pane.
+    end
+
+    # The Tools page: catalog master + one detail (nil landing, :edit, :info). A
+    # Turbo-Frame request renders just the detail pane.
+    def render_tools_page(detail: nil, selected: nil)
+      load_tool_catalog unless @tools
+      @tool_reach = tool_reach(insika[:profile_source].all, @tools)
+      @detail = detail
+      @selected = selected
       if turbo_frame?("tool-detail")
         render("tools", locals: { frame_only: true }, layout: false)
       else
         view("tools", locals: { frame_only: false })
       end
     end
+
+    # { tool name => [agent ids that can call it] }: the agent's own list, its kits,
+    # its tool groups, or "all"; deny wins. The same reading the turn's
+    # ToolAllowlist policy makes, over the catalog.
+    def tool_reach(agents, tools)
+      reach = Hash.new { |h, k| h[k] = [] }
+      agents.sort_by(&:id).each do |own|
+        p = Insika::Kits.apply(own, kits_by_name)
+        open = p.tools_allow.nil? && p.tools_allow_groups.nil?
+        allow = Array(p.tools_allow).map(&:to_s)
+        groups = Array(p.tools_allow_groups).map(&:to_s)
+        deny = Array(p.tools_deny).map(&:to_s)
+        tools.each do |t|
+          next if deny.include?(t.name)
+
+          reach[t.name] << p.id if open || allow.include?(t.name) || groups.include?(t.plugin.to_s)
+        end
+      end
+      reach
+    end
+
+    # Kits as stored (Settings["kits"]), read once per request.
+    def kits_by_name = (@kits_by_name ||= insika[:settings_store]&.kits || {})
+
+    # { item name => kit name } for what the agent gets from its kits (key "tools" or
+    # "skills"). The views show these on and locked: they come from the kit at turn
+    # time, never from the agent's own list, so a save must not post them.
+    def kit_sources(profile, key)
+      Array(profile.kits).each_with_object({}) do |name, acc|
+        kit = kits_by_name[name]
+        next unless kit.is_a?(Hash)
+
+        Array(kit[key]).each { |item| acc[item] ||= name }
+      end
+    end
+
+    # "3 tools · 2 skills" (own lists + kits; "all" when the list is open) for the
+    # agents master row.
+    def agent_reach(own)
+      p = Insika::Kits.apply(own, kits_by_name)
+      groups = Array(p.tools_allow_groups).size
+      tools = if p.tools_allow.nil? && p.tools_allow_groups.nil? then "all tools"
+              else "#{Array(p.tools_allow).size} tools#{" + #{groups} #{groups == 1 ? "server" : "servers"}" if groups.positive?}"
+              end
+      skills = p.skills.nil? ? "all skills" : "#{Array(p.skills).size} skills"
+      "#{tools} · #{skills}"
+    end
+
+    # The agent can call every tool or load every skill: kits add nothing to it and
+    # any tool or skill added later reaches it without anyone deciding.
+    def agent_open?(own) = (own.tools_allow.nil? && own.tools_allow_groups.nil?) || own.skills.nil?
 
     # nil = all; otherwise the list. Pre-checks the checkboxes per agent.
     def tool_allowed_for?(profile, tool_name)
@@ -2107,7 +2285,7 @@ end
       @tool_name = name
       @form = tool_form(tool)
       @versions = tool && insika[:tool_store] ? insika[:tool_store].versions(name) : []
-      view("tool_edit")
+      render_tools_page(detail: :edit, selected: name)
     end
 
     # Definition (masked) -> Hash of text fields ready for the form. tool=nil

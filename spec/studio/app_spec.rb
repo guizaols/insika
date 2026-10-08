@@ -701,14 +701,16 @@ RSpec.describe Studio::App do
      expect(body).to include("/agents/bia/prompts/SOUL.md")
    end
 
-   it "the agents grid shows the last outcome per agent" do
-     app, = build_app(outcomes: [
-                        { tenant: "platform", agent: "bia", outcome: "conversion", value: 129.9 }
-                      ])
-     body = login(app).get("/agents").body
-     expect(body).to include("conversion")
-     expect(body).to include("R$ 129.90")
-   end
+  # A last-outcome pill in the list read like a kit or a warning; the outcome
+  # lives on the agent's Outcomes tab.
+  it "the agents list does not show the last outcome; the agent's Outcomes tab does" do
+    app, = build_app(outcomes: [
+                       { tenant: "platform", agent: "bia", outcome: "finalize_button", value: 129.9 }
+                     ])
+    client = login(app)
+    expect(client.get("/agents").body).not_to include("finalize_button")
+    expect(client.get("/agents/bia").body).to include("finalize_button")
+  end
 
    it "the agent detail shows the per-day outcome series for that agent only" do
      app, = build_app(outcomes: [
@@ -1657,23 +1659,33 @@ RSpec.describe Studio::App do
 
   it "lists the tools-by-agent matrix" do
     app, = build_app
-    body = login(app).get("/tools").body
+    body = login(app).get("/agents/bia").body
     expect(body).to include("menu")               # tool from the catalog
     expect(body).to include('name="all_tools"')
   end
 
   it "renders the matrix affordances: filter box, live counter, switch toggle" do
     app, = build_app
-    body = login(app).get("/tools").body
+    body = login(app).get("/agents/bia").body
     expect(body).to include('data-controller="list-filter"')
     expect(body).to include('data-toggle-counter-target="count"')
     expect(body).to include('class="switch"')
   end
 
+  it "opens the matrix showing only enabled tools, with per-section on/total" do
+    app, = build_app(agents: [profile("bia", tools_allow: %w[menu])],
+                     tools: [SkillEntry.new(name: "menu", description: "m"),
+                             SkillEntry.new(name: "calc", description: "c")])
+    body = login(app).get("/agents/bia").body
+    expect(body).to match(/id="only-on" checked/)
+    expect(body).to include("only-on-scope")
+    expect(body).to include('<span class="count">1/2</span>')
+  end
+
   it "renders a denied tool as LOCKED (disabled, deny wins) — can't be granted here" do
     denied = Insika::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
     app, = build_app(agents: [denied])
-    body = login(app).get("/tools").body
+    body = login(app).get("/agents/bia").body
     expect(body).to include("locked")
     # the denied tool's checkbox is disabled so it never enters the submitted allowlist
     expect(body).to match(/name="tools\[\]" value="menu"[^>]*disabled/)
@@ -1682,19 +1694,129 @@ RSpec.describe Studio::App do
   it "tools 'all' dispatches set_agent_tools with allow nil" do
     app, bus = build_app
     client = login(app)
-    csrf = csrf_from(client.get("/tools").body)
-    client.post("/tools/bia", params: { "all_tools" => "1", "_csrf" => csrf })
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/tools", params: { "all_tools" => "1", "_csrf" => csrf })
     expect(bus.last(:set_agent_tools).payload).to include(id: "bia", allow: nil)
   end
 
   it "tools subset dispatches set_agent_tools with the list and preserves the deny" do
     app, bus = build_app(agents: [profile("bia", tools_allow: %w[menu calc])])
     client = login(app)
-    csrf = csrf_from(client.get("/tools").body)
-    client.post("/tools/bia", params: { "tools" => ["menu"], "_csrf" => csrf })
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/tools", params: { "tools" => ["menu"], "_csrf" => csrf })
     cmd = bus.last(:set_agent_tools)
     expect(cmd.payload[:allow]).to eq(["menu"])
     expect(cmd.payload).to have_key(:deny)
+  end
+
+  describe "kits" do
+    let(:kit_settings) do
+      { "kits" => { "grocery" => { "description" => "shared grocery set", "skills" => %w[pedido],
+                                   "tools" => %w[menu], "tool_groups" => [] } } }
+    end
+
+    it "lists kits in the nav and the master list" do
+      app, = build_app(settings: kit_settings)
+      body = login(app).get("/kits").body
+      expect(body).to include('href="/studio/kits"')
+      expect(body).to include('href="/studio/kits/grocery"')
+    end
+
+    it "opens a kit with its skills and tools pre-checked" do
+      app, = build_app(settings: kit_settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body).to match(/name="skills\[\]" value="pedido"[^>]*checked/)
+      expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked/)
+    end
+
+    # write_kit replaces the whole kit, so an item the live catalog does not list
+    # right now (an MCP server down, a non-MCP group) must still post back.
+    it "keeps stored items the live catalog does not list, checked" do
+      settings = { "kits" => { "grocery" => { "description" => "", "skills" => %w[gone_skill],
+                                              "tools" => %w[gone_tool], "tool_groups" => %w[mcp:offline] } } }
+      app, = build_app(settings: settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body).to match(/name="skills\[\]" value="gone_skill"[^>]*checked/)
+      expect(body).to match(/name="tools\[\]" value="gone_tool"[^>]*checked/)
+      expect(body).to match(/name="tool_groups\[\]" value="mcp:offline"[^>]*checked/)
+      expect(body).to include("not in catalog")
+    end
+
+    it "flags member agents whose 'all' list makes the kit add nothing" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: nil, kits: %w[grocery])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], skills: [], kits: %w[grocery])
+      app, = build_app(agents: [bia, chef], settings: kit_settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body.scan("gets every tool or skill").size).to eq(1)
+    end
+
+    it "404s an unknown kit" do
+      app, = build_app(settings: kit_settings)
+      expect(login(app).get("/kits/missing").status).to eq(404)
+    end
+
+    it "POST /kits dispatches write_kit with the checked lists" do
+      app, bus = build_app(settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits", params: { "name" => "grocery", "skills" => ["pedido"], "tools" => ["menu"], "_csrf" => csrf })
+      expect(bus.last(:write_kit).payload).to include(name: "grocery", skills: ["pedido"], tools: ["menu"], tool_groups: [])
+    end
+
+    it "membership adds or removes only this kit and keeps the agent's other kits" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", kits: %w[other])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", kits: %w[grocery other])
+      app, bus = build_app(agents: [bia, chef], settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits/grocery/agents", params: { "agent_ids" => ["bia"], "_csrf" => csrf })
+      payloads = bus.dispatched.select { |c| c.type == :update_agent }.map(&:payload)
+      expect(payloads).to contain_exactly({ id: "bia", kits: %w[other grocery] }, { id: "chef", kits: %w[other] })
+    end
+
+    it "POST /kits/:name/delete dispatches delete_kit" do
+      app, bus = build_app(settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits/grocery/delete", params: { "_csrf" => csrf })
+      expect(bus.last(:delete_kit).payload).to include(name: "grocery")
+    end
+
+    it "the tool matrix shows a kit's tools on and locked, so a save never copies them in" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[calc], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings,
+                       tools: [SkillEntry.new(name: "menu", description: "m"), SkillEntry.new(name: "calc", description: "c")])
+      body = login(app).get("/agents/chef").body
+      expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked[^>]*disabled/)
+      expect(body).to include("from kit grocery")
+      expect(body).to include('<span class="count">2/2</span>') # kit tool counts as on
+    end
+
+    it "warns that kits add nothing to an agent allowed every tool" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: nil, kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/agents/chef").body).to include("already gets every tool")
+    end
+
+    it "the agent page lists its kits and shows kit skills locked on" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: [], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      body = login(app).get("/agents/chef").body
+      expect(body).to include('href="/studio/kits/grocery"')
+      expect(body).to match(/name="skills\[\]" value="pedido"[^>]*checked[^>]*disabled/)
+    end
+
+    it "warns that kits add nothing to an agent allowed every skill" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: nil, kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/agents/chef").body).to include("already gets every skill")
+    end
+
+    it "the tool matrix names the agent's kits" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/agents/chef").body).to include('href="/studio/kits/grocery"')
+    end
   end
 
   # The live transcript's SSE. It used to read the server's /v1/events straight from the
@@ -2019,6 +2141,17 @@ RSpec.describe Studio::App do
     body = login(app).get("/sessions/sess-xyz").body
     expect(body).to include("olá!")
     expect(body).to include("Continue in playground")
+  end
+
+  it "an agent's History tab lists only that agent's conversations" do
+    sessions = {
+      "s-bia" => StoredSession.new(id: "s-bia-0000001", messages: [], vars: { "agent" => "bia" }, updated_at: "2026-10-08T10:00:00Z"),
+      "s-chef" => StoredSession.new(id: "s-chef-000001", messages: [], vars: { "agent" => "chef" }, updated_at: "2026-10-08T11:00:00Z")
+    }
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/agents/bia").body
+    expect(body).to include("/studio/sessions/s-bia-0000001")
+    expect(body).not_to include("/studio/sessions/s-chef-000001")
   end
 
   it "404 on a nonexistent session" do
@@ -2553,6 +2686,89 @@ RSpec.describe Studio::App do
     expect(res3.body).not_to include('data-config-group="guardrails">') # no bleed from step 1
   end
 
+  describe "tools catalog + agent Tools tab" do
+    let(:catalog) do
+      [Insika::ToolCatalog::Entry.new(name: "menu", description: "the menu"),
+       Insika::ToolCatalog::Entry.new(name: "cep", description: "zip lookup"),
+       Insika::ToolCatalog::Entry.new(name: "execute_sql", description: "SQL", plugin: "mcp:metabase")]
+    end
+
+    it "the Tools page lists every tool, not agents, and rows open in the side pane" do
+      app, = build_app(tools: catalog, data_tools: [data_tool(name: "cep")])
+      body = login(app).get("/tools").body
+      expect(body).not_to include("Agents · allow / deny")
+      expect(body).to match(%r{href="/studio/tools/def/cep"[^>]*data-turbo-frame="tool-detail"})
+      expect(body).to match(%r{href="/studio/tools/info/menu"[^>]*data-turbo-frame="tool-detail"})
+      expect(body).to match(%r{href="/studio/tools/info/execute_sql"[^>]*data-turbo-frame="tool-detail"})
+    end
+
+    it "a row shows how many agents can call the tool" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[cep])
+      app, = build_app(agents: [bia, chef], tools: catalog)
+      body = login(app).get("/tools").body
+      expect(body).to match(%r{/studio/tools/info/menu".*?1 agent<}m)
+    end
+
+    it "the info pane names the agents that can call a non-editable tool" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu])
+      app, = build_app(agents: [bia], tools: catalog)
+      pane = login(app).get("/tools/info/menu", frame: "tool-detail").body
+      expect(pane).to include('<turbo-frame id="tool-detail"', "the menu", 'href="/studio/agents/bia?tab=tools"')
+      expect(pane).not_to include("app-shell")
+    end
+
+    it "the data-tool editor opens inside the pane on a frame request" do
+      app, = build_app(tools: catalog, data_tools: [data_tool(name: "cep")])
+      pane = login(app).get("/tools/def/cep", frame: "tool-detail").body
+      expect(pane).to include('<turbo-frame id="tool-detail"', 'action="/studio/tools/def/cep"')
+      expect(pane).not_to include("app-shell")
+    end
+
+    it "the Tools tab shows a whole-server grant: its tools on and locked, the server switch on" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], tools_allow_groups: %w[mcp:metabase])
+      app, = build_app(agents: [bia], tools: catalog)
+      body = login(app).get("/agents/bia").body
+      expect(body).to match(/name="tools\[\]" value="execute_sql"[^>]*checked[^>]*disabled/)
+      expect(body).to match(/name="tool_groups\[\]" value="mcp:metabase"[^>]*checked/)
+    end
+
+    it "saving the server switches keeps groups the tab does not manage" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu],
+                                       tools_allow_groups: %w[default mcp:metabase])
+      app, bus = build_app(agents: [bia], tools: catalog)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/tools", params: { "tools" => ["menu"], "managed_groups" => ["mcp:metabase"], "_csrf" => csrf })
+      expect(bus.last(:set_agent_tools).payload).to include(allow: ["menu"], allow_groups: ["default"])
+    end
+
+    it "saving 'all tools' clears the groups too, so the agent really gets every tool" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], tools_allow_groups: %w[mcp:metabase])
+      app, bus = build_app(agents: [bia], tools: catalog)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/tools", params: { "all_tools" => "1", "_csrf" => csrf })
+      expect(bus.last(:set_agent_tools).payload).to include(allow: nil, allow_groups: nil)
+    end
+
+    it "the agent page has a Tools tab with the access matrix" do
+      app, = build_app(tools: catalog)
+      body = login(app).get("/agents/bia").body
+      expect(body).to include('href="#tools"', 'name="all_tools"', 'action="/studio/agents/bia/tools"')
+    end
+
+    it "saving the agent's tools dispatches set_agent_tools and lands back on the Tools tab" do
+      app, bus = build_app(agents: [profile("bia", tools_allow: %w[menu calc])])
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      res = client.post("/agents/bia/tools", params: { "tools" => ["menu"], "_csrf" => csrf })
+      expect(bus.last(:set_agent_tools).payload).to include(id: "bia", allow: ["menu"])
+      expect(res.headers["location"]).to eq("/studio/agents/bia?tab=tools")
+      expect(login(app).get("/agents/bia?tab=tools").body).to include('data-tabs-default-value="tools"')
+    end
+  end
+
   it "tools: a frame request renders the detail pane alone" do
     app, = build_app
     client = login(app)
@@ -2568,12 +2784,12 @@ RSpec.describe Studio::App do
              Insika::ToolCatalog::Entry.new(name: "search", description: "Search", plugin: "mcp:other")]
     app, = build_app(tools: tools, data_tools: [data_tool(name: "cep")])
     client = login(app)
-    [client.get("/tools"), client.get("/tools?a=bia", frame: "tool-detail")].each do |response|
-      expect(response.status).to eq(200)
-      expect(response.body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
-      tools.each do |tool|
-        expect(response.body.scan(%(name="tools[]" value="#{tool.name}")).size).to eq(1)
-      end
+    expect(client.get("/tools").body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
+    response = client.get("/agents/bia")
+    expect(response.status).to eq(200)
+    expect(response.body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
+    tools.each do |tool|
+      expect(response.body.scan(%(name="tools[]" value="#{tool.name}")).size).to eq(1)
     end
   end
 
@@ -2608,8 +2824,37 @@ RSpec.describe Studio::App do
     expect(body).to include("app-shell")
   end
 
+  # With dozens of agents a plain <select> is a long scroll; every agent picker is a
+  # type-to-search input over a <datalist> (native, no JS).
+  %w[/playground /knowledge /harvest /facts /funnel].each do |page|
+    it "#{page}: the agent picker is searchable" do
+      app, = build_app(harvest_store: Insika::HarvestStore.new(store: Insika::Stores::Memory.new),
+                       knowledge_store: Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new))
+      body = login(app).get(page).body
+      expect(body).to match(/<input[^>]*list="agent-options-[^"]+"[^>]*name="agent"|<input[^>]*name="agent"[^>]*list="agent-options-/)
+      expect(body).to include("<datalist id=\"agent-options-")
+      expect(body).not_to match(/<select name="agent"/)
+    end
+  end
+
+  it "specialize refuses a typed agent id that does not exist" do
+    app, bus = build_app(stored_skills: { "pedido" => "---\nname: pedido\ndescription: d\n---\nbody" })
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/pedido").body)
+    client.post("/skills/pedido/specialize", params: { "agent_id" => "nope", "_csrf" => csrf })
+    expect(bus.last(:write_skill)).to be_nil
+  end
+
+  it "the skill specialize picker is searchable" do
+    app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\ndescription: d\n---\nbody" })
+    body = login(app).get("/skills/pedido").body
+    expect(body).to include("<datalist id=\"agent-options-")
+    expect(body).not_to include('<select name="agent_id"')
+  end
+
   it "the detail's history lists the recent conversations" do
-    sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
+                             vars: { "agent" => "bia" })
     app, = build_app(sessions: { "sess-abc123456789" => sess })
     body = login(app).get("/agents/bia").body
     expect(body).to include("/studio/sessions/sess-abc123456789")
@@ -3303,6 +3548,75 @@ RSpec.describe Studio::App do
     expect(res.headers["location"]).to eq("/studio/agents/nova")
     cmd = bus.last(:create_agent)
     expect(cmd.payload).to include(id: "nova", model: "deepseek-chat", provider: "deepseek", memory: true)
+  end
+
+  # A Studio agent starts with nothing allowed: kits and the tool/skill pickers decide
+  # what it gets. An "all" start made every kit a no-op for it.
+  it "creates the agent with empty tool and skill lists, not 'all'" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/agents").body)
+    client.post("/agents", params: { "id" => "nova", "model" => "m", "_csrf" => csrf })
+    expect(bus.last(:create_agent).payload).to include(tools_allow: [], skills: [])
+  end
+
+  it "the new-agent form leaves cross-session memory off by default" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to match(/<input type="checkbox" name="memory" value="1">/)
+  end
+
+  describe "agents list at volume" do
+    let(:kits) { { "kits" => { "grocery" => { "description" => "", "skills" => %w[x], "tools" => %w[calc], "tool_groups" => [] } } } }
+
+    it "each row shows its kits and how many tools and skills it gets, and the filter matches kit names" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], skills: %w[pedido], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kits)
+      body = login(app).get("/agents").body
+      expect(body).to include("2 tools · 2 skills")
+      expect(body).to match(/data-filter-text="chef[^"]*grocery/)
+      expect(body).to include('<span class="pill info">grocery</span>')
+    end
+
+    it "flags agents on 'all' in the row and lists them on the landing pane" do
+      open = Insika::AgentProfile.build(id: "open", model: "m", tools_allow: nil, skills: [])
+      tidy = Insika::AgentProfile.build(id: "tidy", model: "m", tools_allow: [], skills: [])
+      app, = build_app(agents: [open, tidy])
+      body = login(app).get("/agents").body
+      expect(body).to include("all tools · 0 skills")
+      expect(body).to include("1 agent can call every tool or skill")
+      expect(body).to include('href="/studio/agents/open?tab=tools"')
+    end
+  end
+
+  describe "skills and tools catalogs at volume" do
+    let(:skill_list) do
+      %w[grocery-core grocery-offers pedido].map { |n| SkillEntry.new(name: n, description: "d #{n}") }
+    end
+
+    it "groups skills by shared prefix and shows how many agents can load each" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", skills: %w[grocery-core])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", skills: %w[grocery-core pedido])
+      app, = build_app(agents: [bia, chef], skills: skill_list)
+      body = login(app).get("/skills").body
+      expect(body).to match(%r{<summary[^>]*>grocery <span class="count">2</span>})
+      expect(body).to match(%r{<summary[^>]*>Other <span class="count">1</span>})
+      expect(body).to match(%r{/studio/skills/grocery-core".*?2 agents<}m)
+    end
+
+    it "marks unused skills and tools so 'only unused' can show just those" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], skills: %w[grocery-core])
+      app, = build_app(agents: [bia], skills: skill_list,
+                       tools: [SkillEntry.new(name: "menu", description: "m"), SkillEntry.new(name: "calc", description: "c")])
+      client = login(app)
+      skills = client.get("/skills").body
+      expect(skills).to include('id="only-unused"')
+      expect(skills).to match(%r{href="/studio/skills/pedido"[^>]*data-unused})
+      expect(skills).not_to match(%r{href="/studio/skills/grocery-core"[^>]*data-unused})
+      tools = client.get("/tools").body
+      expect(tools).to include('id="only-unused"')
+      expect(tools).to match(%r{href="/studio/tools/info/calc"[^>]*data-unused})
+    end
   end
 
   it "empty agents opens the creation form (authoring empty-state)" do
@@ -4316,7 +4630,7 @@ end
     body = login(app).get("/refinement?agent=bia").body
 
     expect(body).not_to include("filter-bar")
-    expect(body).to include('<select name="agent"')
+    expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
   end
 
   it "a frame request for a run renders the detail pane alone; a plain hit renders the shell" do
@@ -5114,7 +5428,7 @@ end
       body = login(app).get("/harvest?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to include('<select name="agent"')
+      expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
     end
 
     it "the evidence excerpt renders ONE message per index — an index valid in one origin session is not replayed against the others (the review fix)" do
@@ -5283,7 +5597,7 @@ end
       body = login(app).get("/knowledge?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to include('<select name="agent"')
+      expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
       expect(body).to include('<div class="segmented"')
       expect(body).to include(">All <span")
       expect(body).to include(">Conflicts <span")

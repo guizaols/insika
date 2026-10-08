@@ -16,15 +16,26 @@
     <div class="drill-search">
       <input type="search" class="filter-input" placeholder="Search skills…" aria-label="Filter skills"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
+      <label class="switch" title="show only skills no agent can load">
+        <input type="checkbox" id="only-unused">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">only unused</span>
+      </label>
     </div>
     <nav class="drill-pane-body drill-list" aria-label="skills">
-      <% @skills.each do |s| %>
-        <a class="drill-item<%== ' active' if @selected == s.name %>"
-           href="/studio/skills/<%= Rack::Utils.escape(s.name) %>"
-           data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
-          <div class="drill-item-name"><span class="txt" title="<%= s.name %>"><%= s.name %></span><% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %></div>
-          <div class="drill-item-sub"><%= s.description %></div>
-        </a>
+      <% @skill_groups.each do |label, skills| %>
+        <details class="drill-group" data-list-filter-target="group" open>
+          <summary class="drill-group-label"><%= label %> <span class="count"><%= skills.size %></span></summary>
+          <% skills.each do |s| %>
+            <% users = @skill_reach[s.name].size %>
+            <a class="drill-item<%== ' active' if @selected == s.name %>"
+               href="/studio/skills/<%= Rack::Utils.escape(s.name) %>"<%== " data-unused" if users.zero? %>
+               data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
+              <div class="drill-item-name"><span class="txt" title="<%= s.name %>"><%= s.name %></span><% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %></div>
+              <div class="drill-item-sub"><span<%== ' class="warn-text"' if users.zero? %>><%= users %> <%= users == 1 ? "agent" : "agents" %></span> · <%= s.description %></div>
+            </a>
+          <% end %>
+        </details>
       <% end %>
       <div class="empty" data-list-filter-target="empty" hidden>No skills match your filter.</div>
     </nav>
@@ -127,9 +138,7 @@
               <form method="post" action="/studio/skills/<%= Rack::Utils.escape(@selected) %>/specialize">
                 <%== csrf_tag %>
                 <label>agent
-                  <select name="agent_id" required>
-                    <% others.each do |a| %><option value="<%= a.id %>"><%= a.id %></option><% end %>
-                  </select>
+                  <%== render("_agent_picker", locals: { name: "agent_id", options: others.map(&:id), value: nil }) %>
                 </label>
                 <div class="actions"><button type="submit" data-turbo-submits-with="Creating…">Specialize for this agent</button></div>
               </form>

@@ -15,12 +15,7 @@
     <form method="get" action="/studio/facts" class="actions inline">
       <label>
         Agent / scope
-        <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">
-          <option value="">All agents / scopes</option>
-          <% @stores.each do |scope| %>
-            <option value="<%= scope %>"<%== ' selected' if scope == @filter %>><%= scope %></option>
-          <% end %>
-        </select>
+        <%== render("_agent_picker", locals: { name: "agent", options: @stores, value: @filter, blank: "All agents / scopes — type to search", auto_submit: true }) %>
       </label>
     </form>
   </div>

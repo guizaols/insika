@@ -32,6 +32,9 @@
         <div class="title">
           <strong class="mono"><%= @agent.id %></strong>
           <span class="count"><%= @agent.model %><%== " · #{h(@agent.provider)}" if @agent.provider %></span>
+          <% Array(@agent.kits).each do |k| %>
+            <a class="pill info" href="/studio/kits/<%= Rack::Utils.escape(k) %>" data-turbo-frame="_top" title="kit">kit: <%= k %></a>
+          <% end %>
         </div>
         <a class="btn btn-sm" href="/studio/playground?agent=<%= Rack::Utils.escape(@agent.id) %>" data-turbo-frame="_top">Test in playground</a>
       </div>
@@ -46,6 +49,7 @@
             <a href="#config" data-tabs-target="tab" data-turbo="false">Configuration</a>
             <a href="#prompts" data-tabs-target="tab" data-turbo="false">Prompts</a>
             <a href="#skills" data-tabs-target="tab" data-turbo="false">Skills</a>
+            <a href="#tools" data-tabs-target="tab" data-turbo="false">Tools</a>
             <a href="#memory" data-tabs-target="tab" data-turbo="false">Memory</a>
             <a href="#outcomes" data-tabs-target="tab" data-turbo="false">Outcomes</a>
             <a href="#loops" data-tabs-target="tab" data-turbo="false">Automatic loops</a>
@@ -56,6 +60,7 @@
           <%== render("_agent_tab_config") %>
           <%== render("_agent_tab_prompts") %>
           <%== render("_agent_tab_skills") %>
+          <%== render("_agent_tab_tools") %>
           <%== render("_agent_tab_memory") %>
           <%== render("_agent_tab_loops") %>
           <%== render("_agent_tab_outcomes") %>
