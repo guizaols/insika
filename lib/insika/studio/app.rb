@@ -470,6 +470,19 @@ module Studio
             end
           end
 
+          # POST /studio/agents/:id/tools — the agent's Tools tab. "all" = nil;
+          # otherwise the checked subset. `deny` is preserved.
+          r.post "tools" do
+            check_csrf!
+            profile = insika[:profile_source].fetch(id)
+            next_404 unless profile
+            allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
+            with_flash("Tools updated.") do
+              dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
+            end
+            r.redirect(agent_path(id, nil, "tab=tools"))
+          end
+
           r.on "skills" do
             # POST /studio/agents/:id/skills → :update_agent with the `skills`
             # allowlist. "all" = nil; otherwise the checked subset (possibly []).
@@ -732,20 +745,16 @@ module Studio
           end
         end
 
-        r.is { r.get { render_tools_matrix } }
+        r.is { r.get { render_tools_page } }
 
-        # POST /studio/tools/:id — writes an agent's tools allowlist.
-        # "all" = nil; otherwise the checked subset. `deny` is preserved.
-        r.post String do |id|
-          check_csrf!
-          id = utf8(id)
-          profile = insika[:profile_source].fetch(id)
-          next_404 unless profile
-          allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
-          with_flash("Agent '#{id}' tools updated.") do
-            dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
-          end
-          r.redirect("/studio/tools?a=#{Rack::Utils.escape(id)}")
+        # GET /studio/tools/info/:name — read-only card for a code or MCP tool.
+        r.get "info", String do |name|
+          name = utf8(name)
+          load_tool_catalog
+          @info_tool = @tools.find { |t| t.name == name }
+          next_404 unless @info_tool
+          @info_label = @tool_groups.find { |_, tools| tools.include?(@info_tool) }&.first
+          render_tools_page(detail: :info, selected: name)
         end
       end
 
@@ -1786,6 +1795,8 @@ end
         "prompts"
       elsif request.params["cfg"]
         "config"
+      elsif request.params["tab"] == "tools"
+        "tools"
       end
       @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
       store = insika[:agent_file_store]
@@ -1798,6 +1809,7 @@ end
       end
       @all_skills = insika[:skill_catalog]&.all || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
+      load_tool_catalog
       # v2 config surfaces: generation params + model fence. AgentProfile.build
       # string-keys these hashes, so the form helpers read plain string keys.
       @params = @agent.params
@@ -2118,7 +2130,9 @@ end
 
     # --- Tools matrix --------------------------------------------------------
 
-    def render_tools_matrix
+    # The live tool catalog, grouped by origin (Native / HTTP / MCP: x). Feeds the
+    # Tools page and the agent's Tools tab.
+    def load_tool_catalog
       @tools = (insika[:tool_catalog]&.all || []).sort_by(&:name)
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
@@ -2136,18 +2150,40 @@ end
       # (only a stderr warn otherwise). The pane still links its editor, so the panel is
       # where you see it and where you fix it. `insika doctor` reports the same set.
       @dropped_tool_names = @data_tool_names - @tools.map(&:name)
-      @agents = insika[:profile_source].all.sort_by(&:id)
-      # Drill-down: ?a= selects the agent whose allow/deny matrix fills the detail;
-      # default to the first agent so the pane is useful on landing.
-      sel = request.params["a"]
-      @sel_agent = (sel && @agents.find { |a| a.id == sel }) || @agents.first
-      # Miller columns: the master rows frame-navigate (?a=),
-      # so a Turbo-Frame request renders just the detail pane.
+    end
+
+    # The Tools page: catalog master + one detail (nil landing, :edit, :info). A
+    # Turbo-Frame request renders just the detail pane.
+    def render_tools_page(detail: nil, selected: nil)
+      load_tool_catalog unless @tools
+      @tool_reach = tool_reach(insika[:profile_source].all, @tools)
+      @detail = detail
+      @selected = selected
       if turbo_frame?("tool-detail")
         render("tools", locals: { frame_only: true }, layout: false)
       else
         view("tools", locals: { frame_only: false })
       end
+    end
+
+    # { tool name => [agent ids that can call it] }: the agent's own list, its kits,
+    # its tool groups, or "all"; deny wins. The same reading the turn's
+    # ToolAllowlist policy makes, over the catalog.
+    def tool_reach(agents, tools)
+      reach = Hash.new { |h, k| h[k] = [] }
+      agents.sort_by(&:id).each do |own|
+        p = Insika::Kits.apply(own, kits_by_name)
+        open = p.tools_allow.nil? && p.tools_allow_groups.nil?
+        allow = Array(p.tools_allow).map(&:to_s)
+        groups = Array(p.tools_allow_groups).map(&:to_s)
+        deny = Array(p.tools_deny).map(&:to_s)
+        tools.each do |t|
+          next if deny.include?(t.name)
+
+          reach[t.name] << p.id if open || allow.include?(t.name) || groups.include?(t.plugin.to_s)
+        end
+      end
+      reach
     end
 
     # Kits as stored (Settings["kits"]), read once per request.
@@ -2192,7 +2228,7 @@ end
       @tool_name = name
       @form = tool_form(tool)
       @versions = tool && insika[:tool_store] ? insika[:tool_store].versions(name) : []
-      view("tool_edit")
+      render_tools_page(detail: :edit, selected: name)
     end
 
     # Definition (masked) -> Hash of text fields ready for the form. tool=nil
