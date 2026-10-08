@@ -46,7 +46,10 @@ module Insika
       live = @client_for.call.tools.find { |tool| tool.name == @tool["name"] }
       raise Insika::NotFoundError, "tool '#{@tool["name"]}' no longer offered" if live.nil?
 
-      parsed(live.call(**params))
+      result = live.call(**params)
+      # Hand the envelope what a chat would send the model (text, JSON of the
+      # structured content, or text plus attachments), not the gem's Result.
+      parsed(result.is_a?(RubyLLM::MCP::Result) ? result.content : result)
     rescue StandardError => e
       { error: "MCP instance '#{@instance_name}' tool '#{@tool["name"]}' failed: #{e.message}" }
     end
