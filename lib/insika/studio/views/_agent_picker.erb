@@ -1,0 +1,15 @@
+<%# Type-to-search agent picker: an <input list> over a <datalist> — native
+    search in every browser, no JS. Locals: name, options (ids), value,
+    blank (placeholder meaning "none / all"; nil = a value is required),
+    auto_submit (submit the form when a pick is committed). The server still
+    validates the value: a typed id that is not an agent is refused there. %>
+<%# unique per page: a page can carry two pickers (a filter and a form) %>
+<% list_id = "agent-options-#{name}-#{@agent_picker_seq = (@agent_picker_seq || 0) + 1}" %>
+<% blank = defined?(blank) ? blank : nil %>
+<% auto_submit = defined?(auto_submit) && auto_submit %>
+<input type="search" name="<%= name %>" list="<%= list_id %>" value="<%= value %>" autocomplete="off"
+       placeholder="<%= blank || "Type to search agents…" %>"<%== " required" unless blank %>
+       <%== %(data-controller="auto-submit" data-action="change->auto-submit#submit") if auto_submit %>>
+<datalist id="<%= list_id %>">
+  <% Array(options).each do |id| %><option value="<%= id %>"></option><% end %>
+</datalist>

@@ -12,12 +12,7 @@
   <div class="head-actions">
     <form method="get" action="/studio/funnel" class="actions inline">
       <label>Agent
-        <select name="agent">
-          <option value="">All agents</option>
-          <% insika[:profile_source].ids.sort.each do |id| %>
-            <option value="<%= id %>"<%== ' selected' if @agent == id %>><%= id %></option>
-          <% end %>
-        </select>
+        <%== render("_agent_picker", locals: { name: "agent", options: insika[:profile_source].ids.sort, value: @agent, blank: "All agents — type to search" }) %>
       </label>
       <label>Period
         <select name="period">

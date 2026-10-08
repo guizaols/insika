@@ -2782,6 +2782,34 @@ RSpec.describe Studio::App do
     expect(body).to include("app-shell")
   end
 
+  # With dozens of agents a plain <select> is a long scroll; every agent picker is a
+  # type-to-search input over a <datalist> (native, no JS).
+  %w[/playground /knowledge /harvest /facts /funnel].each do |page|
+    it "#{page}: the agent picker is searchable" do
+      app, = build_app(harvest_store: Insika::HarvestStore.new(store: Insika::Stores::Memory.new),
+                       knowledge_store: Insika::KnowledgeStore.new(store: Insika::Stores::Memory.new))
+      body = login(app).get(page).body
+      expect(body).to match(/<input[^>]*list="agent-options-[^"]+"[^>]*name="agent"|<input[^>]*name="agent"[^>]*list="agent-options-/)
+      expect(body).to include("<datalist id=\"agent-options-")
+      expect(body).not_to match(/<select name="agent"/)
+    end
+  end
+
+  it "specialize refuses a typed agent id that does not exist" do
+    app, bus = build_app(stored_skills: { "pedido" => "---\nname: pedido\ndescription: d\n---\nbody" })
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/pedido").body)
+    client.post("/skills/pedido/specialize", params: { "agent_id" => "nope", "_csrf" => csrf })
+    expect(bus.last(:write_skill)).to be_nil
+  end
+
+  it "the skill specialize picker is searchable" do
+    app, = build_app(stored_skills: { "pedido" => "---\nname: pedido\ndescription: d\n---\nbody" })
+    body = login(app).get("/skills/pedido").body
+    expect(body).to include("<datalist id=\"agent-options-")
+    expect(body).not_to include('<select name="agent_id"')
+  end
+
   it "the detail's history lists the recent conversations" do
     sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
                              vars: { "agent" => "bia" })
@@ -4501,7 +4529,7 @@ end
     body = login(app).get("/refinement?agent=bia").body
 
     expect(body).not_to include("filter-bar")
-    expect(body).to include('<select name="agent"')
+    expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
   end
 
   it "a frame request for a run renders the detail pane alone; a plain hit renders the shell" do
@@ -5299,7 +5327,7 @@ end
       body = login(app).get("/harvest?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to include('<select name="agent"')
+      expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
     end
 
     it "the evidence excerpt renders ONE message per index — an index valid in one origin session is not replayed against the others (the review fix)" do
@@ -5468,7 +5496,7 @@ end
       body = login(app).get("/knowledge?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to include('<select name="agent"')
+      expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
       expect(body).to include('<div class="segmented"')
       expect(body).to include(">All <span")
       expect(body).to include(">Conflicts <span")

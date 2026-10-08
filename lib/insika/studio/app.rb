@@ -618,6 +618,11 @@ module Studio
           r.post "specialize" do
             check_csrf!
             agent_id = presence(r.params["agent_id"])
+            # the picker is free text (type-to-search), so the id is checked here
+            unless agent_id && insika[:profile_source].fetch(agent_id)
+              flash["error"] = "Agent '#{agent_id}' not found."
+              r.redirect("/studio/skills/#{Rack::Utils.escape(name)}")
+            end
             with_flash("Specialized for #{agent_id}.") do
               dispatch(:write_skill, { name: name, agent: agent_id, content: skill_source(name) })
             end
@@ -1905,12 +1910,10 @@ end
     # (home, chats, tasks, approvals, customers, evals, funnel, follow-ups,
     # facts, parity). Same markup everywhere: a select that submits on change.
     def agent_filter_form(path, current)
-      ids = insika[:profile_source].ids.sort
-      options = [["", "all"]] + ids.map { |id| [id, id] }
-      rows = options.map do |value, label|
-        %(<option value="#{value}"#{' selected' if value.to_s == current.to_s}>#{label}</option>)
-      end.join
-      %(<form method="get" action="#{path}" class="actions inline"><label>Agent <select name="agent" data-controller="auto-submit" data-action="change->auto-submit#submit">#{rows}</select></label></form>)
+      picker = render("_agent_picker", locals: { name: "agent", options: insika[:profile_source].ids.sort,
+                                                 value: current, blank: "All agents — type to search",
+                                                 auto_submit: true })
+      %(<form method="get" action="#{path}" class="actions inline"><label>Agent #{picker}</label></form>)
     end
 
     # The sessions of one agent — the session stamps its agent in
