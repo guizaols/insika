@@ -512,6 +512,19 @@ RSpec.describe Studio::App do
     expect(types).to eq(%i[create_session send_message])
   end
 
+  it "creates the new session with the id the page minted (the router already keyed on it)" do
+    app, bus = build_app
+    client = login(app)
+    page = client.get("/playground").body
+    minted = page[/name="new_session_id" value="([^"]+)"/, 1]
+    client.post("/playground", params: {
+                  "agent" => "bia", "session_id" => "", "new_session_id" => minted,
+                  "message" => "oi", "_csrf" => csrf_from(page)
+                })
+    expect(minted).not_to be_nil
+    expect(bus.dispatched.first.payload[:id]).to eq(minted)
+  end
+
   it "playground GET lists the agents in the selector" do
     app, = build_app
     client = login(app)
