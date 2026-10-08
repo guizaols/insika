@@ -15,6 +15,16 @@ module Insika
   # does its own real `tools/list` on ITS first use per instance, regardless
   # of whether `refresh` ever ran).
   class McpToolRegistry
+    # Providers reject a tool name longer than this.
+    MAX_TOOL_NAME = 64
+
+    # The name the model and the agent's allowlist see: the instance, then the
+    # server's tool. Two servers offering the same tool (a store's prod and
+    # staging) stay two tools, each reaching its own instance.
+    def self.tool_name(instance, tool)
+      "#{instance.to_s.downcase.gsub(/[^a-z0-9]+/, '_')}__#{tool}"
+    end
+
     def initialize(mcp_store:, client_factory: Insika::McpClient.method(:for))
       @mcp_store = mcp_store
       @client_factory = client_factory
@@ -67,15 +77,20 @@ module Insika
     private
 
     def entries_for(record)
-      Array(record["tools_cache"]).map { |tool| entry_for(record, tool) }
+      Array(record["tools_cache"]).filter_map do |tool|
+        name = self.class.tool_name(record["name"], tool["name"])
+        next entry_for(record, tool, name) if name.length <= MAX_TOOL_NAME
+
+        warn "[mcp] skipping '#{name}': longer than #{MAX_TOOL_NAME} characters; shorten the instance name"
+      end
     end
 
-    def entry_for(record, tool)
+    def entry_for(record, tool, name)
       instance = record["name"]
       Insika::Registry::Entry.new(
-        name: tool["name"], plugin: "mcp:#{instance}",
+        name: name, plugin: "mcp:#{instance}",
         metadata: { optional: false, side_effect: !read_only?(tool), group: "mcp:#{instance}", tags: [] },
-        factory: -> { build_tool(record, tool) }
+        factory: -> { build_tool(record, tool, name) }
       )
     end
 
@@ -89,9 +104,9 @@ module Insika
     # Lazy require (McpLiveTool < RubyLLM::Tool pulls in ruby_llm) — kept out
     # of insika.rb load-time, loaded on the 1st instance (turn time), same
     # discipline as OverlayToolRegistry#build_tool for data-tools.
-    def build_tool(record, tool)
+    def build_tool(record, tool, name)
       require_relative "mcp_live_tool"
-      Insika::McpLiveTool.new(instance_name: record["name"], tool: tool,
+      Insika::McpLiveTool.new(instance_name: record["name"], tool: tool, name: name,
                               overrides: record.dig("tool_overrides", tool["name"]) || {},
                               client_for: -> { client_for(record) })
     end

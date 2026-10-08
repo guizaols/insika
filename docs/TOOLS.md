@@ -452,6 +452,15 @@ instance is enabled, its tools appear in the catalog automatically (group
 server through a live, held client — the runtime never converts an MCP tool
 into a stored data tool.
 
+Each tool is named after its instance: `<instance>__<tool>`, with the instance
+lowercased and anything outside `a-z0-9` turned into `_` (instance
+`shop-staging`, tool `list_products` → `shop_staging__list_products`). That is
+the name the model calls and the one an agent's allowlist holds, so two
+instances that offer the same tool (a store's production and staging) stay two
+tools, each reaching its own server. Per-tool overrides (`tools:`) still use the
+server's own tool name. A qualified name over 64 characters is skipped with a
+warning, since providers reject it: shorten the instance name.
+
 The deployment's legacy `import_mcp_tools` command now aliases
 `refresh_mcp_tools`: it returns `{ instance:, tools: }` and emits
 `mcp_tools_refreshed`, replacing the old created/updated import report.
