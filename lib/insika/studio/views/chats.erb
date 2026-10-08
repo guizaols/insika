@@ -9,7 +9,6 @@
     <h1>Chats<span class="sub"><%= @chats_total || @sessions.size %> conversations</span></h1>
   </div>
   <div class="head-actions">
-    <%== agent_filter_form("/studio/chats", @agent) %>
     <a class="btn primary" href="/studio/playground">New conversation</a>
   </div>
 </header>
