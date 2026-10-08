@@ -688,7 +688,7 @@ RSpec.describe Studio::App do
      expect(body).to include("/agents/bia/prompts/SOUL.md")
    end
 
-   # A last-outcome pill in the list read like a kit or a warning; the outcome
+  # A last-outcome pill in the list read like a kit or a warning; the outcome
   # lives on the agent's Outcomes tab.
   it "the agents list does not show the last outcome; the agent's Outcomes tab does" do
     app, = build_app(outcomes: [
@@ -697,6 +697,29 @@ RSpec.describe Studio::App do
     client = login(app)
     expect(client.get("/agents").body).not_to include("finalize_button")
     expect(client.get("/agents/bia").body).to include("finalize_button")
+  end
+
+   it "the agent detail shows the per-day outcome series for that agent only" do
+     app, = build_app(outcomes: [
+                        { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
+                          at: Time.utc(2026, 8, 12) },
+                        { tenant: "platform", agent: "bia", outcome: "deflected",
+                          at: Time.utc(2026, 8, 12) },
+                        { tenant: "platform", agent: "chef", outcome: "escalation",
+                          at: Time.utc(2026, 8, 11) }
+                      ])
+     body = login(app).get("/agents/bia").body
+     expect(body).to include("id=\"outcomes\"")
+     expect(body).to include("2026-08-12")
+     expect(body).to include("conversion ×1")
+     expect(body).to include("deflected ×1")
+     expect(body).to include("R$ 100.00")
+     expect(body).not_to include("escalation")
+   end
+
+   it "404 on the detail of a nonexistent agent" do
+    app, = build_app
+    expect(login(app).get("/agents/nao-existe").status).to eq(404)
   end
 
   #   — the agent detail's cache tab (per-AGENT prefix cache-hit
