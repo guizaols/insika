@@ -2698,7 +2698,13 @@ end
       store = insika[:session_store]
       return @sessions = [] unless store
 
-      rows = agent_sessions(store.respond_to?(:all_stats) ? store.all_stats : every_record(store), @agent)
+      all = store.respond_to?(:all_stats) ? store.all_stats : every_record(store)
+      @chats_all = all.size
+      # the agents column: one row per agent with conversations, latest first
+      @chat_agents = all.group_by { |s| session_agent(s) }.except("")
+                        .map { |id, list| [id, list.size, list.map { |s| s.updated_at.to_s }.max] }
+                        .sort_by { |row| row.last }.reverse
+      rows = agent_sessions(all, @agent)
       rows = rows.select { |s| s.id.downcase.include?(@query.downcase) } if @query
       rows = rows.sort_by { |s| s.updated_at.to_s }.reverse
       @chats_total = rows.size
