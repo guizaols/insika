@@ -101,6 +101,22 @@ RSpec.describe Insika::Router::App do
       expect(factory.calls.map(&:backend).uniq.size).to eq(1)
     end
 
+    it "sends the playground's urlencoded POST and its SSE watch to the same backend" do
+      pool = RouterFakePool.new(%w[http://a:9292 http://b:9292 http://c:9292 http://d:9292])
+      factory = RouterFakeClientFactory.new
+      app = described_class.new(pool: pool, logger: nil, client_factory: factory.to_proc)
+
+      post = rack_env(method: "POST", path: "/studio/playground", body: "session_id=&new_session_id=sess-1&message=oi")
+      post["CONTENT_TYPE"] = "application/x-www-form-urlencoded"
+      watch = rack_env(method: "GET", path: "/studio/events")
+      watch["QUERY_STRING"] = "session_id=sess-1"
+      app.call(post)
+      app.call(watch)
+      app.call(rack_env(method: "POST", path: "/v1/responses", body: JSON.generate(user: "sess-1")))
+
+      expect(factory.calls.map(&:backend).uniq.size).to eq(1)
+    end
+
     it "round-robins requests with no session key across all backends" do
       pool = RouterFakePool.new(%w[http://a:9292 http://b:9292])
       factory = RouterFakeClientFactory.new

@@ -29,6 +29,19 @@ RSpec.describe Insika::Router::SessionKey do
     expect(key).to eq("sess-8")
   end
 
+  it "extracts `session_id` from the query of GET /studio/events (the playground's live transcript)" do
+    key = described_class.extract("GET", %w[studio events], body: -> { raise "no body read" }, query: { "session_id" => "sess-9" })
+    expect(key).to eq("sess-9")
+  end
+
+  it "extracts `session_id` from POST /studio/playground, else the page's minted `new_session_id`" do
+    typed = described_class.extract("POST", %w[studio playground],
+                                    body: body_for({ "session_id" => "sess-10", "new_session_id" => "x" }))
+    minted = described_class.extract("POST", %w[studio playground],
+                                     body: body_for({ "session_id" => "", "new_session_id" => "sess-11" }))
+    expect([typed, minted]).to eq(%w[sess-10 sess-11])
+  end
+
   it "extracts `session_id` from POST /channels/:id/messages" do
     key = described_class.extract("POST", %w[channels widget messages], body: body_for({ "session_id" => "sess-3" }))
     expect(key).to eq("sess-3")
