@@ -58,7 +58,7 @@ RSpec.describe Deploy::Wiring do
         write_agent_file delete_agent_file restore_agent_file
         write_skill set_skill_agents
         memory_put_fact memory_forget_fact memory_add_note export_customer_memory
-        update_settings upsert_llm_provider delete_llm_provider
+        update_settings write_kit delete_kit upsert_llm_provider delete_llm_provider
         upsert_mcp delete_mcp
         write_system_file delete_system_file restore_system_file
         write_data_tool delete_data_tool restore_data_tool
