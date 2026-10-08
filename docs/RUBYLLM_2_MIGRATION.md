@@ -44,7 +44,7 @@ tool errors, structured content, attachments, and read-only metadata. No externa
 production MCP server was invoked for these fixture checks. The current-candidate
 benchmark below was repeated after this dependency switch; it does not call MCP.
 
-The official RubyLLM 2.0.0 coding skill is copied into `.agents/skills/rubyllm`.
+The official RubyLLM coding skill (now from 2.1.0) is copied into `.agents/skills/rubyllm`.
 Refresh it from the installed gem when upgrading RubyLLM, not from upstream main.
 
 ## Preserved Behavior
