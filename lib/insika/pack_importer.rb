@@ -63,8 +63,10 @@ module Insika
     # its OWN pack (per-store isolation) and re-provisioning removes what left.
     #   - prompt_files = the pack's .md files (write_agent_file also registers;
     #     union is a no-op). Setting here makes the list authoritative (removes the ones that left).
-    #   - skills = the pack's skills/ dirs (explicit allowlist; [] when the pack
-    #     has none — never nil=all, which would leak skills from other stores).
+    #   - skills = the pack's skills/ dirs ∪ config.skills (names of SHARED skills the
+    #     pack references without copying — one body serves every agent that lists
+    #     it). [] when both are empty — never nil=all, which would leak skills from
+    #     other stores.
     #   - tools_allow = (config.tools_allow) ∪ (the pack's tool names) — guarantees
     #     the agent can call its own data-tools. [] when neither exists —
     #     never nil=all: the ToolStore is GLOBAL, so a tool-less pack would
@@ -80,7 +82,7 @@ module Insika
       attrs[:id] = id
       merge_knob_bags!(attrs, existing)
       attrs[:prompt_files] = pack.files.keys unless pack.files.empty?
-      attrs[:skills] = pack.skills.keys
+      attrs[:skills] = pack.skills.keys | Array(pack.config[:skills]).map(&:to_s)
 
       pack_tools = pack.tools.map { |t| tool_name(t) }
       allow = Array(pack.config[:tools_allow]).map(&:to_s) | pack_tools
