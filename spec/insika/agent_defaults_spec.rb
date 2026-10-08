@@ -110,4 +110,16 @@ RSpec.describe Insika::AgentDefaults do
       expect(source.all.find { |p| p.id == "member" }.tools_allow).to eq(%w[menu add_to_cart])
     end
   end
+
+  describe ".for_turns" do
+    it "wraps a source so readers outside the graph see defaults and kits" do
+      settings.put_kit("grocery", "tools" => %w[add_to_cart])
+      stored.put(Insika::AgentProfile.build(id: "member", model: "m", tools_allow: %w[menu], kits: %w[grocery]))
+      expect(described_class.for_turns(stored, settings).fetch("member").tools_allow).to eq(%w[menu add_to_cart])
+    end
+
+    it "returns the source untouched without a settings store" do
+      expect(described_class.for_turns(stored, nil)).to be(stored)
+    end
+  end
 end

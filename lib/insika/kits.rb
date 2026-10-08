@@ -33,7 +33,9 @@ module Insika
     # -> the profile with its kits' items unioned in (the same object when there is
     # nothing to add). Unknown kit names are ignored: a deleted kit just stops applying.
     def apply(profile, kits_by_name)
-      chosen = Array(profile.kits).filter_map { |name| kits_by_name[name] }
+      # A malformed stored kit is skipped, never raised: one bad record must not stop
+      # every turn of every subscriber (the same rule as AgentDefaults).
+      chosen = Array(profile.kits).filter_map { |name| kits_by_name[name] }.grep(Hash)
       return profile if chosen.empty?
 
       pick = ->(key) { chosen.flat_map { |k| Array(k[key]) }.uniq }

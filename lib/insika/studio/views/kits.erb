@@ -42,6 +42,11 @@
     <% else %>
       <% new = @selected == "" %>
       <% kit = @kit || {} %>
+      <%# write_kit replaces the whole kit: a stored item the live catalog does not list
+          (an MCP server down, a non-MCP group) is rendered checked so a save keeps it. %>
+      <% gone_skills = Array(kit["skills"]) - @skills.map(&:name) %>
+      <% gone_tools = Array(kit["tools"]) - @tools.map(&:name) %>
+      <% gone_groups = Array(kit["tool_groups"]) - @tool_group_names %>
       <div class="drill-pane-head">
         <div class="title"><strong class="mono"><%= new ? "New kit" : @selected %></strong></div>
         <button type="submit" form="kit-form" class="btn primary" data-turbo-submits-with="Saving…">Save kit</button>
@@ -69,10 +74,16 @@
                   <span class="mono"><%= s.name %></span>
                 </label>
               <% end %>
+              <% gone_skills.each do |name| %>
+                <label class="check tool-check" title="stored in the kit, not in the skill catalog right now">
+                  <input type="checkbox" name="skills[]" value="<%= name %>" checked>
+                  <span class="mono"><%= name %></span> <span class="pill warn">not in catalog</span>
+                </label>
+              <% end %>
             </div>
           </details>
 
-          <% if @tool_group_names.any? %>
+          <% if @tool_group_names.any? || gone_groups.any? %>
             <details class="tool-section" open>
               <summary>MCP servers <span class="count"><%= Array(kit["tool_groups"]).size %>/<%= @tool_group_names.size %></span></summary>
               <div class="check-grid tool-grid">
@@ -80,6 +91,12 @@
                   <label class="check tool-check">
                     <input type="checkbox" name="tool_groups[]" value="<%= g %>"<%== " checked" if Array(kit["tool_groups"]).include?(g) %>>
                     <span class="mono">all tools from <%= g.delete_prefix("mcp:") %></span>
+                  </label>
+                <% end %>
+                <% gone_groups.each do |g| %>
+                  <label class="check tool-check" title="stored in the kit, no live tool carries this group right now">
+                    <input type="checkbox" name="tool_groups[]" value="<%= g %>" checked>
+                    <span class="mono"><%= g %></span> <span class="pill warn">not in catalog</span>
                   </label>
                 <% end %>
               </div>
@@ -105,6 +122,13 @@
                          data-list-filter-target="item" data-filter-text="<%= t.name %>">
                     <input type="checkbox" name="tools[]" value="<%= t.name %>"<%== " checked" if Array(kit["tools"]).include?(t.name) %>>
                     <span class="mono"><%= t.name %></span>
+                  </label>
+                <% end %>
+                <% gone_tools.each do |name| %>
+                  <label class="check tool-check" title="stored in the kit, not in the tool catalog right now"
+                         data-list-filter-target="item" data-filter-text="<%= name %>">
+                    <input type="checkbox" name="tools[]" value="<%= name %>" checked>
+                    <span class="mono"><%= name %></span> <span class="pill warn">not in catalog</span>
                   </label>
                 <% end %>
               </div>

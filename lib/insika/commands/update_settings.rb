@@ -21,6 +21,9 @@ module Insika
         raise Insika::ValidationError, "empty patch" if patch.nil? || patch.empty?
 
         patch = patch.transform_keys(&:to_s)
+        # Kits are validated one at a time by write_kit; a raw deep-merge here would
+        # store shapes Kits.apply has to skip.
+        raise Insika::ValidationError, "kits are written with write_kit, not update_settings" if patch.key?("kits")
         defaults = patch.delete("agent_defaults")
         settings = patch.empty? ? @settings_store.get : @settings_store.update(patch)
         if defaults
