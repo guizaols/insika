@@ -2710,6 +2710,33 @@ RSpec.describe Studio::App do
       expect(pane).not_to include("app-shell")
     end
 
+    it "the Tools tab shows a whole-server grant: its tools on and locked, the server switch on" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], tools_allow_groups: %w[mcp:metabase])
+      app, = build_app(agents: [bia], tools: catalog)
+      body = login(app).get("/agents/bia").body
+      expect(body).to match(/name="tools\[\]" value="execute_sql"[^>]*checked[^>]*disabled/)
+      expect(body).to match(/name="tool_groups\[\]" value="mcp:metabase"[^>]*checked/)
+    end
+
+    it "saving the server switches keeps groups the tab does not manage" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu],
+                                       tools_allow_groups: %w[default mcp:metabase])
+      app, bus = build_app(agents: [bia], tools: catalog)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/tools", params: { "tools" => ["menu"], "managed_groups" => ["mcp:metabase"], "_csrf" => csrf })
+      expect(bus.last(:set_agent_tools).payload).to include(allow: ["menu"], allow_groups: ["default"])
+    end
+
+    it "saving 'all tools' clears the groups too, so the agent really gets every tool" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], tools_allow_groups: %w[mcp:metabase])
+      app, bus = build_app(agents: [bia], tools: catalog)
+      client = login(app)
+      csrf = csrf_from(client.get("/agents/bia").body)
+      client.post("/agents/bia/tools", params: { "all_tools" => "1", "_csrf" => csrf })
+      expect(bus.last(:set_agent_tools).payload).to include(allow: nil, allow_groups: nil)
+    end
+
     it "the agent page has a Tools tab with the access matrix" do
       app, = build_app(tools: catalog)
       body = login(app).get("/agents/bia").body

@@ -476,9 +476,20 @@ module Studio
             check_csrf!
             profile = insika[:profile_source].fetch(id)
             next_404 unless profile
-            allow = r.params["all_tools"] == "1" ? nil : Array(r.params["tools"]).map(&:to_s)
+            all = r.params["all_tools"] == "1"
+            allow = all ? nil : Array(r.params["tools"]).map(&:to_s)
+            # "all tools" means every tool: a leftover group list would narrow it to
+            # those groups. Otherwise only the server switches this tab rendered
+            # (managed_groups) change; other groups (a pack's) stay.
+            groups = if all then nil
+                     else
+                       managed = Array(r.params["managed_groups"]).map(&:to_s)
+                       kept = Array(profile.tools_allow_groups).map(&:to_s) - managed
+                       picked = kept | Array(r.params["tool_groups"]).map(&:to_s)
+                       picked.empty? && profile.tools_allow_groups.nil? ? nil : picked
+                     end
             with_flash("Tools updated.") do
-              dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny) })
+              dispatch(:set_agent_tools, { id: id, allow: allow, deny: Array(profile.tools_deny), allow_groups: groups })
             end
             r.redirect(agent_path(id, nil, "tab=tools"))
           end
