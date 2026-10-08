@@ -240,4 +240,38 @@ RSpec.describe Insika::EventStream do
       expect(a).not_to be_nil     # A was closed, but the emit did not raise
     end
   end
+
+  # The transcript is saved when the turn ends, so a viewer who opens the
+  # conversation mid-turn sees nothing of it unless the stream replays it.
+  describe "replay of the running turn" do
+    def turn_evt(type, task: "t1", session: "s1", **data)
+      evt(type: type, data: data, meta: { task_id: task, session_id: session })
+    end
+
+    it "replays the running turn to a late subscriber, deltas merged" do
+      Sync do |task|
+        stream.emit(turn_evt(:task_started))
+        stream.emit(turn_evt(:intermediate, delta: "Hel"))
+        stream.emit(turn_evt(:intermediate, delta: "lo"))
+        stream.emit(turn_evt(:tool_call, name: "x"))
+        stream.emit(turn_evt(:tool_call, name: "other", session: "s2"))
+
+        sub = stream.subscribe(session_id: "s1", replay: true)
+        got = collect(task, sub) { stream.emit(turn_evt(:tool_result, name: "x")) }
+
+        expect(got.map(&:type)).to eq(%i[task_started intermediate tool_call tool_result])
+        expect(got[1].data[:delta]).to eq("Hello")
+      end
+    end
+
+    it "forgets the turn once it ends, and only replays when asked" do
+      Sync do |task|
+        stream.emit(turn_evt(:tool_call, name: "x"))
+        expect(collect(task, stream.subscribe(session_id: "s1")) {}).to be_empty
+
+        stream.emit(turn_evt(:task_completed))
+        expect(collect(task, stream.subscribe(session_id: "s1", replay: true)) {}).to be_empty
+      end
+    end
+  end
 end
