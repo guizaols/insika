@@ -303,10 +303,6 @@ module Studio
         r.is do
           r.get do
             @agents = insika[:profile_source].all.sort_by(&:id)
-            # WS7 scorecard: the LAST outcome per agent, computed once for the
-            # whole grid (a store scan per card would be n scans). Series live
-            # on the agent detail — one agent's periods, not n charts here.
-            @latest_outcomes = insika[:outcome_store]&.latest_per_agent
             # "New from template" gallery — cheap (frontmatter
             # parse only, no evaluation) so it's safe on every render.
             @templates = Insika::Templates.all
@@ -1853,7 +1849,6 @@ end
       # the master column: the detail page IS the shell when
       # visited directly; only a frame request renders the pane alone.
       @agents = insika[:profile_source].all.sort_by(&:id)
-      @latest_outcomes = insika[:outcome_store]&.latest_per_agent
       if turbo_frame?("agent-detail")
         render("agent_detail", locals: { frame_only: true }, layout: false)
       else
