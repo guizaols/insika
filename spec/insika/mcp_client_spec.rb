@@ -101,14 +101,23 @@ RSpec.describe Insika::McpClient do
                                                   "INSIKA_EGRESS_HOSTS" => "store, localhost"))
 
       expect(egress.seen).to eq(allow_http: true, allow_private: true,
-                                host_allowlist: %w[store localhost])
+                                host_allowlist: %w[store localhost], pin_private_only: true)
+    end
+
+    it "pins only private destinations to the host allowlist (operator-registered URL)" do
+      egress = RecordingEgress.new
+      described_class.for(record, egress: egress,
+                                  env_reader: env("INSIKA_EGRESS_HOSTS" => "api.example.com"))
+
+      expect(egress.seen).to eq(allow_http: false, allow_private: false,
+                                host_allowlist: %w[api.example.com], pin_private_only: true)
     end
 
     it "stays strict when nobody opted out" do
       egress = RecordingEgress.new
       described_class.for(record, egress: egress, env_reader: env({}))
 
-      expect(egress.seen).to eq(allow_http: false, allow_private: false)
+      expect(egress.seen).to eq(allow_http: false, allow_private: false, pin_private_only: true)
     end
   end
 end

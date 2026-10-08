@@ -58,6 +58,18 @@ RSpec.describe Insika::EgressGuard do
       expect(described_class.violation("http://127.0.0.1:3000/x", **opts)).to match(/allowlist/)
     end
 
+    it "pin_private_only: the allowlist pins private destinations, not public ones" do
+      opts = { allow_http: true, allow_private: true, host_allowlist: ["localhost"], pin_private_only: true }
+      expect(described_class.violation("https://8.8.8.8/x", **opts)).to be_nil
+      expect(described_class.violation("http://localhost:3000/x", **opts)).to be_nil
+      expect(described_class.violation("http://127.0.0.1:3000/x", **opts)).to match(/allowlist/)
+    end
+
+    it "pin_private_only without allow_private still blocks private destinations" do
+      opts = { allow_http: true, host_allowlist: ["127.0.0.1"], pin_private_only: true }
+      expect(described_class.violation("http://127.0.0.1:3000/x", **opts)).to match(/private-network/)
+    end
+
     it "doesn't affect the scheme: http still requires allow_http" do
       expect(described_class.violation("http://127.0.0.1/x", allow_private: true)).to match(/http not allowed/)
     end
