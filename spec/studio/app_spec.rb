@@ -89,6 +89,7 @@ RSpec.describe Studio::App do
   TaskStoreDouble = Struct.new(:tasks) do # tasks: { id => TaskDouble }
     def each_id(&blk) = block_given? ? tasks.keys.each(&blk) : tasks.keys.each
     def find(id) = tasks[id]
+    def recent(limit, offset: 0) = tasks.values.sort_by(&:updated_at).reverse.drop(offset).first(limit)
   end
   # NB: distinct names from the admin specs' PendingDouble/CheckpointDouble —
   # RSpec constants leak to top-level Object, so a shared name would clobber.
@@ -646,6 +647,19 @@ RSpec.describe Studio::App do
     expect(body).to include("olá-echo-42")
     expect(body).to include('class="msg user"')
   end
+
+# The message is saved with the turn, at its end: coming back to a conversation
+# mid-turn (the flash already spent) must still show what was asked.
+it "playground shows the message of the turn still running in the conversation" do
+  running = TaskDouble.new(id: "t1", status: :running, session_id: "s1", executions: [], updated_at: "t",
+                           timing: nil, command: { "type" => "send_message", "payload" => { "message" => "pergunta-em-curso" } })
+  done = TaskDouble.new(id: "t0", status: :completed, session_id: "s1", executions: [], updated_at: "t",
+                        timing: nil, command: { "type" => "send_message", "payload" => { "message" => "pergunta-antiga" } })
+  app, = build_app(tasks: { "t1" => running, "t0" => done })
+  body = login(app).get("/playground?agent=chef&session_id=s1").body
+  expect(body).to include("pergunta-em-curso")
+  expect(body).not_to include("pergunta-antiga")
+end
 
   it "playground GET renders the session's persisted transcript as bubbles" do
     sess = StoredSession.new(id: "s1", updated_at: "t",
@@ -1837,7 +1851,7 @@ RSpec.describe Studio::App do
       Class.new do
         attr_reader :scope
 
-        def subscribe(task_id:, session_id:) = (@scope = { task_id: task_id, session_id: session_id }; self)
+        def subscribe(task_id:, session_id:, replay:) = (@scope = { task_id: task_id, session_id: session_id, replay: replay }; self)
       end.new
     end
 
@@ -1851,7 +1865,7 @@ RSpec.describe Studio::App do
       expect(headers["content-type"]).to eq("text/event-stream")
       expect(headers["cache-control"]).to eq("no-cache")
       expect(body).to be_a(Insika::Server::SSEBody)
-      expect(stream_double.scope).to eq(task_id: nil, session_id: "sess-1")
+      expect(stream_double.scope).to eq(task_id: nil, session_id: "sess-1", replay: true)
     end
 
     it "is behind the session like every other page (anonymous -> login)" do

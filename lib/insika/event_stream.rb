@@ -114,6 +114,7 @@ module Insika
     # list plus its own session's: emit does not walk every open conversation.
     def initialize
       @subscriptions = {}
+      @running = {} # session_id -> { task_id -> [Event] } of the turns still running
     end
 
     # NEVER raises: an observer's exception is isolated — a
@@ -126,6 +127,7 @@ module Insika
     def emit(event)
       session_id = event.meta&.[](:session_id)
       candidates = @subscriptions.fetch(nil, EMPTY) + (session_id.nil? ? EMPTY : @subscriptions.fetch(session_id, EMPTY))
+      remember(event, session_id)
       candidates.each do |sub|
         sub.push(event) if sub.matches?(event)
       rescue StandardError
@@ -138,16 +140,54 @@ module Insika
     # `#each` on its own fiber). `tenant:` scopes the stream to one tenant's
     # events (WS1) — fail-closed, see Subscription#matches?. `types:` (nil =
     # any) filters by event type so a subscriber's queue only ever holds what
-    # its consumer answers (WS6).
-    def subscribe(task_id: nil, session_id: nil, tenant: nil, types: nil)
+    # its consumer answers (WS6). `replay: true` first hands over what the
+    # session's running turns already emitted: the transcript is only saved when
+    # a turn ends, so a viewer who arrives mid-turn would otherwise miss it.
+    def subscribe(task_id: nil, session_id: nil, tenant: nil, types: nil, replay: false)
       sub = Subscription.new(task_id: task_id, session_id: session_id, tenant: tenant,
                              types: types,
                              on_close: ->(s) { unsubscribe(s) })
+      running_events(session_id).each { |event| sub.push(event) if sub.matches?(event) } if replay && session_id
       (@subscriptions[session_id] ||= []) << sub
       sub
     end
 
     private
+
+    TERMINAL = %i[task_completed task_failed task_cancelled].freeze
+    DELTAS = %i[intermediate thinking].freeze
+    # Sessions whose running turn is kept. A turn that never reaches a terminal
+    # (a crash) would stay forever; past this, the oldest is dropped.
+    # ponytail: count cap, not a TTL — add one if stuck turns pile up.
+    MAX_RUNNING = 200
+
+    # Keeps the running turn of each session; consecutive deltas are merged into
+    # one event (carrying the newest meta/seq) so a long turn stays a short list.
+    def remember(event, session_id)
+      task_id = event.meta&.[](:task_id)
+      return if session_id.nil? || task_id.nil?
+
+      if TERMINAL.include?(event.type)
+        turns = @running[session_id] or return
+        turns.delete(task_id)
+        @running.delete(session_id) if turns.empty?
+        return
+      end
+
+      events = ((@running[session_id] ||= {})[task_id] ||= [])
+      last = events.last
+      if last && DELTAS.include?(event.type) && last.type == event.type
+        events[-1] = event.with(data: last.data.merge(delta: last.data[:delta].to_s + event.data[:delta].to_s))
+      else
+        events << event
+      end
+      @running.delete(@running.keys.first) if @running.size > MAX_RUNNING
+    end
+
+    def running_events(session_id)
+      @running.fetch(session_id, {}).values.flatten
+    end
+
 
     def unsubscribe(sub)
       list = @subscriptions[sub.session_id] or return
