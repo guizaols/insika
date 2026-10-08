@@ -16,9 +16,12 @@ module Insika
   # or protocol failure becomes `{error:}`, the model's normal failure path
   # (see Tools::DataDefinedTool's own rule).
   class McpLiveTool < RubyLLM::Tool
-    def initialize(instance_name:, tool:, client_for:, overrides: {})
+    # `name:` is what the model calls (the registry's instance-qualified name);
+    # the server is still asked for its own tool name.
+    def initialize(instance_name:, tool:, client_for:, overrides: {}, name: tool["name"])
       @instance_name = instance_name
       @tool = tool
+      @name = name
       @client_for = client_for
       @evidence = overrides["evidence"] && Insika::Evidence::Spec.parse(overrides["evidence"])
       @requires_evidence = Insika::ToolDefinition.normalize_requires_evidence(
@@ -27,7 +30,7 @@ module Insika
       super()
     end
 
-    def name = @tool["name"]
+    def name = @name
     def description = @tool["description"].to_s
 
     # The two questions the envelope asks any tool: what of this result is

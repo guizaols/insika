@@ -33,6 +33,10 @@ it is released. Entries land with the pull request that makes the change.
   long it waited for the lock versus how long its commit took.
 
 ### Changed
+- **MCP tools are named after their instance**: `<instance>__<tool>` (e.g.
+  `shop_staging__list_products`). Two instances offering the same tool used to share
+  one name, and every call went to whichever instance came first. Agents that allowed
+  MCP tools by name must select them again; per-tool overrides keep the server's name.
 - `INSIKA_EGRESS_HOSTS` pins an MCP server only when its host resolves to a private
   address. The operator registers the URL and the model cannot change it, so adding a
   public server needs no redeploy. HTTPS still applies, and a private server still needs
