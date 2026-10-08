@@ -505,6 +505,9 @@ def local_side_effect_tools(agent)
   profile = Insika::StoredProfileSource.new(config_store: config_store).fetch(agent)
   return nil if profile.nil?
 
+  # Kits add reachable tools at turn time; the swap list must count them too.
+  profile = Insika::Kits.apply(profile, Insika::SettingsStore.new(config_store: config_store).kits)
+
   registry = Insika::OverlayToolRegistry.new(
     base: Insika::ToolRegistry.new, tool_store: Insika::ToolStore.new(config_store: config_store),
     http: Insika::HttpClient.new

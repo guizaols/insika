@@ -166,10 +166,19 @@ module Insika
       # [tool names] the agent can reach that are marked side-effect, sorted.
       def side_effect_tools(profile, registry)
         allowed = if profile.tools_allow.nil? then Array(registry.names)
-                  else Array(profile.tools_allow).map(&:to_s)
+                  else Array(profile.tools_allow).map(&:to_s) | group_tools(profile, registry)
                   end
         denied = Array(profile.tools_deny).map(&:to_s)
         (allowed - denied).select { |name| registry.side_effect?(name) }.sort
+      end
+
+      # Tools reachable through tools_allow_groups (an MCP server, a kit's groups):
+      # the registry entries whose metadata group the agent allows.
+      def group_tools(profile, registry)
+        groups = Array(profile.tools_allow_groups).map(&:to_s)
+        return [] if groups.empty? || !registry.respond_to?(:entries)
+
+        registry.entries.select { |e| groups.include?(e.metadata[:group].to_s) }.map { |e| e.name.to_s }
       end
 
       # -> bool: can a simulated run touch this agent without a staging

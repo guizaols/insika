@@ -588,6 +588,10 @@ module Insika
         profile = @profiles.fetch(id)
         raise Insika::NotFoundError, "agent not found: #{id}" if profile.nil?
 
+        # The agent as its turns see it: a kit's tools are reachable for real, so
+        # the capability view and the eval swap list must count them.
+        profile = Insika::Kits.apply(profile, @settings_store.kits) if @settings_store.respond_to?(:kits)
+
         allow = profile.tools_allow
         deny = Array(profile.tools_deny).map(&:to_s)
         payload = {
@@ -609,11 +613,7 @@ module Insika
       def side_effect_tools(profile)
         return nil unless @tool_registry
 
-        allowed = if profile.tools_allow.nil? then Array(@tool_registry.names)
-                  else Array(profile.tools_allow).map(&:to_s)
-                  end
-        denied = Array(profile.tools_deny).map(&:to_s)
-        (allowed - denied).select { |name| @tool_registry.side_effect?(name) }.sort
+        Insika::Evals::EvalProfile.side_effect_tools(profile, @tool_registry)
       end
 
       # `/v1` only — `/a2a` is versioned by its own JSON-RPC spec and a channel's

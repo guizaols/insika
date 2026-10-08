@@ -47,6 +47,15 @@ module Insika
       defaults
     end
 
+    # The source as turns read it (defaults + kits applied), for turn-time readers
+    # wired outside the graph (workflow triggers, persona evals). No settings store
+    # = nothing to apply, the source as is.
+    def for_turns(source, settings_store)
+      return source if settings_store.nil?
+
+      ProfileSource.new(Insika::ProfileSource.coerce(source), settings_store: settings_store)
+    end
+
     # The agent's own records behind a profile source: what authoring reads and
     # writes. A plain source is its own.
     def own(source) = source.is_a?(ProfileSource) ? source.source : source

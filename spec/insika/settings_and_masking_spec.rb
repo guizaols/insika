@@ -76,6 +76,11 @@ RSpec.describe "Settings + masking" do
         .to raise_error(Insika::ValidationError, /tools_allow/)
     end
 
+    it "refuses kits: they are written one at a time through write_kit (validated)" do
+      expect { handler.call(cmd("patch" => { "kits" => { "grocery" => ["x"] } })) }
+        .to raise_error(Insika::ValidationError, /write_kit/)
+    end
+
     it "agent_defaults rejects a value an agent could not run with" do
       bad = { "knowledge" => { "retrieve" => true, "rerank" => { "provider" => nil } } }
       expect { handler.call(cmd("patch" => { "agent_defaults" => bad })) }.to raise_error(Insika::ValidationError)

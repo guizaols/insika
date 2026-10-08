@@ -1714,6 +1714,19 @@ RSpec.describe Studio::App do
       expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked/)
     end
 
+    # write_kit replaces the whole kit, so an item the live catalog does not list
+    # right now (an MCP server down, a non-MCP group) must still post back.
+    it "keeps stored items the live catalog does not list, checked" do
+      settings = { "kits" => { "grocery" => { "description" => "", "skills" => %w[gone_skill],
+                                              "tools" => %w[gone_tool], "tool_groups" => %w[mcp:offline] } } }
+      app, = build_app(settings: settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body).to match(/name="skills\[\]" value="gone_skill"[^>]*checked/)
+      expect(body).to match(/name="tools\[\]" value="gone_tool"[^>]*checked/)
+      expect(body).to match(/name="tool_groups\[\]" value="mcp:offline"[^>]*checked/)
+      expect(body).to include("not in catalog")
+    end
+
     it "404s an unknown kit" do
       app, = build_app(settings: kit_settings)
       expect(login(app).get("/kits/missing").status).to eq(404)

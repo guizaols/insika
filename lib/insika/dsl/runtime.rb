@@ -154,7 +154,8 @@ module Insika
         end
 
         graph.bus.register(:trigger_workflow, Insika::Commands::TriggerWorkflow.new(
-                                                profiles: graph.profiles, session_store: graph.session_store,
+                                                profiles: Insika::AgentDefaults.for_turns(graph.profiles, @components[:settings_store]),
+                                                session_store: graph.session_store,
                                                 task_store: graph.task_store, executor: graph.executor,
                                                 workflow_registry: graph.workflow_registry
                                               ))

@@ -208,6 +208,17 @@ RSpec.describe Insika::Evals::EvalProfile do
     expect(described_class.side_effect_tools(profile, reg)).to eq(%w[create_order])
   end
 
+  # A group allowlist (an MCP server, or a kit's tool_groups) makes every tool in the
+  # group reachable, so its write tools belong in the swap list.
+  it "counts side-effect tools reachable through tools_allow_groups" do
+    reg = Class.new(FakeRegistry) do
+      def entries = [Struct.new(:name, :metadata).new("crm_update", { group: "mcp:crm" })]
+    end.new(%w[search_products crm_update], side_effect: %w[crm_update])
+    p = Insika::AgentProfile.build(id: "loja", model: "m", tools_allow: %w[search_products],
+                                   tools_allow_groups: %w[mcp:crm])
+    expect(described_class.side_effect_tools(p, reg)).to eq(%w[crm_update])
+  end
+
   it "says an agent with no reachable side-effect tool is safe" do
     reg = FakeRegistry.new(%w[search_products], side_effect: %w[create_order])
     expect(described_class.safe?(profile(tools_allow: %w[search_products]), reg)).to be(true)

@@ -46,4 +46,10 @@ RSpec.describe Insika::Kits do
     expect { described_class.validate!("Bad Name", {}) }.to raise_error(Insika::ValidationError)
     expect { described_class.validate!("ok", "tools" => "x") }.to raise_error(Insika::ValidationError)
   end
+
+  it "skips a malformed kit instead of failing the turn" do
+    a = agent(tools_allow: %w[menu], kits: %w[grocery broken])
+    p = described_class.apply(a, kits.merge("broken" => ["x"]))
+    expect(p.tools_allow).to eq(%w[menu add_to_cart])
+  end
 end
