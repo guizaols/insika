@@ -296,6 +296,8 @@ module Insika
         # the LGPD access right — the Studio Customers drill exports.
         bus.register(:export_customer_memory, Insika::Commands::ExportCustomerMemory.new(memory_store: mem, event_stream: es))
         bus.register(:update_settings, Insika::Commands::UpdateSettings.new(settings_store: c[:settings_store], event_stream: es))
+        bus.register(:write_kit, Insika::Commands::WriteKit.new(settings_store: c[:settings_store], event_stream: es))
+        bus.register(:delete_kit, Insika::Commands::DeleteKit.new(settings_store: c[:settings_store], event_stream: es))
         bus.register(:upsert_llm_provider, Insika::Commands::UpsertLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))
         bus.register(:delete_llm_provider, Insika::Commands::DeleteLLMProvider.new(provider_store: c[:provider_store], configurator: c[:configurator], event_stream: es))
         bus.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: c[:mcp_store], mcp_registry: c[:mcp_tool_registry], event_stream: es))
