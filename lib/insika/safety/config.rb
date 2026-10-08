@@ -17,7 +17,14 @@ module Insika
     #     strictness: "low"|"medium"|"high", # which input categories fire (default medium)
     #     responses:  { <category> => "<safe reply>", ... }  # per-agent override, see below
     #     corpora:    { "languages" => ["en"], "extra" => { "abuse" => ["/\\bdupa\\b/i"] } }
+    #     injection:  "flag"|"block"     # what an injection hit does (default flag), see below
     #   }
+    #
+    # `injection`: "flag" (default) lets the turn reach the model with a per-turn
+    # notice and an audit flag, so a legitimate request riding in the same message is
+    # still served; the output side (PromptEcho, the output validator) stays the
+    # backstop. "block" short-circuits with the safe reply, as before. Sexual and
+    # abuse hits always block.
     #
     # `corpora`  is the removability knob for the shipped
     # pt-BR corpus: `languages` filters the shipped families (nil = all,
@@ -48,14 +55,17 @@ module Insika
 
       DEFAULT_STRICTNESS = :medium
 
-      attr_reader :input, :output, :moderator, :strictness, :responses, :corpora
+      INJECTION_MODES = %i[flag block].freeze
 
-      def initialize(input:, output:, moderator:, strictness:, responses: {}, corpora: nil)
+      attr_reader :input, :output, :moderator, :strictness, :responses, :corpora, :injection
+
+      def initialize(input:, output:, moderator:, strictness:, responses: {}, corpora: nil, injection: :flag)
         @input = input
         @output = output
         @moderator = moderator
         @strictness = strictness
         @responses = responses # { "category" => "safe reply" }, agent override map
+        @injection = injection
         @corpora = corpora     # { "languages" => [...]?, "extra" => {...}? } | nil (nil = the shipped default)
         # Built ONCE at construction: the compiled corpus the whole turn reads.
         @corpus = Corpus.compile(languages: corpora && corpora["languages"],
@@ -74,7 +84,8 @@ module Insika
           moderator: presence(h[:moderator]),
           strictness: normalize_strictness(h[:strictness]),
           responses: normalize_responses(h[:responses]),
-          corpora: normalize_corpora(h[:corpora])
+          corpora: normalize_corpora(h[:corpora]),
+          injection: normalize_injection(h[:injection])
         )
       end
 
@@ -112,6 +123,12 @@ module Insika
       end
 
       def self.presence(v) = Insika::Coercion.presence(v)
+
+      # Anything but "block" reads as the default: a typo must not silently turn
+      # the model's view of an injection off.
+      def self.normalize_injection(v)
+        v.to_s.strip.downcase == "block" ? :block : :flag
+      end
 
       def self.normalize_strictness(v)
         sym = v.to_s.strip.downcase.to_sym

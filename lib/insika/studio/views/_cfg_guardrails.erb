@@ -3,7 +3,7 @@
 <%== inherit_toggle("guardrails") %>
       <label class="check">
         <input type="checkbox" name="guardrail_input" value="1"<%== " checked" if guardrail_field(@guardrails, :input, true) %>>
-        input guardrail <span class="muted">— block injection / abuse / inappropriate before the LLM</span>
+        input guardrail <span class="muted">— check injection / abuse / inappropriate before the LLM</span>
       </label>
       <label class="check">
         <input type="checkbox" name="guardrail_output" value="1"<%== " checked" if guardrail_field(@guardrails, :output, true) %>>
@@ -15,6 +15,14 @@
           <select name="guardrail_strictness">
             <% %w[low medium high].each do |lvl| %>
               <option value="<%= lvl %>"<%== " selected" if lvl == strictness %>><%= lvl %></option>
+            <% end %>
+          </select>
+        </label>
+        <label>on injection <span class="muted">(flag = the model answers with a notice; block = safe reply, the model never sees it)</span>
+          <% injection = guardrail_field(@guardrails, :injection, "flag").to_s %>
+          <select name="guardrail_injection">
+            <% %w[flag block].each do |mode| %>
+              <option value="<%= mode %>"<%== " selected" if mode == injection %>><%= mode %></option>
             <% end %>
           </select>
         </label>
