@@ -84,6 +84,11 @@
           </label>
         </div>
         <p class="muted">Save tools to apply this selection to <strong><%= a.id %></strong> on its next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
+        <% if Array(a.kits).any? %>
+          <p class="muted">Also gets every tool in its kits:
+            <% a.kits.each do |k| %><a class="pill info" href="/studio/kits/<%= Rack::Utils.escape(k) %>"><%= k %></a> <% end %>
+          </p>
+        <% end %>
         <input type="search" class="filter-input" placeholder="Search to add tools…" aria-label="Search tools or servers"
                data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
         <p class="empty" data-list-filter-target="empty" hidden>No tools match your filter.</p>
