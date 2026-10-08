@@ -15,7 +15,8 @@ RSpec.describe Insika::ChatBuilder do
   TaskStub = Struct.new(:id, :session_id)
   ProfileStub = Struct.new(:model, :provider, :limits, :prompt_caching, :skills_eager, :id)
   State = Struct.new(:context, :allowed_tools, :allowed_skills, :profile, :task,
-                     :current_tool_call, :current_tool_name, :approval_continuation, keyword_init: true)
+                     :current_tool_call, :current_tool_name, :approval_continuation, :security_notice,
+                     keyword_init: true)
 
   let(:inert) { Object.new }
   let(:skill_catalog) { instance_double("Insika::SkillCatalog") }
