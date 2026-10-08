@@ -2128,6 +2128,17 @@ RSpec.describe Studio::App do
     expect(body).to include("Continue in playground")
   end
 
+  it "an agent's History tab lists only that agent's conversations" do
+    sessions = {
+      "s-bia" => StoredSession.new(id: "s-bia-0000001", messages: [], vars: { "agent" => "bia" }, updated_at: "2026-10-08T10:00:00Z"),
+      "s-chef" => StoredSession.new(id: "s-chef-000001", messages: [], vars: { "agent" => "chef" }, updated_at: "2026-10-08T11:00:00Z")
+    }
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/agents/bia").body
+    expect(body).to include("/studio/sessions/s-bia-0000001")
+    expect(body).not_to include("/studio/sessions/s-chef-000001")
+  end
+
   it "404 on a nonexistent session" do
     app, = build_app
     expect(login(app).get("/sessions/nope").status).to eq(404)
@@ -2772,7 +2783,8 @@ RSpec.describe Studio::App do
   end
 
   it "the detail's history lists the recent conversations" do
-    sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
+    sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
+                             vars: { "agent" => "bia" })
     app, = build_app(sessions: { "sess-abc123456789" => sess })
     body = login(app).get("/agents/bia").body
     expect(body).to include("/studio/sessions/sess-abc123456789")
