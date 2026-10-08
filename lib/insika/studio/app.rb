@@ -322,7 +322,10 @@ module Studio
               dispatch(:create_agent, {
                          id: id, model: presence(r.params["model"]),
                          provider: presence(r.params["provider"]),
-                         memory: r.params["memory"] == "1"
+                         memory: r.params["memory"] == "1",
+                         # Starts with nothing allowed: kits and the pickers decide
+                         # what it gets (an "all" start made every kit a no-op).
+                         tools_allow: [], skills: []
                        })
             end
             r.redirect(result ? agent_path(id) : "/studio/agents")
