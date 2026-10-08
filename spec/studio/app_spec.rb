@@ -525,6 +525,13 @@ RSpec.describe Studio::App do
     expect(bus.dispatched.first.payload[:id]).to eq(minted)
   end
 
+  it "tracks the asset bundle so a tab from before a deploy reloads instead of running two bundles" do
+    app, = build_app
+    page = login(app).get("/playground").body
+    expect(page).to match(/<script[^>]*application\.js[^>]*data-turbo-track="reload"/)
+    expect(page).to match(/<link[^>]*application\.css[^>]*data-turbo-track="reload"/)
+  end
+
   it "playground GET lists the agents in the selector" do
     app, = build_app
     client = login(app)

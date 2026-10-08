@@ -20,8 +20,12 @@
         href="<%= font_path("ibm-plex-sans-latin-wght-normal.woff2") %>">
   <link rel="preload" as="font" type="font/woff2" crossorigin
         href="<%= font_path("ibm-plex-mono-latin-400-normal.woff2") %>">
-  <link rel="stylesheet" href="<%= asset_path("application.css") %>">
-  <script type="module" src="<%= asset_path("application.js") %>" defer></script>
+  <%# data-turbo-track="reload": after a deploy the ?v= changes, and a Turbo
+      visit from a tab opened before it must reload the page — merging the
+      new head would run a SECOND application.js next to the old one, and
+      every controller (live transcript included) would connect twice. %>
+  <link rel="stylesheet" href="<%= asset_path("application.css") %>" data-turbo-track="reload">
+  <script type="module" src="<%= asset_path("application.js") %>" defer data-turbo-track="reload"></script>
 </head>
 <body>
   <%# Chip-icon sprite: one source of truth for transcript event

@@ -22,6 +22,17 @@ module Insika
     AUTHENTICATED_PATH = "/studio/artifacts/%{id}/content"
     SIGNED_PATH = "/studio/artifacts/s/%{id}?exp=%{exp}&sig=%{sig}"
 
+    # The Studio's signing config, read from the environment.
+    # -> { key:, ttl:, base_url: } | nil (no signing key -> no signed surface).
+    def studio_config
+      key = Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_KEY")
+      return nil if key.to_s.empty?
+
+      { key: key,
+        ttl: (Insika::EnvSchema.read("INSIKA_ARTIFACT_SIGNING_TTL") || 604_800).to_i,
+        base_url: Insika::Coercion.presence(Insika::EnvSchema.read("INSIKA_PUBLIC_URL")).to_s }
+    end
+
     # -> hex token (64 chars) | nil when the key is blank (no signed surface).
     def sign(id:, expires_at:, key:)
       key = key.to_s
