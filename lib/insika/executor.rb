@@ -3051,13 +3051,24 @@ module Insika
     def turn_transcript(state, content, origin: nil, reply_origin: nil)
       recorded = recorded_turn_messages(state)
       if recorded.empty?
-        return [MessageOrigin.stamp({ "role" => "user", "content" => state.message.to_s }, origin),
+        return [stamp_guardrail_flags(MessageOrigin.stamp({ "role" => "user", "content" => state.message.to_s }, origin), state),
                 MessageOrigin.stamp({ "role" => "assistant", "content" => content.to_s }, reply_origin)]
       end
 
-      recorded[0] = MessageOrigin.stamp(recorded[0], origin) if recorded[0]["role"] == "user"
+      recorded[0] = stamp_guardrail_flags(MessageOrigin.stamp(recorded[0], origin), state) if recorded[0]["role"] == "user"
       recorded[-1] = recorded[-1].merge("content" => content.to_s) if recorded.last["role"] == "assistant"
       recorded
+    end
+
+    # Flags raised on the INCOMING message (the input guardrail runs before the
+    # model; output flags come after persist) ride on that message, so the
+    # transcript shows them after the live event stream is gone. Never sent to the
+    # model: history replay reads role/content/tool_calls only.
+    def stamp_guardrail_flags(message, state)
+      flags = Array(state.guardrail_flags)
+      return message if flags.empty?
+
+      message.merge("guardrail_flags" => flags.map { |f| f.transform_keys(&:to_s) })
     end
 
     # Slices the chat's messages added DURING this turn and serializes them.
