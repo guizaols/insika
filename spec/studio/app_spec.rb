@@ -1694,6 +1694,65 @@ RSpec.describe Studio::App do
     expect(cmd.payload).to have_key(:deny)
   end
 
+  describe "kits" do
+    let(:kit_settings) do
+      { "kits" => { "grocery" => { "description" => "shared grocery set", "skills" => %w[pedido],
+                                   "tools" => %w[menu], "tool_groups" => [] } } }
+    end
+
+    it "lists kits in the nav and the master list" do
+      app, = build_app(settings: kit_settings)
+      body = login(app).get("/kits").body
+      expect(body).to include('href="/studio/kits"')
+      expect(body).to include('href="/studio/kits/grocery"')
+    end
+
+    it "opens a kit with its skills and tools pre-checked" do
+      app, = build_app(settings: kit_settings)
+      body = login(app).get("/kits/grocery").body
+      expect(body).to match(/name="skills\[\]" value="pedido"[^>]*checked/)
+      expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked/)
+    end
+
+    it "404s an unknown kit" do
+      app, = build_app(settings: kit_settings)
+      expect(login(app).get("/kits/missing").status).to eq(404)
+    end
+
+    it "POST /kits dispatches write_kit with the checked lists" do
+      app, bus = build_app(settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits", params: { "name" => "grocery", "skills" => ["pedido"], "tools" => ["menu"], "_csrf" => csrf })
+      expect(bus.last(:write_kit).payload).to include(name: "grocery", skills: ["pedido"], tools: ["menu"], tool_groups: [])
+    end
+
+    it "membership adds or removes only this kit and keeps the agent's other kits" do
+      bia = Insika::AgentProfile.build(id: "bia", model: "m", kits: %w[other])
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", kits: %w[grocery other])
+      app, bus = build_app(agents: [bia, chef], settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits/grocery/agents", params: { "agent_ids" => ["bia"], "_csrf" => csrf })
+      payloads = bus.dispatched.select { |c| c.type == :update_agent }.map(&:payload)
+      expect(payloads).to contain_exactly({ id: "bia", kits: %w[other grocery] }, { id: "chef", kits: %w[other] })
+    end
+
+    it "POST /kits/:name/delete dispatches delete_kit" do
+      app, bus = build_app(settings: kit_settings)
+      client = login(app)
+      csrf = csrf_from(client.get("/kits/grocery").body)
+      client.post("/kits/grocery/delete", params: { "_csrf" => csrf })
+      expect(bus.last(:delete_kit).payload).to include(name: "grocery")
+    end
+
+    it "the tool matrix names the agent's kits" do
+      chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[menu], kits: %w[grocery])
+      app, = build_app(agents: [chef], settings: kit_settings)
+      expect(login(app).get("/tools?a=chef").body).to include('href="/studio/kits/grocery"')
+    end
+  end
+
   # The live transcript's SSE. It used to read the server's /v1/events straight from the
   # browser — EventSource cannot send a Bearer — which is why that route had to stay open
   # to the world while streaming assistant text. The stream now rides the Studio's own

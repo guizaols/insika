@@ -610,6 +610,69 @@ module Studio
         end
       end
 
+      # --- Kits: named bundles of skills + tools agents subscribe to ----------
+      r.on "kits" do
+        r.is do
+          r.get do
+            load_kits
+            @selected = nil
+            view("kits")
+          end
+          r.post do
+            check_csrf!
+            name = presence(r.params["name"]).to_s
+            payload = { name: name, description: r.params["description"].to_s,
+                        skills: Array(r.params["skills"]).map(&:to_s),
+                        tools: Array(r.params["tools"]).map(&:to_s),
+                        tool_groups: Array(r.params["tool_groups"]).map(&:to_s) }
+            result = with_flash("Kit '#{name}' saved.") { dispatch(:write_kit, payload) }
+            r.redirect(result ? "/studio/kits/#{Rack::Utils.escape(name)}" : "/studio/kits")
+          end
+        end
+
+        r.get "new" do
+          load_kits
+          @selected = ""
+          @kit = {}
+          view("kits")
+        end
+
+        r.on String do |name|
+          name = utf8(name)
+          r.is do
+            r.get do
+              load_kits
+              @kit = @kits[name]
+              next_404 unless @kit
+              @selected = name
+              view("kits")
+            end
+          end
+          # Membership lives on the AGENT (AgentProfile#kits). Only agents whose
+          # membership of THIS kit changed are written, and their other kits stay.
+          r.post "agents" do
+            check_csrf!
+            chosen = Array(r.params["agent_ids"]).map(&:to_s)
+            with_flash("Kit '#{name}' agents updated.") do
+              insika[:profile_source].all.each do |a|
+                has = Array(a.kits).include?(name)
+                want = chosen.include?(a.id)
+                next if has == want
+
+                kits = want ? Array(a.kits) | [name] : Array(a.kits) - [name]
+                dispatch(:update_agent, { id: a.id, kits: kits })
+              end
+            end
+            r.redirect("/studio/kits/#{Rack::Utils.escape(name)}")
+          end
+          r.post "delete" do
+            check_csrf!
+            with_flash("Kit '#{name}' removed.") { dispatch(:delete_kit, { name: name }) }
+            r.redirect("/studio/kits")
+          end
+        end
+      end
+
       # --- Tools: tool × agent matrix + DATA-DEFINED tool authoring -----------
       r.on "tools" do
         # Data-defined tool authoring. Under /tools/def/* — BEFORE the
@@ -1464,6 +1527,7 @@ end
         ["build", [
           ["Agents", "/studio/agents", :agents],
           ["Skills", "/studio/skills", :skills],
+          ["Kits", "/studio/kits", :kits],
           ["Tools", "/studio/tools", :tools],
           ["System files", "/studio/system-files", :system]
         ]],
@@ -1966,6 +2030,16 @@ end
       # Which agents specialized THIS skill — the availability grid shows it, so an
       # override is discoverable from the shared skill it overrides.
       @specialized = insika[:skill_store] ? specialized_by : {}
+    end
+
+    # Kits drill: master = every kit; the editor checks skills/tools/groups from the
+    # live catalogs. @selected nil = none open, "" = new.
+    def load_kits
+      @kits = (insika[:settings_store]&.kits || {}).sort.to_h
+      @skills = (insika[:skill_catalog]&.all || []).sort_by(&:name)
+      @tools = (insika[:tool_catalog]&.all || []).sort_by(&:name)
+      @tool_group_names = @tools.filter_map { |t| t.plugin.to_s if t.plugin.to_s.start_with?("mcp:") }.uniq.sort
+      @agents = insika[:profile_source].all.sort_by(&:id)
     end
 
     # { skill name => [agent ids] } across every agent scope in the store.
