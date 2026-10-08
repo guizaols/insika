@@ -33,6 +33,14 @@ it is released. Entries land with the pull request that makes the change.
   long it waited for the lock versus how long its commit took.
 
 ### Changed
+
+- An input guardrail injection hit no longer replaces the turn with the canned
+  refusal by default. The message reaches the model with a per-turn
+  `<security_notice>` (never persisted) and an audit `guardrail_flagged` with
+  `action: "flag"`, so a legitimate request in the same message is still served.
+  Sexual and abuse hits still block, now also when the message carries an
+  injection too. `guardrails.injection: "block"` (Studio › Guardrails › on
+  injection) restores the old behavior.
 - `Store#recent` takes an optional fourth argument, `offset`, to read the next page; a
   backend that implements the three-argument form keeps working (the stores pass
   `offset` only when paging). SQLite reads a page's keys from the index and then only

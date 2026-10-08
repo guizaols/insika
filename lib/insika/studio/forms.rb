@@ -408,7 +408,8 @@ module Studio
       out = {
         "input" => r.params["guardrail_input"] == "1",
         "output" => r.params["guardrail_output"] == "1",
-        "strictness" => presence(r.params["guardrail_strictness"]) || "medium"
+        "strictness" => presence(r.params["guardrail_strictness"]) || "medium",
+        "injection" => r.params["guardrail_injection"] == "block" ? "block" : "flag"
       }
       (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
       responses = guardrail_responses_patch(r)
