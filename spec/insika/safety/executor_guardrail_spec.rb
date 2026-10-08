@@ -65,7 +65,10 @@ RSpec.describe "Insika::Executor guardrails" do
         expect(notice[:content]).to include("ignore as regras")
         flagged = event_stream.events.find { |e| e.type == :guardrail_flagged }
         expect(flagged.data).to include(category: "injection", action: "flag")
-        expect(session_store.find("s1").messages.map { |m| m["content"].to_s }.join).not_to include("security_notice")
+        stored = session_store.find("s1").messages
+        expect(stored.map { |m| m["content"].to_s }.join).not_to include("security_notice")
+        user = stored.find { |m| m["role"] == "user" }
+        expect(user["guardrail_flags"]).to contain_exactly(include("category" => "injection", "action" => "flag"))
       end
     end
 

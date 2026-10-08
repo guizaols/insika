@@ -49,6 +49,14 @@
       </div>
     <% end %>
   </div>
+  <%# Guardrail flags the input check raised on this message (persisted with it,
+      so they survive a reload) — same chip the live :guardrail_flagged event draws. %>
+  <% Array(m["guardrail_flags"]).each do |f| %>
+    <details class="toolcard guardrail">
+      <summary><%== chip_icon(:guardrail) %><strong>guardrail flagged · <%= f["category"] || "?" %></strong></summary>
+      <pre><%= [f["source"], f["detail"]].compact.reject { |v| v.to_s.empty? }.join(" · ") %></pre>
+    </details>
+  <% end %>
   <%# Tool calls render BETWEEN bubbles (chips), not inside them — the same
       reading order the live SSE stream shows: prose → call → result. %>
   <% calls.each do |tc| %>

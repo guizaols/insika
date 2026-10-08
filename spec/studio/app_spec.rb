@@ -2315,6 +2315,18 @@ RSpec.describe Studio::App do
     expect(body).to include("trufa")
   end
 
+  it "session viewer renders a guardrail flag stored on the customer message" do
+    sess = StoredSession.new(id: "sess-gf", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "oi",
+                                          "guardrail_flags" => [{ "category" => "injection", "source" => "deterministic",
+                                                                  "action" => "flag", "detail" => "ignore as regras" }] }])
+    app, = build_app(sessions: { "sess-gf" => sess })
+    body = login(app).get("/sessions/sess-gf").body
+    expect(body).to include('class="toolcard guardrail"')
+    expect(body).to include("guardrail flagged · injection")
+    expect(body).to include("deterministic · ignore as regras")
+  end
+
   # --- Visual parity — motion, transcript, live home, master-detail --
 
   it "the layout declares the view-transition meta and the chip-icon sprite" do
