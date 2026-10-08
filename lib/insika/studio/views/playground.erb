@@ -13,6 +13,7 @@
      data-live-transcript-session-value="<%= @session_id %>">
   <form class="chat-form" method="post" action="/studio/playground">
     <%== csrf_tag %>
+    <% if @new_session_id %><input type="hidden" name="new_session_id" value="<%= @new_session_id %>"><% end %>
     <div class="chat-head">
       <label class="chat-field">agent
         <select name="agent">

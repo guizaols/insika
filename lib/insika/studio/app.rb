@@ -1414,6 +1414,9 @@ end
           # work here (POST→redirect wipes the DOM).
           @history = @session_id ? Array(insika[:session_store]&.find(@session_id)&.messages) : []
           @sent_message = flash["sent_message"]
+          # The id a NEW conversation will get, minted here so the router can
+          # send its first turn to the worker that will keep running it.
+          @new_session_id = SecureRandom.uuid unless @session_id
           view("playground")
         end
         r.post do
@@ -1421,14 +1424,18 @@ end
           agent = presence(r.params["agent"]) || default_agent
           typed_session = presence(r.params["session_id"])
           message = r.params["message"].to_s
-          # Blank session = new conversation: created via Command (create_session
-          # generates the id — the Studio doesn't write to the store directly). A typed id
-          # continues an existing conversation (send_message requires it to exist).
+          # Blank session = new conversation: created via Command with the id the
+          # page minted (the router already sent this POST to that id's worker —
+          # the Studio doesn't write to the store directly). A typed id continues
+          # an existing conversation (send_message requires it to exist); so does
+          # a re-submitted page whose minted id already exists.
           # The per-chat model pin is set at creation and rides the whole
           # conversation, so it only applies to a NEW session — an existing one keeps
           # whatever it was pinned to.
+          minted = presence(r.params["new_session_id"])
           session_id = typed_session ||
-                       create_session(model: presence(r.params["model"]),
+                       (minted if minted && insika[:session_store]&.find(minted)) ||
+                       create_session(id: minted, model: presence(r.params["model"]),
                                       provider: presence(r.params["provider"]),
                                       thinking: presence(r.params["thinking"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
@@ -3378,13 +3385,14 @@ end
       dispatch(:send_message, { agent: agent, session_id: session_id, message: message }, tenant: agent)
     end
 
-    # Creates a new session via the bus (create_session generates the id) and returns
+    # Creates a new session via the bus (with `id`, or create_session generates one) and returns
     # the id. `model`/`provider` (optional) become the per-chat pin: CreateSession
     # stashes them in the reserved `vars["__llm__"]` slot the ModelResolver reads as
     # the highest-precedence layer (Chat > Agent > platform default). Only non-blank
     # values are sent, so an empty override leaves the session unpinned.
-    def create_session(model: nil, provider: nil, thinking: nil)
+    def create_session(id: nil, model: nil, provider: nil, thinking: nil)
       payload = { vars: { "canal" => "studio" } }
+      payload[:id] = id if id
       payload[:model] = model if model
       payload[:provider] = provider if provider
       payload[:thinking] = thinking if thinking

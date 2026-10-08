@@ -2258,6 +2258,8 @@ module Insika
       tenant = command_tenant(task)
       {
         chat_id: tenant ? task.session_id&.delete_prefix("#{tenant}:") : task.session_id,
+        # the conversation itself — MCP clients are kept per conversation.
+        session_id: task.session_id,
         agent_id: profile.id,
         # the DATA-TOOL header tenant stays the merchant (or the chat), even when
         # the memory scope carries a customer — the backend identifies the store,
