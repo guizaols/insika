@@ -277,7 +277,8 @@ module Studio
       r.get "events" do
         next_404 unless insika[:event_stream] # no stream wired: the feature is not there
         subscription = insika[:event_stream].subscribe(
-          task_id: presence(r.params["task_id"]), session_id: presence(r.params["session_id"])
+          task_id: presence(r.params["task_id"]), session_id: presence(r.params["session_id"]),
+          replay: true # a viewer arriving mid-turn sees what the turn already did
         )
         r.halt([200,
                 { "content-type" => "text/event-stream", "cache-control" => "no-cache",
@@ -1500,7 +1501,7 @@ end
           # (@sent_message) until it lands in history — an optimistic JS echo can't
           # work here (POST→redirect wipes the DOM).
           @history = @session_id ? Array(insika[:session_store]&.find(@session_id)&.messages) : []
-          @sent_message = flash["sent_message"]
+          @sent_message = flash["sent_message"] || running_message(@session_id)
           # The id a NEW conversation will get, minted here so the router can
           # send its first turn to the worker that will keep running it.
           @new_session_id = SecureRandom.uuid unless @session_id
@@ -3568,6 +3569,19 @@ end
     # stashes them in the reserved `vars["__llm__"]` slot the ModelResolver reads as
     # the highest-precedence layer (Chat > Agent > platform default). Only non-blank
     # values are sent, so an empty override leaves the session unpinned.
+    # The message of the turn still running in `session_id`, nil when none: it is
+    # only saved with the turn, at its end, so a viewer who comes back mid-turn
+    # (the flash already spent) would not see what was asked. Only the most
+    # recently updated tasks are read — a running turn is always among them.
+    def running_message(session_id)
+      return unless session_id
+
+      task = insika[:task_store]&.recent(20)&.find do |t|
+        t.session_id == session_id && %i[queued running waiting paused].include?(t.status)
+      end
+      task&.command&.dig("payload", "message")
+    end
+
     def create_session(id: nil, model: nil, provider: nil, thinking: nil)
       payload = { vars: { "canal" => "studio" } }
       payload[:id] = id if id
