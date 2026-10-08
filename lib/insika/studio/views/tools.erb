@@ -1,47 +1,54 @@
-<%# Tools — miller columns: [data tools + agents] master |
-    agent tool matrix in a turbo-frame. Master rows for agents frame-navigate
-    (?a=) with the URL advancing; data-tool rows keep full-page navigation to
-    their standalone editor. @sel_agent (from ?a=) drives the detail. %>
-<%# Roda renders with plain locals — no local_assigns hash (Rails-ism). %>
+<%# Tools — the catalog, as miller columns: every tool in the master (grouped by
+    origin, searchable, with how many agents can call it) | the detail in a
+    turbo-frame: a data tool's editor, or a read-only card for code and MCP
+    tools. Which agent may call what lives on the agent (its Tools tab).
+    @detail: nil (landing) | :edit (data-tool editor) | :info (read-only card). %>
 <% frame_only = defined?(frame_only) && frame_only %>
 <% unless frame_only %>
 <header class="page-head">
-  <h1>Tools<span class="sub">Manage tool definitions and agent access</span></h1>
+  <h1>Tools<span class="sub">Every tool agents can call — edit HTTP tools, see who uses each one</span></h1>
 </header>
 <div class="drill" data-controller="list-filter">
   <aside class="drill-pane drill-master">
     <div class="drill-pane-head">
-      <div class="title"><strong>Tools <span class="count"><%= @tools.size %></span></strong></div>
-      <a class="btn primary btn-sm" href="/studio/tools/def/new">+ New tool</a>
+      <div class="title"><strong>Tools <span class="count" data-list-filter-target="count"><%= @tools.size %></span></strong></div>
+      <a class="btn primary btn-sm" href="/studio/tools/def/new" data-turbo-frame="tool-detail" data-turbo-action="advance">+ New tool</a>
     </div>
     <div class="drill-search">
-      <input type="search" class="filter-input" placeholder="Filter agents…" aria-label="Filter agents"
+      <input type="search" class="filter-input" placeholder="Search tools…" aria-label="Search tools"
              data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
     </div>
-    <nav class="drill-pane-body drill-list" aria-label="tools and agents" data-controller="active-link">
-      <% unless @data_tool_names.empty? %>
-        <div class="drill-group-label">Data tools · HTTP, editable</div>
-        <% @data_tool_names.sort.each do |name| %>
-          <% dropped = @dropped_tool_names.include?(name) %>
-          <a class="drill-item drill-item-sm" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>"
-             <%== %( title="its definition is invalid — no agent can call it until it is fixed") if dropped %>>
-            <div class="drill-item-name"><span class="txt" title="<%= name %>"><%= name %></span><span class="pill plain">data</span><% if dropped %> <span class="pill locked">dropped</span><% end %></div>
-          </a>
-        <% end %>
+    <nav class="drill-pane-body drill-list" aria-label="tools" data-controller="active-link">
+      <% @tool_groups.each do |label, tools| %>
+        <details class="drill-group" data-list-filter-target="group"<%== " open" unless label.start_with?("MCP") %>>
+          <summary class="drill-group-label"><%= label %> <span class="count"><%= tools.size %></span></summary>
+          <% tools.each do |t| %>
+            <% data = @data_tool_names.include?(t.name) %>
+            <% users = @tool_reach[t.name].size %>
+            <a class="drill-item drill-item-sm<%== ' active' if @selected == t.name %>"
+               href="/studio/tools/<%= data ? "def" : "info" %>/<%= Rack::Utils.escape(t.name) %>"
+               data-turbo-frame="tool-detail" data-turbo-action="advance"
+               data-list-filter-target="item" data-filter-text="<%= "#{t.name} #{label}" %>"
+               data-active-link-target="item" data-action="click->active-link#select" title="<%= t.description %>">
+              <div class="drill-item-name"><span class="txt"><%= t.name %></span><% if data %><span class="pill plain">data</span><% end %><span class="pill <%= users.zero? ? "warn" : "plain" %>"><%= users %> <%= users == 1 ? "agent" : "agents" %></span></div>
+            </a>
+          <% end %>
+        </details>
       <% end %>
-      <div class="drill-group-label">Agents · allow / deny</div>
-      <% @agents.each do |a| %>
-        <a class="drill-item<%== ' active' if @sel_agent && @sel_agent.id == a.id %>"
-           href="/studio/tools?a=<%= Rack::Utils.escape(a.id) %>"
-           data-turbo-frame="tool-detail" data-turbo-action="advance"
-           data-list-filter-target="item" data-filter-text="<%= a.id %>"
-           data-active-link-target="item" data-action="click->active-link#select">
-          <div class="drill-item-name"><span class="txt" title="<%= a.id %>"><%= a.id %></span>
-            <span class="pill plain"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size}" %></span>
-          </div>
-        </a>
+      <% if @dropped_tool_names.any? %>
+        <details class="drill-group" data-list-filter-target="group" open>
+          <summary class="drill-group-label">Invalid definitions <span class="count"><%= @dropped_tool_names.size %></span></summary>
+          <% @dropped_tool_names.sort.each do |name| %>
+            <a class="drill-item drill-item-sm" href="/studio/tools/def/<%= Rack::Utils.escape(name) %>"
+               data-turbo-frame="tool-detail" data-turbo-action="advance"
+               data-list-filter-target="item" data-filter-text="<%= name %>"
+               title="its definition is invalid — no agent can call it until it is fixed">
+              <div class="drill-item-name"><span class="txt"><%= name %></span><span class="pill locked">dropped</span></div>
+            </a>
+          <% end %>
+        </details>
       <% end %>
-      <div class="empty" data-list-filter-target="empty" hidden>No agents match your filter.</div>
+      <div class="empty" data-list-filter-target="empty" hidden>No tools match your search.</div>
     </nav>
   </aside>
 <% end %>
@@ -50,88 +57,28 @@
       <% if flash["error"] %><div class="flash err" role="alert"><%= flash["error"] %></div><% end %>
       <% if flash["notice"] %><div class="flash ok" role="status"><%= flash["notice"] %></div><% end %>
     <% end %>
-    <% if @sel_agent.nil? %>
+    <% case @detail %>
+    <% when :edit %>
+      <%== render("_tool_edit") %>
+    <% when :info %>
+      <% t = @info_tool %>
+      <div class="drill-pane-head">
+        <div class="title">
+          <strong class="mono"><%= t.name %></strong>
+          <span class="count"><%= @info_label %></span>
+        </div>
+      </div>
+      <div class="drill-pane-body">
+        <p><%= t.description %></p>
+        <p class="muted"><%= t.plugin.to_s.start_with?("mcp:") ? "Comes from an MCP server; edit the server under MCP." : "Built into the engine; it cannot be edited here." %></p>
+        <%== render("_tool_users", locals: { name: t.name }) %>
+      </div>
+    <% else %>
       <div class="drill-empty">
         <div>
           <h2>Tools</h2>
-          <p>Pick an agent to set which tools it can call — or edit a data tool on the left. <strong>all</strong> = open allowlist (every tool flows through); a <span class="pill locked">locked</span> tool is on the denylist (deny always wins).</p>
+          <p>Pick a tool to see which agents can call it. HTTP tools open their editor; MCP and built-in tools are read-only. Which tools an agent may call is set on the agent, in its <strong>Tools</strong> tab.</p>
         </div>
-      </div>
-    <% else %>
-      <% a = @sel_agent %>
-      <div class="drill-pane-head">
-        <div class="title">
-          <strong class="mono"><%= a.id %></strong>
-          <span class="count">Tool access</span>
-        </div>
-        <button type="submit" form="tools-form" class="btn primary" data-turbo-submits-with="Saving…">Save tools</button>
-      </div>
-      <div class="drill-pane-body only-on-scope" data-controller="toggle-counter list-filter">
-        <div class="matrix-topline">
-          <span class="count-badge mono" data-toggle-counter-target="count"><%= a.tools_allow.nil? ? "all" : "#{tools_on_count(a, @tools)}/#{@tools.size} on" %></span>
-          <label class="switch" title="open allowlist — every tool flows through">
-            <input type="checkbox" name="all_tools" value="1" form="tools-form"<%== " checked" if a.tools_allow.nil? %>
-                   data-toggle-counter-target="all" data-action="change->toggle-counter#update">
-            <span class="switch-track" aria-hidden="true"></span>
-            <span class="switch-label">all tools</span>
-          </label>
-          <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectNone"
-                  title="uncheck every tool (deny-all — Save tools to apply)">none</button>
-          <label class="switch" title="hide tools this agent cannot call; typing a search shows every match">
-            <input type="checkbox" id="only-on" checked>
-            <span class="switch-track" aria-hidden="true"></span>
-            <span class="switch-label">only enabled</span>
-          </label>
-        </div>
-        <p class="muted">Save tools to apply this selection to <strong><%= a.id %></strong> on its next turn. A <span class="pill locked">locked</span> tool is on the denylist — deny always wins, so it can't be granted here.</p>
-        <% open_all = a.tools_allow.nil? && a.tools_allow_groups.nil? %>
-        <% kit_tools = open_all ? {} : kit_sources(a, "tools") %>
-        <% if Array(a.kits).any? %>
-          <% kit_links = a.kits.map { |k| %(<a class="pill info" href="/studio/kits/#{Rack::Utils.escape(k)}">#{h(k)}</a>) }.join(" ") %>
-          <% if open_all %>
-            <p class="muted">Its kits <%== kit_links %> add nothing here: this agent already gets every tool. Turn off <strong>all tools</strong> to limit it to its own list plus its kits.</p>
-          <% else %>
-            <p class="muted">Tools marked <span class="pill info">kit</span> come from its kits <%== kit_links %> and are edited there.</p>
-          <% end %>
-        <% end %>
-        <input type="search" class="filter-input" placeholder="Search to add tools…" aria-label="Search tools or servers"
-               data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
-        <p class="empty" data-list-filter-target="empty" hidden>No tools match your filter.</p>
-        <form id="tools-form" method="post" action="/studio/tools/<%= Rack::Utils.escape(a.id) %>">
-          <%== csrf_tag %>
-          <% if @tools.empty? %>
-            <p class="muted">No tools registered in the runtime.</p>
-          <% else %>
-            <div class="tool-grid<%== " is-open" if a.tools_allow.nil? %>" data-toggle-counter-target="grid">
-              <% @tool_groups.each do |label, tools| %>
-                <details class="tool-section" aria-label="<%= label %>" data-list-filter-target="group" open>
-                  <summary><%= label %> <span class="count"><%= tools_on_count(a, tools) + tools.count { |t| kit_tools[t.name] && !tool_allowed_for?(a, t.name) && !tool_denied_for?(a, t.name) } %>/<%= tools.size %></span></summary>
-                  <div class="matrix-topline">
-                    <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectSection" data-checked="true"
-                            aria-label="Select all tools in <%= label %>">Select all</button>
-                    <button type="button" class="btn ghost btn-sm" data-action="click->toggle-counter#selectSection" data-checked="false"
-                            aria-label="Deselect all tools in <%= label %>">Deselect all</button>
-                  </div>
-                  <div class="check-grid tool-grid">
-              <% tools.each do |t| %>
-                <% denied = tool_denied_for?(a, t.name) %>
-                <% from_kit = !denied && !tool_allowed_for?(a, t.name) && kit_tools[t.name] %>
-                <label class="check tool-check<%== " locked" if denied %>" title="<%= denied ? "denied — deny wins" : from_kit ? "from kit #{from_kit}" : t.description %>"
-                       data-list-filter-target="item" data-filter-text="<%= "#{label} #{t.name}" %>">
-                  <input type="checkbox" name="tools[]" value="<%= t.name %>"
-                         <%== " checked" if (tool_allowed_for?(a, t.name) && !denied) || from_kit %>
-                         <%== " disabled" if denied || from_kit %>
-                         data-toggle-counter-target="tool" data-locked="<%= denied || !!from_kit %>"
-                         data-action="change->toggle-counter#update">
-                  <span class="mono"><%= t.name %></span><% if @data_tool_names.include?(t.name) %> <span class="pill plain">data</span><% end %><% if denied %> <span class="pill locked">locked</span><% end %><% if from_kit %> <span class="pill info">kit</span><% end %>
-                </label>
-              <% end %>
-                  </div>
-                </details>
-              <% end %>
-            </div>
-          <% end %>
-        </form>
       </div>
     <% end %>
   </turbo-frame>
