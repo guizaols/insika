@@ -4615,7 +4615,7 @@ end
     body = login(app).get("/refinement?agent=bia").body
 
     expect(body).not_to include("filter-bar")
-    expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
+    expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
   end
 
   it "a frame request for a run renders the detail pane alone; a plain hit renders the shell" do
@@ -5413,7 +5413,7 @@ end
       body = login(app).get("/harvest?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
+      expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
     end
 
     it "the evidence excerpt renders ONE message per index — an index valid in one origin session is not replayed against the others (the review fix)" do
@@ -5582,7 +5582,7 @@ end
       body = login(app).get("/knowledge?agent=store-support").body
 
       expect(body).not_to include("filter-bar")
-      expect(body).to match(/<input type="search" name="agent" list="agent-options-/)
+      expect(body).to match(/<input type="search"[^>]*name="agent" list="agent-options-/)
       expect(body).to include('<div class="segmented"')
       expect(body).to include(">All <span")
       expect(body).to include(">Conflicts <span")

@@ -31,8 +31,8 @@
             <a class="drill-item<%== ' active' if @selected == s.name %>"
                href="/studio/skills/<%= Rack::Utils.escape(s.name) %>"<%== " data-unused" if users.zero? %>
                data-list-filter-target="item" data-filter-text="<%= s.name %> <%= s.description %>">
-              <div class="drill-item-name"><span class="txt" title="<%= s.name %>"><%= s.name %></span><% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %><span class="pill <%= users.zero? ? "warn" : "plain" %>"><%= users %> <%= users == 1 ? "agent" : "agents" %></span></div>
-              <div class="drill-item-sub"><%= s.description %></div>
+              <div class="drill-item-name"><span class="txt" title="<%= s.name %>"><%= s.name %></span><% if @stored.include?(s.name) %><span class="pill info">authored</span><% end %></div>
+              <div class="drill-item-sub"><span<%== ' class="warn-text"' if users.zero? %>><%= users %> <%= users == 1 ? "agent" : "agents" %></span> · <%= s.description %></div>
             </a>
           <% end %>
         </details>
