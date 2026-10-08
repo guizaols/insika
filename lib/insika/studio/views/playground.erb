@@ -15,11 +15,7 @@
     <%== csrf_tag %>
     <div class="chat-head">
       <label class="chat-field">agent
-        <select name="agent">
-          <% @agents.each do |id| %>
-            <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %></option>
-          <% end %>
-        </select>
+        <%== render("_agent_picker", locals: { name: "agent", options: @agents, value: @agent }) %>
       </label>
       <label class="chat-field">session
         <input type="text" name="session_id" value="<%= @session_id %>" placeholder="empty = new conversation"

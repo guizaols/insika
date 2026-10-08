@@ -127,9 +127,7 @@
               <form method="post" action="/studio/skills/<%= Rack::Utils.escape(@selected) %>/specialize">
                 <%== csrf_tag %>
                 <label>agent
-                  <select name="agent_id" required>
-                    <% others.each do |a| %><option value="<%= a.id %>"><%= a.id %></option><% end %>
-                  </select>
+                  <%== render("_agent_picker", locals: { name: "agent_id", options: others.map(&:id), value: nil }) %>
                 </label>
                 <div class="actions"><button type="submit" data-turbo-submits-with="Creating…">Specialize for this agent</button></div>
               </form>
