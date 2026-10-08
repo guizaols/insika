@@ -126,7 +126,15 @@ Studio::App.configure(
   negative_list: W::HARVEST_NEGATIVE,
   # the Knowledge page reads the store directly; its
   # mutations (write/delete/restore) dispatch bus commands.
-  knowledge_store: W::GRAPH.knowledge_store
+  knowledge_store: W::GRAPH.knowledge_store,
+  memory_audit_store: W::GRAPH.memory_audit_store,
+  shadow_pair_store: W::GRAPH.shadow_pair_store,
+  channel_registry: W::CHANNEL_REGISTRY,
+  # the Artifacts tab and the playground's "open artifact" link read the
+  # report store; the signing config (nil without INSIKA_ARTIFACT_SIGNING_KEY)
+  # decides whether a signed sharing link exists at all.
+  artifact_store: W::GRAPH.artifact_store,
+  artifact_signing: Insika::ArtifactSigning.studio_config
 )
 
 # OTEL Telemetry (opt-in). Only when enabled (INSIKA_OTEL); off -> nil -> no-op.
