@@ -25,10 +25,16 @@ module Insika
       "#{instance.to_s.downcase.gsub(/[^a-z0-9]+/, '_')}__#{tool}"
     end
 
-    def initialize(mcp_store:, client_factory: Insika::McpClient.method(:for))
+    # Live clients kept per process. Past this, the least recently used one is
+    # closed; its conversation reconnects on its next call, as a NEW MCP session.
+    # ponytail: count cap, not idle TTL — add a TTL if idle sockets pile up.
+    MAX_CLIENTS = 200
+
+    def initialize(mcp_store:, client_factory: Insika::McpClient.method(:for), max_clients: MAX_CLIENTS)
       @mcp_store = mcp_store
       @client_factory = client_factory
-      @clients = {}
+      @max_clients = max_clients
+      @clients = {} # [instance, conversation] -> client, oldest use first
       @mutex = Mutex.new
     end
 
@@ -68,10 +74,11 @@ module Insika
     # NEXT tool call or refresh, no process restart required (there's no way
     # to restart a process by hand on a Railway dyno).
     def evict(name)
-      client = @mutex.synchronize { @clients.delete(name.to_s) }
-      client&.close
-    rescue StandardError
-      nil # best-effort teardown of a possibly already-dead process
+      gone = @mutex.synchronize do
+        keys = @clients.keys.select { |instance, _| instance == name.to_s }
+        keys.map { |key| @clients.delete(key) }
+      end
+      gone.each { |client| close_quietly(client) }
     end
 
     private
@@ -108,18 +115,36 @@ module Insika
       require_relative "mcp_live_tool"
       Insika::McpLiveTool.new(instance_name: record["name"], tool: tool, name: name,
                               overrides: record.dig("tool_overrides", tool["name"]) || {},
-                              client_for: -> { client_for(record) })
+                              client_for: ->(session_id = nil) { client_for(record, session_id) })
     end
 
-    # A lazy, MEMOIZED client for `record` — one client per
-    # instance name, reused across calls/turns. Raises on a gated/unreachable
-    # instance; only called from `refresh` and from a running McpLiveTool's
-    # `#execute` (which rescues) — never from `entries`/`build_tool`, so a
-    # downed server never breaks turn ASSEMBLY, only that tool's own call.
-    def client_for(record)
-      @mutex.synchronize do
-        @clients[record["name"]] ||= @client_factory.call(record)
+    # A lazy, MEMOIZED client for `record` — one per (instance, conversation),
+    # reused across that conversation's turns. The server ties its state to the
+    # MCP session (Mcp-Session-Id): a client shared by every conversation leaked
+    # one chat's target store and confirmation tokens into another. A stdio
+    # instance stays one shared process — a process per chat is too costly.
+    # Raises on a gated/unreachable instance; only called from `refresh` and
+    # from a running McpLiveTool's `#execute` (which rescues) — never from
+    # `entries`/`build_tool`, so a downed server never breaks turn ASSEMBLY,
+    # only that tool's own call.
+    def client_for(record, session_id = nil)
+      session_id = nil if record["transport"].to_s == "stdio"
+      key = [record["name"], session_id&.to_s]
+      stale = nil
+      client = @mutex.synchronize do
+        found = @clients.delete(key) || @client_factory.call(record)
+        @clients[key] = found # re-insert: most recently used goes last
+        stale = @clients.shift.last if @clients.size > @max_clients
+        found
       end
+      close_quietly(stale) if stale
+      client
+    end
+
+    def close_quietly(client)
+      client.close
+    rescue StandardError
+      nil # best-effort teardown of a possibly already-dead process
     end
   end
 end

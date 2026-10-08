@@ -8,7 +8,7 @@ module Insika
   # come from the CACHED descriptor (McpStore#tools_cache — no I/O to build
   # this instance, same cost as any other tool the registry hands out).
   # `#execute` is the only thing that touches the network, calling through
-  # `client_for` (Insika::McpToolRegistry's memoized, lazy client) into
+  # `client_for` (Insika::McpToolRegistry's memoized, lazy, per-conversation client) into
   # `RubyLLM::MCP::Tool#call`, which already unwraps `content[].text` and
   # turns `isError` into `{error:}`.
   #
@@ -45,8 +45,15 @@ module Insika
       schema.nil? || schema.empty? ? { "type" => "object", "properties" => {} } : schema
     end
 
+    # The conversation this instance serves, deposited by ToolAssembly. An MCP
+    # server keeps state per MCP session (a target store, a pending
+    # confirmation token), so each conversation gets its own client.
+    def turn_context=(ctx)
+      @session_id = ctx && (ctx[:session_id] || ctx["session_id"])
+    end
+
     def execute(**params)
-      live = @client_for.call.tools.find { |tool| tool.name == @tool["name"] }
+      live = @client_for.call(@session_id).tools.find { |tool| tool.name == @tool["name"] }
       raise Insika::NotFoundError, "tool '#{@tool["name"]}' no longer offered" if live.nil?
 
       result = live.call(**params)

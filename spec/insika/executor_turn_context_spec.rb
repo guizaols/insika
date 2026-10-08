@@ -38,7 +38,7 @@ RSpec.describe "Insika::Executor — turn context" do
       # state.tenant was already set by run_pipeline via memory_tenant (=chat here).
       ctx = executor.send(:build_turn_context, task_with(session_id: "chat-42"), profile, state_with(tenant: "chat-42"))
       # delegation_depth: 0 for a top-level turn — set by run_subagent for children.
-      expect(ctx).to eq(chat_id: "chat-42", agent_id: "bia", tenant: "chat-42",
+      expect(ctx).to eq(chat_id: "chat-42", session_id: "chat-42", agent_id: "bia", tenant: "chat-42",
                         command_tenant: nil, store_id: "loja-7", task_id: "t", delegation_depth: 0)
     end
 

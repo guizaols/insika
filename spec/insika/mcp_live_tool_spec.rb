@@ -14,7 +14,7 @@ RSpec.describe Insika::McpLiveTool do
 
   def build(tool_hash, gem_tool)
     gem_tool.name = tool_hash.fetch("name")
-    described_class.new(instance_name: "fs", tool: tool_hash, client_for: -> { double_client(gem_tool) })
+    described_class.new(instance_name: "fs", tool: tool_hash, client_for: ->(_session = nil) { double_client(gem_tool) })
   end
 
   def double_client(gem_tool)
@@ -44,7 +44,7 @@ RSpec.describe Insika::McpLiveTool do
 
   it "the underlying tool no longer being offered -> {error:}, never raises" do
     described_tool = described_class.new(instance_name: "fs", tool: { "name" => "gone", "description" => "d" },
-                                          client_for: -> { double_client(nil) })
+                                          client_for: ->(_session = nil) { double_client(nil) })
     expect(described_tool.execute).to eq(error: "MCP instance 'fs' tool 'gone' failed: tool 'gone' no longer offered")
   end
 
@@ -55,7 +55,7 @@ RSpec.describe Insika::McpLiveTool do
 
   it "a client_for that itself fails to connect -> {error:}, never raises" do
     tool = described_class.new(instance_name: "fs", tool: { "name" => "x", "description" => "d" },
-                               client_for: -> { raise "connection refused" })
+                               client_for: ->(_session = nil) { raise "connection refused" })
     expect(tool.execute).to eq(error: "MCP instance 'fs' tool 'x' failed: connection refused")
   end
 
@@ -81,7 +81,7 @@ RSpec.describe Insika::McpLiveTool do
       live.define_singleton_method(:call) { |**| result }
       client.define_singleton_method(:tools) { [live] }
       described_class.new(instance_name: "store", tool: descriptor, overrides: overrides,
-                          client_for: -> { client })
+                          client_for: ->(_session = nil) { client })
     end
 
     it "carries an evidence spec that names the store's own field names" do
