@@ -2478,8 +2478,9 @@ end
     # the cold agents read the unfiltered 14-day window: they compare agents.
     def home_operations(window, now, profiles)
       metrics = insika[:model_metrics_store]
-      @day = metrics&.report(period: "24h", agent: @agent, now: now)
-      @day_before_cost = metrics&.report(from: now - 2 * 86_400, to: now - 86_400, agent: @agent)&.dig("totals", "cost")
+      # one read for the 24h numbers, the cost before them and the daily chart
+      @day = metrics.respond_to?(:home) ? metrics.home(agent: @agent, now: now, days: HOME_WINDOW_DAYS) : nil
+      @day_before_cost = @day&.fetch("day_before_cost")
       day_ago = (now - 86_400).iso8601
       @outcomes_24h = insika[:outcome_store]&.all(agent: @agent)&.count { |r| r.at.to_s >= day_ago }
       by_agent = window.group_by { |s| session_agent(s) }.reject { |agent, _| agent.empty? }
@@ -2495,10 +2496,7 @@ end
 
         { id: s.id, agent: session_agent(s), waiting: t }
       end.sort_by { |row| row[:waiting] }.first(8)
-      # Cost and tokens per UTC day, 14 days: a 30d report ending at tomorrow's
-      # midnight has daily buckets on calendar days; the last 14 are ours.
-      midnight = Time.utc(now.year, now.month, now.day) + 86_400
-      @daily = Array(metrics&.report(period: "30d", agent: @agent, now: midnight)&.fetch("series")).last(HOME_WINDOW_DAYS)
+      @daily = Array(@day&.fetch("daily"))
       cold_floor = now - COLD_AGENT_DAYS * 86_400
       @cold_agents = profiles ? profiles.all.map { |p| p.id.to_s }.sort.reject do |id|
         Array(by_agent[id]).any? { |s| (t = utc_time(s.updated_at)) && t >= cold_floor }

@@ -43,7 +43,7 @@ module Insika
     # the no-tenant records must pass `tenant: ""` explicitly (the FOLD uses
     # `for_pair`, never this nil-means-everything trap).
     def all(tenant: nil, agent: nil)
-      records = @store.list(SCOPE).filter_map { |k| to_record(@store.get(SCOPE, k)) }
+      records = @store.entries(SCOPE).filter_map { |_k, rec| to_record(rec) }
       records.select! { |r| r.tenant == tenant } if tenant
       records.select! { |r| r.agent == agent } if agent
       records.sort_by(&:at).reverse
