@@ -32,6 +32,16 @@ RSpec.describe Insika::Telemetry do
     it "disabled -> nil (does not load the OTEL gem)" do
       expect(described_class.setup(env: {})).to be_nil
     end
+
+    # A rejected export used to vanish: the SDK's default logger is $stdout,
+    # buffered when it is a pipe (Falcon workers, a container log).
+    it "the SDK logger writes errors where they are seen at once" do
+      io = StringIO.new
+      logger = described_class.sdk_logger(io)
+      logger.error("OTLP exporter received http.code=404")
+      expect(io.string).to include("otel", "http.code=404")
+      expect(described_class.sdk_logger.instance_variable_get(:@logdev).dev).to be($stderr)
+    end
   end
 
   describe ".attach" do

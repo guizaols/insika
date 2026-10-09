@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "logger"
+
 require "async"
 require_relative "telemetry/pricing"
 require_relative "telemetry/recorder"
@@ -39,6 +41,7 @@ module Insika
       require "opentelemetry/sdk"
       require "opentelemetry/exporter/otlp"
       load_metrics_sdk
+      OpenTelemetry.logger = sdk_logger
       unless @configured
         OpenTelemetry::SDK.configure { |c| c.service_name = service_name }
         @configured = true
@@ -47,6 +50,13 @@ module Insika
       @metrics = !meter.nil?
       Recorder.new(tracer: OTelTracer.new(OpenTelemetry.tracer_provider.tracer("insika")),
                    meter: meter, pricing: pricing(env))
+    end
+
+    # The SDK's default logger writes to $stdout, which Ruby buffers when it is a
+    # pipe (Falcon workers, a container log): a rejected export (404 from an
+    # ingest that wants a header) never reached the log. $stderr is unbuffered.
+    def sdk_logger(io = $stderr)
+      Logger.new(io, progname: "otel", level: ENV.fetch("OTEL_LOG_LEVEL", "warn"))
     end
 
     # Did `setup` wire the metric instruments too (SDK present, at least one reader)?
