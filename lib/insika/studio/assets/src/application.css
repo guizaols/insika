@@ -556,7 +556,10 @@
   .chart-sparkline { height:3rem; }
 
   /* ── Overview home: KPI strip + activity chart + conversations ───────── */
-  .home-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:.75rem; align-items:start; }
+  /* the live frame (live-home reloads it) is a plain block, so the page lays
+     out exactly as if it were not there */
+  turbo-frame#home-ops { display:block; }
+  .home-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:.75rem; align-items:stretch; margin-bottom:.75rem; }
   @media (max-width:900px) { .home-grid { grid-template-columns:1fr; } }
   .home-grid .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:.6rem; margin-bottom:.875rem; }
   .home-grid .section-head h2 { font-size:var(--text); font-weight:600; margin:0; }
@@ -1528,7 +1531,7 @@ fieldset.subgroup:has(> label.inherit input:checked) > :not(legend, label.inheri
 @layer components {
   /* Report surfaces share the compact, quiet summary used by Models. */
   .reports-page .kpi-strip { gap:0; background:var(--panel); border:1px solid var(--line-1); border-radius:var(--radius-lg); padding:1.25rem 0; grid-template-columns:repeat(4,minmax(0,1fr)); }
-  .reports-home > .kpi-strip { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .reports-home .kpi-strip { grid-template-columns:repeat(6,minmax(0,1fr)); }
   .reports-page .kpi { min-width:0; padding:0 1.5rem; border:0; border-right:1px solid var(--line-1); border-radius:0; box-shadow:none; background:transparent; }
   .reports-page .kpi:last-child { border-right:0; }
   .reports-page .kpi .label { text-transform:none; letter-spacing:0; font-size:var(--text-xs); color:var(--dim); }
@@ -1543,13 +1546,13 @@ fieldset.subgroup:has(> label.inherit input:checked) > :not(legend, label.inheri
   .reports-page .drill-search input { width:100%; }
   .reports-page .chart-labels { flex-wrap:wrap; gap:.5rem; }
   @media (max-width:1000px) {
-    .reports-home > .kpi-strip { grid-template-columns:repeat(3,minmax(0,1fr)); row-gap:1.2rem; }
-    .reports-home > .kpi-strip .kpi:nth-child(3) { border-right:0; }
+    .reports-home .kpi-strip { grid-template-columns:repeat(3,minmax(0,1fr)); row-gap:1.2rem; }
+    .reports-home .kpi-strip .kpi:nth-child(3) { border-right:0; }
   }
   @media (max-width:640px) {
-    .reports-page .kpi-strip, .reports-home > .kpi-strip { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:1.2rem; }
+    .reports-page .kpi-strip, .reports-home .kpi-strip { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:1.2rem; }
     .reports-page .kpi:nth-child(2n) { border-right:0; }
-    .reports-home > .kpi-strip .kpi:nth-child(3) { border-right:1px solid var(--line-1); }
+    .reports-home .kpi-strip .kpi:nth-child(3) { border-right:1px solid var(--line-1); }
     .reports-page .kpi { padding:0 1rem; }
     .reports-page .kpi .value { font-size:1.35rem; }
     .reports-page .report-workspace { height:auto; min-height:0; }
