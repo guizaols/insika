@@ -265,6 +265,7 @@ module Insika
           @store.delete(ModelMetricsStore::SCOPE, key)
         end
         @store.delete(LLMTraceStore::SCOPE, id.to_s)
+        @store.delete(ModelMetricsStore::TURN_SCOPE, id.to_s)
         @store.delete(SCOPE, key_for(id))
       end
     end

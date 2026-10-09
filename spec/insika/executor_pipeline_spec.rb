@@ -386,6 +386,20 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(event_stream.types).not_to include(:error) # R2b: no legacy twin
     end
 
+    it "a failed turn still leaves its turn row, with status, stage and time to the failure" do
+      metrics = Insika::ModelMetricsStore.new(store: backend)
+      session_store.create(id: "s1")
+      executor = build_executor(context_builder: RaisingContextBuilder.new, model_metrics_store: metrics)
+      Sync do
+        executor.spawn(make_task, profile: profile)
+        executor.instance_variable_get(:@running)["t"]&.wait
+      end
+
+      row = backend.get(Insika::ModelMetricsStore::TURN_SCOPE, "t")
+      expect(row).to include("agent" => "sales", "status" => "failed", "stage" => "context")
+      expect(row["total_ms"]).to be_a(Numeric)
+    end
+
     it "StoreError at stage 8 -> :failed stage :persistence + :task_failed" do
       session_store.create(id: "s1")
       executor = build_executor
@@ -788,6 +802,18 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
 
       ev = event_stream.events.find { |e| e.type == :task_completed }
       expect(ev.data).not_to have_key(:timing)
+    end
+
+    it "writes the turn row (agent, model, windows) with the flag off" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
+      metrics = Insika::ModelMetricsStore.new(store: backend)
+      session_store.create(id: "s1")
+      run_turn(build_executor(model_metrics_store: metrics), make_task)
+
+      row = backend.get(Insika::ModelMetricsStore::TURN_SCOPE, "t")
+      expect(row).to include("agent" => "sales", "status" => "completed")
+      expect(row["ttft_ms"]).to be_a(Numeric)
+      expect(row["total_ms"]).to be_a(Numeric)
     end
 
     it "reports the turn's store calls when the backend counts them" do

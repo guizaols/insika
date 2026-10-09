@@ -55,6 +55,31 @@ RSpec.describe "Durable model metrics" do
         expect(report["totals"]["requests"]).to eq(1)
       end
 
+      it "reports turn latency and tool health with the same filters, and drops a turn with its task" do
+        store.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "sales", "model" => "flash",
+          "ttft_ms" => 100, "total_ms" => 900, "tools" => [["search", true, 10], ["cart", false, 40]] })
+        tasks.create(id: "t2", command: {})
+        store.record_turn(task_id: "t2", row: { "at" => now.iso8601, "agent" => "support", "ttft_ms" => 300,
+          "tools" => [["search", true, 20]] })
+        tasks.create(id: "t3", command: {})
+        store.record_turn(task_id: "t3", row: { "at" => now.iso8601, "status" => "failed", "stage" => "timeout", "total_ms" => 60_000 })
+        store.record_turn(task_id: "old", row: { "at" => (now - 40 * 86_400).iso8601, "ttft_ms" => 1 })
+
+        turns = store.report(now: now)["turns"]
+        expect(turns).to include("count" => 3, "failures" => 1, "failure_stages" => { "timeout" => 1 })
+        expect(turns["windows"]["total_ms"]).to include("measured" => 2, "p95" => 60_000)
+        expect(turns["windows"]["ttft_ms"]).to eq("measured" => 2, "p50" => 100, "p95" => 300)
+        expect(turns["windows"]["queue_ms"]).to eq("measured" => 0, "p50" => nil, "p95" => nil)
+        expect(turns["tools"]).to eq([
+          { "tool" => "cart", "calls" => 1, "failures" => 1, "p50_ms" => 40, "p95_ms" => 40 },
+          { "tool" => "search", "calls" => 2, "failures" => 0, "p50_ms" => 10, "p95_ms" => 20 }
+        ])
+        expect(store.report(agent: "sales", now: now)["turns"]["count"]).to eq(1)
+
+        tasks.delete("t")
+        expect(store.report(now: now)["turns"]["count"]).to eq(2)
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,

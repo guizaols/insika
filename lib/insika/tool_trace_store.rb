@@ -37,6 +37,11 @@ module Insika
       nil
     end
 
+    # Conventional tool error = Hash with key "error"/:error (everything else is ok).
+    def self.ok?(result)
+      !(result.is_a?(Hash) && (result.key?("error") || result.key?(:error)))
+    end
+
     # -> [Hash] session entries in chronological order. [] if none.
     def for_session(session_id) = @store.get(SCOPE, session_id.to_s) || []
 
@@ -49,7 +54,7 @@ module Insika
       e = stringify_keys(entry)
       {
         "turn" => e["turn"], "tool" => e["tool"].to_s, "call_id" => e["call_id"].to_s,
-        "ok" => ok?(e["result"]),
+        "ok" => self.class.ok?(e["result"]),
         "args" => clip(mask(e["args"])), "result" => clip(mask(e["result"])),
         "ms" => e["ms"], "at" => e["at"].to_s
       }.tap do |trace|
@@ -57,11 +62,6 @@ module Insika
         # Timing breakdown a data-tool reports (see DataDefinedTool#record_timing).
         %w[pre_ms http_ms server_ms].each { |k| trace[k] = e[k] if e[k].is_a?(Integer) }
       end
-    end
-
-    # Conventional tool error = Hash with key "error"/:error (everything else is ok).
-    def ok?(result)
-      !(result.is_a?(Hash) && (result.key?("error") || result.key?(:error)))
     end
 
     # Masks values of sensitive keys (recursive); the rest pass through intact.

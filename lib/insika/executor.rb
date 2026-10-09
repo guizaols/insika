@@ -631,6 +631,7 @@ module Insika
     def execute(task, profile:, actor:, resume_from: nil, timing: nil)
       state = nil
       @llm_buffers[task.id] = []
+      Fiber[TurnTiming::FIBER_KEY] = nil # a failure before run_pipeline has no clock of its own
       # Resume of a crash orphan: the interrupted attempt's Execution was left OPEN
       # (the fiber died). The TaskStore forbids opening a second one while one is
       # open -> close the orphan as :interrupted before opening the N+1 (a new
@@ -676,48 +677,48 @@ module Insika
       emit(:task_cancelled, data, task: task)
     rescue PolicyDenied => e
       emit(:policy_denied, { policy: e.policy, reason: e.reason }, task: task)
-      fail_task(task, e, stage: :policy, usage: state&.usage)
+      fail_task(task, e, stage: :policy, usage: state&.usage, profile: profile)
     rescue BudgetExceeded => e
       # WS2 hard budget: a typed, retryable failure — the envelope reads
       # budget_exceeded + retry_after (window roll), never a silent drop.
-      fail_task(task, e, stage: :budget, usage: state&.usage)
+      fail_task(task, e, stage: :budget, usage: state&.usage, profile: profile)
     rescue CircuitOpenError => e
       # WS3 breaker: the turn died BEFORE the provider call — the envelope
       # reads circuit_open + retry_after (cooldown remaining). Worth its own
       # stage: an open breaker is a reliability decision, not an error bug.
-      fail_task(task, e, stage: :reliability, usage: state&.usage)
+      fail_task(task, e, stage: :reliability, usage: state&.usage, profile: profile)
     rescue Insika::RoutingError => e
       # WS4: a route's delegate is missing or its turn failed — an operator
       # config error, staged so the envelope names routing, never :unknown.
-      fail_task(task, e, stage: :routing, usage: state&.usage)
+      fail_task(task, e, stage: :routing, usage: state&.usage, profile: profile)
     rescue Insika::MediaError => e
       # WS9: a voice message that could not be fetched/transcribed (or a media
       # URL the egress guard refused) — heard-loud, never a silent drop.
-      fail_task(task, e, stage: :media, usage: state&.usage)
+      fail_task(task, e, stage: :media, usage: state&.usage, profile: profile)
     rescue Insika::WorkflowSchemaError => e
       # a workflow OUTPUT that violates its output_schema. Distinct
       # stage so a contract breach is not conflated with an :unknown failure. (INPUT
       # is validated synchronously in TriggerWorkflow -> 422, never reaches here.)
-      fail_task(task, e, stage: :workflow_schema, usage: state&.usage)
+      fail_task(task, e, stage: :workflow_schema, usage: state&.usage, profile: profile)
     rescue ContextError => e
-      fail_task(task, e, stage: :context, usage: state&.usage)
+      fail_task(task, e, stage: :context, usage: state&.usage, profile: profile)
     rescue CapabilityError => e
-      fail_task(task, e, stage: :capability, usage: state&.usage)
+      fail_task(task, e, stage: :capability, usage: state&.usage, profile: profile)
     rescue ProviderError => e
-      fail_task(task, e, stage: :ruby_llm, usage: state&.usage)
+      fail_task(task, e, stage: :ruby_llm, usage: state&.usage, profile: profile)
     rescue StoreError => e
-      fail_task(task, e, stage: :persistence, usage: state&.usage)
+      fail_task(task, e, stage: :persistence, usage: state&.usage, profile: profile)
     rescue TimeoutError => e
-      fail_task(task, e, stage: e.stage, usage: state&.usage)
+      fail_task(task, e, stage: e.stage, usage: state&.usage, profile: profile)
     rescue StandardError => e
       # A provider/transport failure is NOT an :unknown bug: wrap it with its
       # action classification (B9) so the envelope can quote retryable and the
       # provider's own retry_after (A8). The classifier is class-name based —
       # the :ruby_llm stage stays reachable even under the smoke-shim's fake.
       if ProviderErrorClassifier.provider_error?(e)
-        fail_task(task, ProviderErrorClassifier.wrap(e), stage: :ruby_llm, usage: state&.usage)
+        fail_task(task, ProviderErrorClassifier.wrap(e), stage: :ruby_llm, usage: state&.usage, profile: profile)
       else
-        fail_task(task, e, stage: :unknown, usage: state&.usage)
+        fail_task(task, e, stage: :unknown, usage: state&.usage, profile: profile)
       end
     ensure
       @shared_turns.delete(task.id)
@@ -869,7 +870,7 @@ module Insika
     # the open Execution (real TaskStore) — do NOT call finish_execution
     # (double-close). The previous checkpoint is NEVER touched on failure. Never
     # re-raises: the fiber dies clean.
-    def fail_task(task, error, stage:, usage: nil)
+    def fail_task(task, error, stage:, usage: nil, profile: nil)
       # Defense-in-depth: if the task is already terminal (e.g. a failure in
       # cleanup AFTER transition(:completed)), completed->failed is invalid and
       # would raise ArgumentError INSIDE the rescue, leaking from the fiber. In
@@ -890,6 +891,7 @@ module Insika
       spec = { class: error.class.name, message: error.message, stage: stage }
       spec = spec.merge(classification) unless classification.empty?
       @task_store.transition(task.id, to: :failed, error: spec)
+      record_failed_turn(task, profile, usage, stage)
       data = { task_id: task.id, error: error.class.name, message: error.message }
       data[:usage] = usage if usage
       data = data.merge(classification) unless classification.empty?
@@ -907,10 +909,10 @@ module Insika
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
     def run_pipeline(task, profile, actor, resume_from, timing = nil)
-      # a CHANNEL turn always allocates the clock — first_balloon_ms
-      # (inbound -> first outbox flush) is H-latência and must not depend on
-      # INSIKA_TURN_TIMING. When the flag is off the clock measures ONLY that
-      # window (`breakdown: false`); the full prep/ttft/gen/total stays opt-in.
+      # Every turn runs the clock (a few clock reads): its windows become the
+      # turn row in ModelMetricsStore. INSIKA_TURN_TIMING only widens what the
+      # response exposes (`breakdown:`); with it off a channel turn still
+      # reports first_balloon_ms (inbound -> first outbox flush).
       #
       # A channel turn may already carry its clock: `SendMessage` stamped
       # `:inbound` at 202 acceptance (before the debounce window and the
@@ -919,9 +921,7 @@ module Insika
       # engine-initiated) falls back to allocating and stamps now — `mark` is
       # first-write-wins, so a threaded clock is never re-stamped.
       channel_turn = !channel_transport(task).nil?
-      timing ||= if TurnTiming.enabled? || channel_turn
-                   TurnTiming.new(breakdown: TurnTiming.enabled?)
-                 end
+      timing ||= TurnTiming.new(breakdown: TurnTiming.enabled?)
       # Store calls count into this turn's clock (Stores::TurnCounter). Assigned
       # even when nil, so a turn without a clock never feeds the previous one's.
       Fiber[TurnTiming::FIBER_KEY] = timing
@@ -1314,11 +1314,12 @@ module Insika
       # Additive sibling — the answer text stays text on purpose; the channel
       # consumes the parts next to it. Absent when nothing was generated.
       data[:output_parts] = st.output_parts if st.output_parts && !st.output_parts.empty?
-      data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
+      exposed = timing&.to_h
+      data[:timing] = exposed unless exposed.nil? || exposed.empty? # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       # best-effort persist of the same timing onto the task record —
       # the Studio task page reads it from there. A failure here must not re-fail
       # the turn (the task is already committed and the event already carries it).
-      persist_turn_timing(task, timing)
+      persist_turn_timing(task, timing, profile, st.usage)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
       # to act on that, so the contract carries it twice: a dedicated :turn_stuck
@@ -2633,8 +2634,9 @@ module Insika
       persist_turn(task, profile, state, content, reply_origin: MessageOrigin::ENGINE,
                    session: state.guardrail_block&.[](:source) != "edge", timing: timing)
       data = { task_id: task.id, content: content, usage: state.usage }
-      data[:timing] = timing.to_h if timing # a channel halt still measured
-      persist_turn_timing(task, timing)
+      exposed = timing&.to_h
+      data[:timing] = exposed unless exposed.nil? || exposed.empty? # a channel halt still measured
+      persist_turn_timing(task, timing, profile, state.usage)
       emit(:task_completed, data, task: task)
     end
 
@@ -2642,15 +2644,40 @@ module Insika
     # The record gains `timing` once, when the turn completes; a store failure
     # here is swallowed — the turn is already committed and the event already
     # carries the number.
-    def persist_turn_timing(task, timing)
+    # The full windows also go to ModelMetricsStore as the turn's row (agent,
+    # model, provider), flag or not.
+    def persist_turn_timing(task, timing, profile, usage)
       return unless timing
 
+      record_turn_metrics(task, timing, profile, usage)
       hash = timing.to_h
       return if hash.empty?
 
       @task_store.record_timing(task.id, hash)
     rescue Insika::Error
       nil
+    end
+
+    def record_turn_metrics(task, timing, profile, usage, status: "completed", stage: nil)
+      return unless @model_metrics_store.respond_to?(:record_turn)
+
+      usage ||= {}
+      @model_metrics_store.record_turn(task_id: task.id, row: timing.metrics.merge(
+        "at" => Time.now.utc.iso8601(6), "agent" => profile.id.to_s, "status" => status,
+        "stage" => stage&.to_s, "model" => usage[:model]&.to_s, "provider" => usage[:provider]&.to_s
+      ).compact)
+    end
+
+    # A failed turn keeps its row too: its total_ms runs to the failure, so a
+    # turn timeout stays in the p95 instead of vanishing from it.
+    def record_failed_turn(task, profile, usage, stage)
+      timing = TurnTiming.current
+      return unless timing && profile
+
+      timing.mark(:done)
+      record_turn_metrics(task, timing, profile, usage, status: "failed", stage: stage)
+    rescue StandardError
+      nil # metrics never fail the failure path
     end
 
       # Emits one :guardrail_flagged per flag the OutputValidator appended in

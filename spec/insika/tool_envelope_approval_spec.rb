@@ -299,6 +299,18 @@ RSpec.describe "ToolEnvelope — approval gate" do
                                       timeout: 60)
       expect(Sync { env.call({}) }).to eq("charged")
     end
+
+    it "counts the call into the running turn's clock, trace recorder or not" do
+      env = Insika::ToolEnvelope.new(ChargeTool.new, state: traced_state(session_id: "s"),
+                                      checkpoint_store: checkpoint_store, tool_registry: FakeToolRegistry.new,
+                                      timeout: 60)
+      timing = Insika::TurnTiming.new(breakdown: false)
+      Sync do
+        Fiber[Insika::TurnTiming::FIBER_KEY] = timing
+        env.call({})
+      end
+      expect(timing.metrics["tools"]).to match([["charge", true, a_kind_of(Integer)]])
+    end
   end
 
   describe "Executor#request_approval (real coordinator)" do
