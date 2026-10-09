@@ -80,6 +80,40 @@ RSpec.describe "Durable model metrics" do
         expect(store.report(now: now)["turns"]["count"]).to eq(2)
       end
 
+      it "home reads once: last 24h, the 24h before, and one bucket per UTC day" do
+        record("llm_usage", id: "now", cost: 0.5, agent: "sales")
+        record("llm_request", id: "now", duration_ms: 3, status: "succeeded", agent: "sales")
+        record("llm_usage", id: "y", at: (now - 30 * 3600).iso8601, cost: 0.25)
+        record("llm_request", id: "y", at: (now - 30 * 3600).iso8601, duration_ms: 3, status: "succeeded")
+        record("llm_request", id: "old", at: (now - 20 * 86_400).iso8601, duration_ms: 3, status: "succeeded")
+        store.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "sales", "status" => "failed", "total_ms" => 900 })
+
+        home = store.home(now: now, days: 14)
+        expect(home["totals"]).to include("requests" => 1, "cost" => 0.5)
+        expect(home["day_before_cost"]).to eq(0.25)
+        expect(home["turns"]).to include("count" => 1, "failures" => 1)
+        expect(home["daily"].size).to eq(14)
+        expect(home["daily"].last).to include("at" => "2026-09-24T00:00:00Z", "cost" => 0.5)
+        expect(home["daily"][-2]).to include("cost" => 0.25)
+        expect(home["daily"].sum { _1["requests"] }).to eq(2)
+        expect(store.home(agent: "sales", now: now)["day_before_cost"]).to be_nil
+      end
+
+      it "reads a window from the newest writes and stops before the old history" do
+        old = now - 40 * 86_400
+        rows = 3_000.times.map { |i| { "type" => "llm_request", "request_id" => "old#{i}", "at" => old.iso8601, "provider" => "deepseek", "model" => "flash", "duration_ms" => 1, "status" => "succeeded" } }
+        store.record_many(task_id: "t", entries: rows)
+        record("llm_request", id: "late", at: (now - 2 * 3600).iso8601, duration_ms: 2, status: "succeeded") # written late, still in the window
+        record("llm_request", id: "new", at: now.iso8601, duration_ms: 3, status: "succeeded")
+        reads = []
+        @backend.define_singleton_method(:recent) do |*args|
+          super(*args).tap { |page| reads << page.size if args[0] == Insika::ModelMetricsStore::SCOPE }
+        end
+
+        expect(store.report(period: "24h", now: now)["totals"]["requests"]).to eq(2)
+        expect(reads.sum).to be < 3_000
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,
