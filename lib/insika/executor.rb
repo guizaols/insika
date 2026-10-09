@@ -2237,16 +2237,22 @@ module Insika
     # distillation engine resolves each session's pack through it) on the
     # session ONCE (idempotent). A session that does not exist yet (no
     # session_id on the turn) is skipped; a look-up failure never breaks the
-    # turn.
+    # turn. The optional `customer_name` (a display name for the Studio) is
+    # NOT stamped once: it follows the latest value the caller sends.
     def stamp_customer_session(task, profile)
       customer = command_customer(task)
-      return if customer.nil? || task.session_id.nil?
+      name = command_customer_name(task)
+      return if (customer.nil? && name.nil?) || task.session_id.nil?
 
       session = @session_store&.find(task.session_id)
-      return if session.nil? || !Coercion.presence(session.vars["customer"]).nil?
+      return if session.nil?
 
-      @session_store.update_vars(task.session_id,
-                                 "customer" => customer, "agent" => profile.id)
+      vars = {}
+      if customer && Coercion.presence(session.vars["customer"]).nil?
+        vars.merge!("customer" => customer, "agent" => profile.id)
+      end
+      vars["customer_name"] = name if name && session.vars["customer_name"] != name
+      @session_store.update_vars(task.session_id, vars) unless vars.empty?
     rescue Insika::NotFoundError, ArgumentError
       nil
     end
@@ -2257,6 +2263,13 @@ module Insika
     # (memory stays per-tenant/per-chat, byte-identical to before).
     def command_customer(task)
       Coercion.presence(rebuild_command(task).payload["customer"])
+    end
+
+    # The optional customer_name on the command payload: how the Studio labels
+    # the conversation. Only a String counts; anything else is ignored.
+    def command_customer_name(task)
+      name = rebuild_command(task).payload["customer_name"]
+      name.is_a?(String) ? Coercion.presence(name) : nil
     end
 
     # Turn context: the ids the data-tools resolve via
