@@ -179,6 +179,12 @@ load is enforced by a test
 (`spec/insika/load_guard_spec.rb`: "require insika does not load
 OpenTelemetry").
 
+A failed export (a 404 from an ingest that wants a header, a wrong key) is
+logged to stderr as `ERROR -- otel: OpenTelemetry error: OTLP exporter received
+http.code=…`. `OTEL_EXPORTER_OTLP_HEADERS` is `key=value[,key=value]` and each
+value is URL-decoded: a `+` in a token becomes a space, so write it as `%2B`
+(and `%` as `%25`).
+
 ## Native model diagnostics
 
 The Studio task page shows `llm_request` and `llm_usage` rows from RubyLLM. A
