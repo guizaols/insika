@@ -50,8 +50,10 @@ module Insika
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
         # WS8: the optional customer_key — per-customer memory scope + purge handle
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
-        # the optional display name the Studio labels the conversation with
-        out[:customer_name] = body[:customer_name] if body[:customer_name].is_a?(String)
+        # the optional labels the Studio shows and searches the conversation by
+        Insika::SessionStore::CUSTOMER_LABELS.each do |key|
+          out[key.to_sym] = body[key.to_sym] if body[key.to_sym].is_a?(String)
+        end
         # WS9: the multimodal OPENAI shape — `input` as an array of content parts
         # ({type: text/image/audio}) is preserved additively alongside the
         # joined text; a string input stays byte-identical to before. The

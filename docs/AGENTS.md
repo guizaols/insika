@@ -659,9 +659,10 @@ curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
   tenant never see each other, and the `<request_context>` tenant label (the
   merchant) is untouched. Absent `customer` = today's per-tenant/per-chat
   behavior.
-- **Display name** — an optional `customer_name` (a String) labels the
-  conversation in the Studio instead of the `customer` key. It follows the
-  latest value sent; it has no effect on memory scope.
+- **Display labels** — optional `customer_name` and `customer_phone` (Strings)
+  label the conversation in the Studio (the name replaces the `customer` key;
+  the phone shows beside the agent) and the Chats search matches both. They
+  follow the latest value sent and have no effect on memory scope.
 - **Right to be forgotten** — `POST /v1/commands/forget_customer` (operator)
   purges the customer's memory cell, their sessions and everything those
   sessions left behind — per-session traces, the tasks (the message text lives

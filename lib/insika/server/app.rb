@@ -430,7 +430,7 @@ module Insika
         payload.merge!(parsed.slice(:shared_conversation, :user_text))
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
         payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
-        payload[:customer_name] = parsed[:customer_name] if parsed[:customer_name]
+        payload.merge!(parsed.slice(*Insika::SessionStore::CUSTOMER_LABELS.map(&:to_sym)))
         payload[:parts] = parsed[:parts] if parsed[:parts] # WS9: multimodal content parts
         payload[:source] = parsed[:source] if parsed[:source] # WS9: voice-marked text
         payload[:channel] = parsed[:channel] if parsed[:channel] # WS9 (saída): the channel's output capabilities

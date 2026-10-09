@@ -1958,6 +1958,11 @@ end
       presence(vars.is_a?(Hash) ? vars["customer_name"] : nil) || session_customer(session)
     end
 
+    def session_customer_phone(session)
+      vars = session.respond_to?(:vars) ? session.vars : nil
+      presence(vars.is_a?(Hash) ? vars["customer_phone"] : nil)
+    end
+
     # The Chats/History "active" presence dot: lit while the session's last
     # activity sits inside the same 5-minute window the home dashboard's
     # conversation rail uses (views/home.erb) — one rule, read in both places.
@@ -2784,10 +2789,11 @@ end
       @more = [CHATS_PAGE, rows.size - @limit].min
     end
 
-    # The Chats search: the session id, the customer key or the customer name.
+    # The Chats search: the session id, the customer key, name or phone.
     def chat_matches?(stat, query)
       vars = stat.vars.is_a?(Hash) ? stat.vars : {}
-      [stat.id, vars["customer"], vars["customer_name"]].any? { |v| v.to_s.downcase.include?(query) }
+      [stat.id, vars["customer"], *vars.values_at(*Insika::SessionStore::CUSTOMER_LABELS)]
+        .any? { |v| v.to_s.downcase.include?(query) }
     end
 
     def chats_path(**extra)

@@ -1374,10 +1374,14 @@ end
     it "chats?q= finds a session by its customer name or customer key, any case" do
       named = sess("s-1", "bia")
       named.vars["customer_name"] = "Maria Souza"
+      named.vars["customer_phone"] = "5511999998888"
       app, = build_app(sessions: { "s-1" => named, "s-2" => sess("s-2", "bia") })
       client = login(app)
       expect(client.get("/chats?q=maria").body).to include("s-1").and(satisfy { |b| !b.include?("s-2") })
       expect(client.get("/chats?q=C-S-2").body).to include("s-2").and(satisfy { |b| !b.include?("s-1") })
+      phone_hit = client.get("/chats?q=99999").body
+      expect(phone_hit).to include("s-1").and(include("bia · 5511999998888"))
+      expect(client.get("/sessions/s-1").body).to include("bia · 5511999998888")
     end
 
     it "tasks?agent= narrows by the task's command payload" do
@@ -3406,7 +3410,7 @@ end
     client = login(app)
     body = client.get("/chats").body
     expect(body).to include('<span class="name">Maria Souza</span>')
-    expect(body).to match(/data-filter-text="sess-named 5511999 Maria Souza bia/)
+    expect(body).to match(/data-filter-text="sess-named 5511999 Maria Souza\s+bia/)
     expect(client.get("/sessions/sess-named").body).to include("<h2>Maria Souza</h2>")
   end
 
