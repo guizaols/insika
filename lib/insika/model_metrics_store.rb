@@ -70,6 +70,28 @@ module Insika
       end
     end
 
+    # Everything the Studio home shows, from one read of the last 14 days:
+    # the last 24h (totals + turns), the cost of the 24h before, and one bucket
+    # per UTC day (oldest first, today last).
+    def home(agent: nil, now: Time.now.utc, days: 14)
+      today = Time.utc(now.year, now.month, now.day)
+      from = today - (days - 1) * 86_400
+      rows = request_rows(from, now).select { |row| agent.nil? || row["agent"] == agent }
+      at = ->(row) { Time.iso8601(row["completed_at"]) }
+      day_ago = now - 86_400
+      before = rows.select { |row| (t = at.(row)) >= day_ago - 86_400 && t < day_ago }
+      daily = rows.group_by { |row| at.(row).strftime("%F") }
+      {
+        "totals" => summarize(rows.select { |row| at.(row) >= day_ago }),
+        "turns" => turn_summary(turn_rows(day_ago, now, agent: agent, provider: nil, model: nil)),
+        "day_before_cost" => summarize(before)["cost"],
+        "daily" => Array.new(days) do |i|
+          day = from + i * 86_400
+          summarize(daily.fetch(day.strftime("%F"), [])).merge("at" => day.iso8601)
+        end
+      }
+    end
+
     # `from`/`to` (Time) pick a custom range and win over `period`; the bucket size
     # follows the span (see #bucket_count).
     def report(period: "7d", agent: nil, provider: nil, model: nil, now: Time.now.utc, from: nil, to: nil)
@@ -111,33 +133,44 @@ module Insika
 
     private
 
-    # ponytail: whole-scope scan suits a single node; index completion time when history grows.
-    def request_rows(from, to)
-      @store.list(SCOPE).filter_map do |key|
-        row = @store.get(SCOPE, key)
-        next unless row && row["completed_at"]
+    def request_rows(from, to) = rows_between(SCOPE, "completed_at", from, to)
 
-        completed = Time.iso8601(row["completed_at"])
-        row if completed >= from && completed <= to
+    RECENT_PAGE = 500
+    # A row is written when its turn ends (or flushes before waiting), so its
+    # write can trail its own timestamp by up to a turn. Paging stops only past
+    # this margin, so a late write is never cut off.
+    LATE_WRITE = 6 * 3600
+
+    # The rows whose `field` falls in [from, to], read newest-written first and
+    # stopping at the first page entirely older than `from` (minus LATE_WRITE):
+    # a window costs its own rows, not the whole history. The stop test reads the
+    # page's oldest RECENT_PAGE rows, so a doubled page stops as early as a small one.
+    # ponytail: offset paging over write order; a time-keyed index if windows reach far back.
+    def rows_between(scope, field, from, to)
+      floor = from - LATE_WRITE
+      rows = []
+      offset = 0
+      limit = RECENT_PAGE
+      loop do
+        page = @store.recent(scope, nil, limit, offset)
+        times = page.map { |_key, row| row.is_a?(Hash) && row[field] ? Time.iso8601(row[field]) : nil }
+        page.each_with_index { |(_key, row), i| rows << row if times[i] && times[i] >= from && times[i] <= to }
+        break if page.size < limit || times.last(RECENT_PAGE).all? { |t| t && t < floor }
+
+        offset += limit
+        limit *= 2 # each call orders the whole scope: few big pages, not many small ones
       end
+      rows
     end
 
     def turn_report(from, to, agent:, provider:, model:)
       turn_summary(turn_rows(from, to, agent: agent, provider: provider, model: model))
     end
 
-    # ponytail: whole-scope scan like #request_rows; index by time when history grows.
     def turn_rows(from, to, agent:, provider:, model:)
-      @store.list(TURN_SCOPE).filter_map do |key|
-        row = @store.get(TURN_SCOPE, key)
-        next unless row && row["at"]
-
-        at = Time.iso8601(row["at"])
-        next unless at >= from && at <= to
-        next unless (agent.nil? || row["agent"] == agent) &&
-                    (provider.nil? || row["provider"] == provider) && (model.nil? || row["model"] == model)
-
-        row
+      rows_between(TURN_SCOPE, "at", from, to).select do |row|
+        (agent.nil? || row["agent"] == agent) &&
+          (provider.nil? || row["provider"] == provider) && (model.nil? || row["model"] == model)
       end
     end
 
