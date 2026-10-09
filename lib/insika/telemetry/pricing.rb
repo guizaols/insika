@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../env_schema"
 
 module Insika
   module Telemetry
@@ -57,6 +58,11 @@ module Insika
         millionths = buckets.sum { |count, price| count.to_i * price.to_f }
         (millionths / 1_000_000.0).round(PRECISION)
       end
+
+      # The operator's table from INSIKA_MODEL_PRICING (empty when unset): the ONE
+      # cost rule Studio, traces and metrics share — the cost the provider library
+      # reported, and these rates only for what it could not price.
+      def self.from_env(env = ENV) = parse(Insika::EnvSchema.read("INSIKA_MODEL_PRICING", env))
 
       # Parses the operator's table. Accepts a JSON object; anything else (blank,
       # malformed, not an object) -> an EMPTY Pricing, never an exception: telemetry

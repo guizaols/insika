@@ -242,6 +242,7 @@ module Insika
         span.set_attribute("insika.tokens.cache_creation", usage[:cache_creation_tokens]) if usage[:cache_creation_tokens]
         span.set_attribute("insika.model", usage[:model].to_s) if usage[:model]
         span.set_attribute("insika.model_source", usage[:model_source].to_s) if usage[:model_source]
+        span.set_attribute("insika.provider", usage[:provider].to_s) if usage[:provider]
         cost = estimated_cost(usage)
         span.set_attribute("insika.cost.usd", cost) if cost
       end
@@ -340,7 +341,9 @@ module Insika
         @instruments.tool_duration.record(seconds, attributes: labels) if seconds
       end
 
-      def estimated_cost(usage) = @pricing&.cost(usage) || usage&.fetch(:cost_usd, nil)
+      # Turn usage arrives already priced per response (Executor#usage_of applies
+      # the same rule), so its cost_usd wins; the table covers usage that was not.
+      def estimated_cost(usage) = usage&.fetch(:cost_usd, nil) || @pricing&.cost(usage)
 
       # -----------------------------------------------------------------------
 

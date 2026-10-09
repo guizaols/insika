@@ -10,7 +10,7 @@ permalink: /observability/
 ## Studio Models
 
 Open the operator-authenticated `/studio/models` page to filter native
-requests by the last 24 hours, 7 days, or 30 days, provider, and model. It shows
+requests by the last 24 hours, 7 days, or 30 days, agent, provider, and model. It shows
 request volume, failures, retries, reported USD cost and unknown-cost coverage,
 p50/p90/p95 latency, separate input/output/cache-read/cache-write/thinking token
 subtotals, and the 20 slowest measured requests linked to their tasks.
@@ -178,7 +178,8 @@ task executions. Each request has a locally generated `request_id` that links it
 rows; it is not the provider's HTTP request ID. The rows show operation,
 provider, model, outcome, and five token buckets (input, output, cache read,
 cache write, thinking). Only the request has a measured duration. Attempts have
-no measured duration. Cost is exactly RubyLLM's reported attempt cost: unknown
+no measured duration. Cost is RubyLLM's reported attempt cost, or the
+`INSIKA_MODEL_PRICING` estimate when RubyLLM reports none: unknown
 remains an em dash, while a reported zero remains zero. These diagnostic values
 do not add to turn usage, `insika.tokens`, or `insika.cost`.
 
@@ -284,6 +285,7 @@ metric attribute with per-turn cardinality is how you destroy a metrics backend.
 | `insika.status` | string | `turn` | turn instruments | `ok` / `error` / `cancelled` / `abandoned` |
 | `insika.model` | string | `turn` | all except tool | model id the provider reported |
 | `insika.model_source` | string | `turn` | — | which config layer resolved the model (chat / agent / model / global) |
+| `insika.provider` | string | `turn` | — | provider of the turn's final model selection (the fallback's, when one answered) |
 | `insika.tokens.input` | int | `turn` | — | non-cached input tokens |
 | `insika.tokens.output` | int | `turn` | — | output tokens |
 | `insika.tokens.total` | int | `turn` | — | non-cached input + output subtotal; cache buckets are separate |
@@ -323,8 +325,18 @@ Internal token buckets are disjoint. The `total_tokens` field retains its histor
 non-cached input/output subtotal; budgets and evals add the cache buckets once.
 The Responses HTTP adapter projects cache-inclusive `input_tokens` and `total_tokens`.
 
-For negotiated rates, `INSIKA_MODEL_PRICING` optionally overrides telemetry cost
-with an estimate from a JSON object of model id to rates in **USD per million tokens**:
+RubyLLM prices from its model catalog. Insika keeps that catalog in its store
+and refreshes it every `INSIKA_MODEL_REFRESH_HOURS` (default 24; 0 keeps the
+gem's bundled catalog): one worker downloads it, the others reload it, and a
+restart starts from the last download instead of the catalog shipped with the gem.
+
+`INSIKA_MODEL_PRICING` optionally fills in cost where RubyLLM reports none (a
+model missing from its registry, a negotiated contract) — everywhere: Studio
+Models, task traces, turn usage and telemetry. RubyLLM's cost always wins, so the
+table never goes stale against a priced model. Rates are a JSON object of model
+id to **USD per million tokens**.
+Each request is priced under its own model, so a turn that ran a failed primary,
+a fallback and the router costs each at its own rate:
 
 ```bash
 INSIKA_MODEL_PRICING='{
@@ -341,12 +353,13 @@ INSIKA_MODEL_PRICING='{
   Omit it and cache reads use the input rate; they are never subtracted from fresh input.
 - `cache_write`, when given, bills cache **creation** tokens at that rate. Omit it
   and they are billed at the input rate.
-- A missing custom rate falls back to recorded native cost. If neither supplies
-  a cost, there is no attribute or metric point. A missing price is not zero.
+- A model RubyLLM prices never reads the table. If neither supplies a cost,
+  there is no attribute or metric point. A missing price is not zero.
 - A malformed table disables the override. Telemetry config cannot stop a boot.
 
-The custom table estimates aggregate tokens at the terminal model's rate. For
-mixed-model routing/fallback turns, use the native recorded cost instead of this override.
+Routing (`operation: "routing"`) and summarizing compaction
+(`operation: "compaction"`) requests are recorded like the chat's, so they show
+on Studio Models next to it.
 
 The number is an **estimate for trend and attribution**, not a bill. Reconcile
 against your provider's invoice, never the other way round.

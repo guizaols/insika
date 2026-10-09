@@ -34,7 +34,7 @@ module Insika
     def initialize(store:, recovery:, channel_delivery:, logger: nil,
                    interval: DEFAULT_INTERVAL, stale_after: DEFAULT_STALE_AFTER,
                    sleeper: nil, retention: nil, funnel: nil, followup: nil,
-                   schedule: nil)
+                   schedule: nil, model_registry: nil)
       @store = store
       @recovery = recovery
       @channel_delivery = channel_delivery
@@ -46,6 +46,7 @@ module Insika
       @funnel = funnel # the tick-driven outcome fold; nil = none
       @followup = followup # the tick-driven follow-up firer; nil = none
       @schedule = schedule # the recurring-schedule firer; nil = none
+      @model_registry = model_registry # the daily model-catalog refresh; nil = none
     end
 
     # the fold is wired after the Tick is built (the graph passes
@@ -60,6 +61,9 @@ module Insika
     # the recurring-schedule firer, wired after the Tick is built
     # (same shape — the stores come from the spine).
     attr_accessor :schedule
+
+    # the daily RubyLLM model-catalog refresh (ModelRegistry), same shape.
+    attr_accessor :model_registry
 
     def enabled? = @interval.positive?
 
@@ -85,6 +89,8 @@ module Insika
       # the same claim-window discipline as the follow-up firer.
       schedule_summary = @schedule&.run
       summary[:schedule] = schedule_summary if schedule_summary
+      registry_summary = @model_registry&.run
+      summary[:model_registry] = registry_summary if registry_summary
       return summary unless claim_window
 
       result = @recovery.run(stale_after: @stale_after)
