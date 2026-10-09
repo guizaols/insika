@@ -2761,7 +2761,7 @@ end
     CHATS_PAGE = 100
 
     # The Chats master list, shared by the index and the session viewer. Agent
-    # and id search run over EVERY session's stats (a few bytes each), newest
+    # and id/customer search run over EVERY session's stats (a few bytes each), newest
     # first; only the rows shown are read whole. ?limit= grows the page.
     def setup_chat_list(params)
       @agent = presence(params["agent"])
@@ -2777,11 +2777,17 @@ end
                         .map { |id, list| [id, list.size, list.map { |s| s.updated_at.to_s }.max] }
                         .sort_by { |row| row.last }.reverse
       rows = agent_sessions(all, @agent)
-      rows = rows.select { |s| s.id.downcase.include?(@query.downcase) } if @query
+      rows = rows.select { |s| chat_matches?(s, @query.downcase) } if @query
       rows = rows.sort_by { |s| s.updated_at.to_s }.reverse
       @chats_total = rows.size
       @sessions = rows.first(@limit).filter_map { |s| store.find(s.id) }
       @more = [CHATS_PAGE, rows.size - @limit].min
+    end
+
+    # The Chats search: the session id, the customer key or the customer name.
+    def chat_matches?(stat, query)
+      vars = stat.vars.is_a?(Hash) ? stat.vars : {}
+      [stat.id, vars["customer"], vars["customer_name"]].any? { |v| v.to_s.downcase.include?(query) }
     end
 
     def chats_path(**extra)
