@@ -57,6 +57,19 @@ module Insika
       nil
     end
 
+    # One agent's (or everyone's) totals and turn summary for each fixed period,
+    # from a single read of the 30-day rows. -> { "24h" => { "totals", "turns" }, ... }
+    def windows(agent: nil, now: Time.now.utc)
+      from = now - PERIODS.values.max
+      rows = request_rows(from, now).select { |row| agent.nil? || row["agent"] == agent }
+      turns = turn_rows(from, now, agent: agent, provider: nil, model: nil)
+      PERIODS.to_h do |period, seconds|
+        cut = now - seconds
+        [period, { "totals" => summarize(rows.select { |row| Time.iso8601(row["completed_at"]) >= cut }),
+                   "turns" => turn_summary(turns.select { |row| Time.iso8601(row["at"]) >= cut }) }]
+      end
+    end
+
     # `from`/`to` (Time) pick a custom range and win over `period`; the bucket size
     # follows the span (see #bucket_count).
     def report(period: "7d", agent: nil, provider: nil, model: nil, now: Time.now.utc, from: nil, to: nil)
@@ -66,14 +79,7 @@ module Insika
         period = "7d" unless PERIODS.key?(period)
         from = now - PERIODS.fetch(period)
       end
-      # ponytail: whole-scope scan suits a single node; index completion time when history grows.
-      rows = @store.list(SCOPE).filter_map do |key|
-        row = @store.get(SCOPE, key)
-        next unless row && row["completed_at"]
-
-        completed = Time.iso8601(row["completed_at"])
-        row if completed >= from && completed <= now
-      end
+      rows = request_rows(from, now)
       agents = rows.filter_map { |row| row["agent"] }.uniq.sort
       providers = rows.filter_map { |row| row["provider"] }.uniq.sort
       model_options = rows.filter_map { |row| row["model"] }.uniq.sort
@@ -105,10 +111,24 @@ module Insika
 
     private
 
-    # Turn latency (each window's p50/p95) and per-tool health over the turn rows.
+    # ponytail: whole-scope scan suits a single node; index completion time when history grows.
+    def request_rows(from, to)
+      @store.list(SCOPE).filter_map do |key|
+        row = @store.get(SCOPE, key)
+        next unless row && row["completed_at"]
+
+        completed = Time.iso8601(row["completed_at"])
+        row if completed >= from && completed <= to
+      end
+    end
+
     def turn_report(from, to, agent:, provider:, model:)
-      # ponytail: whole-scope scan like #report; index by time when history grows.
-      turns = @store.list(TURN_SCOPE).filter_map do |key|
+      turn_summary(turn_rows(from, to, agent: agent, provider: provider, model: model))
+    end
+
+    # ponytail: whole-scope scan like #request_rows; index by time when history grows.
+    def turn_rows(from, to, agent:, provider:, model:)
+      @store.list(TURN_SCOPE).filter_map do |key|
         row = @store.get(TURN_SCOPE, key)
         next unless row && row["at"]
 
@@ -119,6 +139,10 @@ module Insika
 
         row
       end
+    end
+
+    # Turn latency (each window's p50/p95) and per-tool health over turn rows.
+    def turn_summary(turns)
       windows = TURN_WINDOWS.to_h do |window|
         values = turns.filter_map { |row| row[window] }.sort
         [window, { "measured" => values.size, "p50" => percentile(values, 50), "p95" => percentile(values, 95) }]
