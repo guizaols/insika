@@ -325,6 +325,11 @@ Internal token buckets are disjoint. The `total_tokens` field retains its histor
 non-cached input/output subtotal; budgets and evals add the cache buckets once.
 The Responses HTTP adapter projects cache-inclusive `input_tokens` and `total_tokens`.
 
+RubyLLM prices from its model catalog. Insika keeps that catalog in its store
+and refreshes it every `INSIKA_MODEL_REFRESH_HOURS` (default 24; 0 keeps the
+gem's bundled catalog): one worker downloads it, the others reload it, and a
+restart starts from the last download instead of the catalog shipped with the gem.
+
 `INSIKA_MODEL_PRICING` optionally fills in cost where RubyLLM reports none (a
 model missing from its registry, a negotiated contract) — everywhere: Studio
 Models, task traces, turn usage and telemetry. RubyLLM's cost always wins, so the

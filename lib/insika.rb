@@ -45,6 +45,7 @@ require_relative "insika/cron"
 require_relative "insika/schedule"
 require_relative "insika/schedule_store"
 require_relative "insika/schedule_engine"
+require_relative "insika/model_registry"
 # the report destination — one record per run, no
 # versioning; the signing half of the sharing link (HMAC, no secret stored).
 require_relative "insika/artifact_store"
