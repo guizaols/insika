@@ -50,7 +50,7 @@
           <header class="operation-summary">
             <div class="section-head">
               <h2><%= presence(session_customer_label(@session)) || "Conversation" %></h2>
-              <p class="muted"><%= marker_agent.empty? ? "No agent recorded" : marker_agent %> · <%= Array(@session.messages).size %> messages</p>
+              <p class="muted"><%= marker_agent.empty? ? "No agent recorded" : marker_agent %><% if (phone = session_customer_phone(@session)) %> · <%= phone %><% end %> · <%= Array(@session.messages).size %> messages</p>
             </div>
             <div class="actions">
               <span class="copy-id" data-controller="clipboard" data-clipboard-text-value="<%= @session.id %>">

@@ -2237,12 +2237,12 @@ module Insika
     # distillation engine resolves each session's pack through it) on the
     # session ONCE (idempotent). A session that does not exist yet (no
     # session_id on the turn) is skipped; a look-up failure never breaks the
-    # turn. The optional `customer_name` (a display name for the Studio) is
-    # NOT stamped once: it follows the latest value the caller sends.
+    # turn. The optional labels (SessionStore::CUSTOMER_LABELS: name, phone)
+    # are NOT stamped once: they follow the latest value the caller sends.
     def stamp_customer_session(task, profile)
       customer = command_customer(task)
-      name = command_customer_name(task)
-      return if (customer.nil? && name.nil?) || task.session_id.nil?
+      labels = command_customer_labels(task)
+      return if (customer.nil? && labels.empty?) || task.session_id.nil?
 
       session = @session_store&.find(task.session_id)
       return if session.nil?
@@ -2251,7 +2251,7 @@ module Insika
       if customer && Coercion.presence(session.vars["customer"]).nil?
         vars.merge!("customer" => customer, "agent" => profile.id)
       end
-      vars["customer_name"] = name if name && session.vars["customer_name"] != name
+      vars.merge!(labels.reject { |k, v| session.vars[k] == v })
       @session_store.update_vars(task.session_id, vars) unless vars.empty?
     rescue Insika::NotFoundError, ArgumentError
       nil
@@ -2265,11 +2265,15 @@ module Insika
       Coercion.presence(rebuild_command(task).payload["customer"])
     end
 
-    # The optional customer_name on the command payload: how the Studio labels
-    # the conversation. Only a String counts; anything else is ignored.
-    def command_customer_name(task)
-      name = rebuild_command(task).payload["customer_name"]
-      name.is_a?(String) ? Coercion.presence(name) : nil
+    # The optional labels on the command payload (customer_name, customer_phone):
+    # how the Studio shows and finds the conversation. Only a non-blank String
+    # counts; anything else is ignored.
+    def command_customer_labels(task)
+      payload = rebuild_command(task).payload
+      SessionStore::CUSTOMER_LABELS.filter_map do |key|
+        value = payload[key]
+        value.is_a?(String) && (value = Coercion.presence(value)) ? [key, value] : nil
+      end.to_h
     end
 
     # Turn context: the ids the data-tools resolve via

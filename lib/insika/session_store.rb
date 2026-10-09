@@ -21,6 +21,9 @@ module Insika
 
     SCOPE = "sessions"
     STATS_SCOPE = "session_stats" # one small record per session, see #write
+    # Optional Strings a caller sends to label a conversation in the Studio
+    # (shown and searched there; no effect on memory scope).
+    CUSTOMER_LABELS = %w[customer_name customer_phone].freeze
     KEY_PREFIX = "session:"
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
@@ -273,14 +276,14 @@ module Insika
       last = Array(record["messages"]).last
       vars = record["vars"] || {}
       { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
-        "agent" => vars["agent"], "customer" => vars["customer"], "customer_name" => vars["customer_name"],
-        "last_role" => last.is_a?(Hash) ? last["role"] : nil }.compact
+        "agent" => vars["agent"], "customer" => vars["customer"],
+        "last_role" => last.is_a?(Hash) ? last["role"] : nil, **vars.slice(*CUSTOMER_LABELS) }.compact
     end
 
     def to_stat(key, stat)
       Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
                message_count: stat["message_count"].to_i,
-               vars: stat.slice("agent", "customer", "customer_name"),
+               vars: stat.slice("agent", "customer", *CUSTOMER_LABELS),
                last_role: stat["last_role"])
     end
 
