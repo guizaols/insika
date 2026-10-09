@@ -401,6 +401,12 @@ RSpec.describe Insika::SessionStore do
       expect([stats["a"].last_role, stats["b"].last_role]).to eq(["assistant", nil])
     end
 
+    it "stats carry the customer key and name, so the Chats search needs no whole session" do
+      sessions.create(id: "a", vars: { agent: "bia", customer: "c-1" })
+      sessions.update_vars("a", { "customer_name" => "Maria" })
+      expect(sessions.all_stats.first.vars).to eq("agent" => "bia", "customer" => "c-1", "customer_name" => "Maria")
+    end
+
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")
