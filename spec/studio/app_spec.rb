@@ -3465,6 +3465,28 @@ end
     expect(waiting).not_to include("w-fresh", "w-answered", "w-old")
   end
 
+  it "the agent page's Performance tab shows 24h / 7d / 30d for that agent only" do
+    now = Time.now.utc
+    backend = Insika::Stores::Memory.new
+    tasks = Insika::TaskStore.new(store: backend)
+    metrics = Insika::ModelMetricsStore.new(store: backend)
+    { "t1" => ["bia", now - 3600, 0.25], "t2" => ["bia", now - 3 * 86_400, 0.5], "t3" => ["chef", now - 60, 9.0] }.each do |id, (agent, at, cost)|
+      tasks.create(id: id, command: {})
+      metrics.record(task_id: id, entry: { "type" => "llm_usage", "request_id" => "r", "at" => at.iso8601, "agent" => agent, "cost" => cost })
+      metrics.record(task_id: id, entry: { "type" => "llm_request", "request_id" => "r", "at" => at.iso8601, "agent" => agent, "duration_ms" => 5 })
+      metrics.record_turn(task_id: id, row: { "at" => at.iso8601, "agent" => agent, "status" => "completed", "total_ms" => 1200 })
+    end
+    sess = StoredSession.new(id: "s-bia", updated_at: now.iso8601, vars: { "agent" => "bia" }, messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "s-bia" => sess }, model_metrics_store: metrics)
+    body = login(app).get("/agents/bia").body
+    perf = body[/id="performance".*?<\/section>/m]
+
+    expect(perf).to match(%r{<td>Cost</td><td class="num">\$0.25</td><td class="num">\$0.75</td><td class="num">\$0.75</td>})
+    expect(perf).to match(%r{<td>Turns</td><td class="num">1</td><td class="num">2</td><td class="num">2</td>})
+    expect(perf).to match(%r{<td>Conversations</td><td class="num">1</td>})
+    expect(perf).to include("1.2s / 1.2s")
+  end
+
   it "root redirects to the overview home" do
     app, = build_app
     res = login(app).get("/")
