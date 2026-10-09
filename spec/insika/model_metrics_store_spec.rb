@@ -47,6 +47,14 @@ RSpec.describe "Durable model metrics" do
         expect(store.report(now: now)).to eq(one.report(now: now))
       end
 
+      it "filters by agent and lists the agents seen" do
+        record("llm_request", id: "a", agent: "support", duration_ms: 1, status: "succeeded")
+        record("llm_request", id: "b", agent: "sales", duration_ms: 1, status: "succeeded")
+        report = store.report(period: "24h", agent: "sales", now: now + 60)
+        expect(report["agents"]).to eq(%w[sales support])
+        expect(report["totals"]["requests"]).to eq(1)
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,

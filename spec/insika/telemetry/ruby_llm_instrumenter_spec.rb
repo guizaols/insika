@@ -52,6 +52,17 @@ RSpec.describe Insika::Telemetry::RubyLLMInstrumenter do
     expect(events.last.last).not_to have_key("duration_ms")
   end
 
+  it "keeps the reported cost and prices from the operator's table only what was not reported" do
+    pricing = Insika::Telemetry::Pricing.new("deepseek-chat" => { "input" => 1, "output" => 2 })
+    priced = described_class.new(emit: emit, model: "deepseek-chat", pricing: pricing)
+    tokens = RubyLLM::Tokens.new(input: 10, output: 3)
+    cost = RubyLLM::Cost.new(tokens: RubyLLM::Tokens.new(reported_cost: 0.25))
+    priced.instrument("usage.ruby_llm", tokens: tokens, cost: cost)
+    expect(events.last.last["cost"]).to eq(0.25)
+    priced.instrument("usage.ruby_llm", tokens: tokens, cost: nil)
+    expect(events.last.last["cost"]).to eq((10 * 1 + 3 * 2) / 1_000_000.0)
+  end
+
   it "retains the host instrumenter's block and notification behavior" do
     calls = []
     host = Object.new

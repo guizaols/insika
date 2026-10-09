@@ -3,6 +3,7 @@
 require "time"
 require "securerandom"
 require "async/queue"
+require_relative "telemetry/pricing"
 
 module Insika
   # Coordinates execution. It does not build context, decide policy, or talk to
@@ -23,7 +24,8 @@ module Insika
                     context_trace_store: nil, reliability: nil, media: nil, media_output: nil,
                     grounding_enforcer: nil, cache_series_store: nil,
                     contact_store: nil, followup_store: nil, model_visible_trace_store: nil,
-                    knowledge_store: nil, shared_conversations: nil, llm_refresh: nil)
+                    knowledge_store: nil, shared_conversations: nil, llm_refresh: nil, pricing: nil)
+      @pricing = pricing || Telemetry::Pricing.from_env
       @shared_conversations = shared_conversations
       @shared_turns = {}
       @context_builder = context_builder
@@ -1686,8 +1688,9 @@ module Insika
     # "routing", same turn number as the answer ask).
     def route_ask(selection, prompt, message, task, st)
       require "ruby_llm"
-      chat = (@llm || RubyLLM).chat(model: selection.model, provider: selection.provider,
-                                    assume_model_exists: selection.assume_model_exists?)
+      chat = llm_operation_context(st, selection.model, operation: "routing")
+             .chat(model: selection.model, provider: selection.provider,
+                   assume_model_exists: selection.assume_model_exists?)
       chat.with_instructions(prompt) if chat.respond_to?(:with_instructions)
       response = chat.ask(message.to_s)
       record_model_visible(task, st, chat, part: "routing")
@@ -2110,7 +2113,12 @@ module Insika
       return usage if usage.nil? || selection.nil?
 
       usage[:model_source] = selection.source
-      usage[:model] ||= selection.model # falls back to the resolved id when the provider omits it
+      unless usage[:model] # the provider omitted it: the resolved id stands in, and prices it
+        usage[:model] = selection.model
+        usage[:cost_usd] ||= @pricing&.cost(usage)
+      end
+      provider = selection.respond_to?(:provider) ? selection.provider : selection[:provider]
+      usage[:provider] ||= provider.to_s if provider
       usage
     end
 
@@ -2124,10 +2132,14 @@ module Insika
                 cached_tokens: tokens.cache_read, cache_creation_tokens: tokens.cache_write }.compact
       reported = [tokens.input, tokens.output].compact
       usage[:total_tokens] = reported.sum unless reported.empty?
-      usage[:cost_usd] = response.cost.total if response.respond_to?(:cost)
       if response.respond_to?(:model) && (model = response.model)
         usage[:model] = model.respond_to?(:id) ? model.id : model.to_s
       end
+      # Priced per response under ITS model (RubyLLM's cost; the operator table
+      # only when RubyLLM has none), so a turn that summed a failed primary, a
+      # fallback and the router costs each at its own rate.
+      usage[:cost_usd] = response.cost.total if response.respond_to?(:cost)
+      usage[:cost_usd] = @pricing.cost(usage) if usage[:cost_usd].nil? && @pricing
       usage
     end
 
@@ -2960,7 +2972,9 @@ module Insika
       if native
         run = lambda { run_native_compaction(task, profile, session, plan, chat, binding) }
       else
-        summarizer = Compaction::SummarizerFactory.build(config, utility_model: utility_model, llm: @llm)
+        llm = @llm || (defined?(RubyLLM) && RubyLLM)
+        llm = instrumented_llm(task, nil, operation: "compaction", agent: profile.id) if llm
+        summarizer = Compaction::SummarizerFactory.build(config, utility_model: utility_model, llm: llm)
         return unless summarizer
 
         run = lambda { run_compaction(task, profile, session, state, plan, config, summarizer) }
@@ -3183,15 +3197,24 @@ module Insika
     # model metrics: "chat" for the answer, knowledge_* for the post-turn calls, so
     # the Models page can tell the reply's cost from the learning's.
     def llm_operation_context(state, model, operation: "chat")
+      return @llm || RubyLLM unless state.respond_to?(:task) && state.task
+
+      instrumented_llm(state.task, model, operation: operation, turn: state.turn,
+                                          agent: state.respond_to?(:profile) ? state.profile&.id : nil)
+    end
+
+    # Every request a task makes, whatever the caller: rows carry the agent, so
+    # the Models page filters by it.
+    def instrumented_llm(task, model, operation:, turn: nil, agent: nil)
       source = @llm || RubyLLM
-      return source unless state.respond_to?(:task) && state.task && source.respond_to?(:config)
+      return source unless source.respond_to?(:config)
 
       require_relative "telemetry/ruby_llm_instrumenter"
       config = source.config.dup
-      task, turn = state.task, state.turn
+      extra = { "turn" => turn, "agent" => agent&.to_s }.compact
       config.instrumenter = Telemetry::RubyLLMInstrumenter.new(
-        delegate: config.instrumenter, operation: operation, model: model,
-        emit: ->(type, data) { emit(type, data.merge("turn" => turn), task: task) }
+        delegate: config.instrumenter, operation: operation, model: model, pricing: @pricing,
+        emit: ->(type, data) { emit(type, data.merge(extra), task: task) }
       )
       RubyLLM::Context.new(config)
     end

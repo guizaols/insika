@@ -8,7 +8,7 @@ module Insika
     SCOPE = "model_metrics"
     PERIODS = { "24h" => 86_400, "7d" => 7 * 86_400, "30d" => 30 * 86_400 }.freeze
     VALUES = %w[cost input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].freeze
-    FIELDS = %w[type request_id at operation provider model status duration_ms turn].freeze + VALUES
+    FIELDS = %w[type request_id at operation agent provider model status duration_ms turn].freeze + VALUES
 
     def initialize(store:)
       @store = store
@@ -49,7 +49,7 @@ module Insika
 
     # `from`/`to` (Time) pick a custom range and win over `period`; the bucket size
     # follows the span (see #bucket_count).
-    def report(period: "7d", provider: nil, model: nil, now: Time.now.utc, from: nil, to: nil)
+    def report(period: "7d", agent: nil, provider: nil, model: nil, now: Time.now.utc, from: nil, to: nil)
       if from && to
         period, now = "custom", to
       else
@@ -64,15 +64,17 @@ module Insika
         completed = Time.iso8601(row["completed_at"])
         row if completed >= from && completed <= now
       end
+      agents = rows.filter_map { |row| row["agent"] }.uniq.sort
       providers = rows.filter_map { |row| row["provider"] }.uniq.sort
       model_options = rows.filter_map { |row| row["model"] }.uniq.sort
       rows.select! do |row|
-        (provider.nil? || row["provider"] == provider) && (model.nil? || row["model"] == model)
+        (agent.nil? || row["agent"] == agent) &&
+          (provider.nil? || row["provider"] == provider) && (model.nil? || row["model"] == model)
       end
       {
         "period" => period, "from" => from.utc.iso8601, "to" => now.utc.iso8601,
         "step_seconds" => ((now - from) / bucket_count(period, now - from)).round,
-        "providers" => providers, "model_options" => model_options,
+        "agents" => agents, "providers" => providers, "model_options" => model_options,
         "totals" => summarize(rows),
         "series" => time_series(rows, from: from, to: now, period: period),
         "models" => rows.group_by { |row| [row["provider"], row["model"]] }
@@ -93,7 +95,7 @@ module Insika
     private
 
     def fold(row, data)
-      row.merge!(data.slice("operation", "provider", "model", "turn").compact)
+      row.merge!(data.slice("operation", "agent", "provider", "model", "turn").compact)
       if data["type"] == "llm_request"
         row.merge!(data.slice("status", "duration_ms"))
         row["completed_at"] = Time.iso8601(data.fetch("at")).utc.iso8601(6)

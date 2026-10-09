@@ -32,8 +32,9 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
 
   PRIMARY = "deepseek/deepseek-v4-flash"
 
-  def build_executor
+  def build_executor(pricing: nil)
     Insika::Executor.new(
+      pricing: pricing,
       context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
       middleware: Insika::MiddlewareStack.new([guardrails.input_guardrail]),
       hooks: Insika::Hooks.new,
@@ -91,6 +92,23 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     completed = event_stream.events.find { |e| e.type == :task_completed }
     # "contabilizado no trace": the turn's usage names the FALLBACK model.
     expect(completed.data[:usage]).to include(model: "gpt-4o-mini", model_source: :fallback)
+  end
+
+  it "prices an unreported fallback cost at the fallback's own rate and names its provider" do
+    pricing = Insika::Telemetry::Pricing.new("deepseek-v4-flash" => { "input" => 100, "output" => 100 },
+                                             "gpt-4o-mini" => { "input" => 1, "output" => 2 })
+    executor = build_executor(pricing: pricing)
+    spy_error_chat(primary_chat)
+    fallback_chat.define_singleton_method(:ask) do |_message, &on_chunk|
+      on_chunk&.call(FakeChat::Response.new("final"))
+      RubyLLM::Message.new(role: :assistant, content: "final",
+                          tokens: RubyLLM::Tokens.new(input: 10, output: 5, cache_read: 0, cache_write: 0))
+    end
+
+    run_turn(executor, make_task("oi", id: "r-cost"), primary_chat)
+
+    usage = event_stream.events.find { |e| e.type == :task_completed }.data[:usage]
+    expect(usage).to include(model: "gpt-4o-mini", provider: "openai", cost_usd: (10 * 1 + 5 * 2) / 1_000_000.0)
   end
 
   it "10 failures in 60s -> the circuit OPEN fail-fasts the NEXT turn with retry_after" do

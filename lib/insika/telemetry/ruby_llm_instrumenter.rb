@@ -6,8 +6,8 @@ module Insika
   module Telemetry
     # One instance belongs to one chat context, never to a graph or current fiber.
     class RubyLLMInstrumenter
-      def initialize(emit:, delegate: nil, operation: nil, model: nil)
-        @emit, @delegate, @operation, @model = emit, delegate, operation, model
+      def initialize(emit:, delegate: nil, operation: nil, model: nil, pricing: nil)
+        @emit, @delegate, @operation, @model, @pricing = emit, delegate, operation, model, pricing
       end
 
       def instrument(name, payload = {}, &block)
@@ -87,11 +87,19 @@ module Insika
             data["#{field}_tokens"] = value.is_a?(Numeric) ? value : nil
           end
           value = payload[:cost]&.total
+          value = priced(data) unless value.is_a?(Numeric)
           data["cost"] = value.is_a?(Numeric) ? value : nil
         end
         @emit.call(type, data)
       rescue StandardError
         nil
+      end
+
+      # The operator's rates fill in only what the library could not price (Pricing.from_env).
+      def priced(data)
+        @pricing&.cost(model: data["model"], input_tokens: data["input_tokens"],
+                       output_tokens: data["output_tokens"], cached_tokens: data["cache_read_tokens"],
+                       cache_creation_tokens: data["cache_write_tokens"])
       end
 
       def scalar(value)

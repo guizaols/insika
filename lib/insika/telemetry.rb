@@ -68,7 +68,7 @@ module Insika
     # Operator-declared rates (USD per million tokens) as JSON in
     # INSIKA_MODEL_PRICING. Unset/malformed -> an empty table -> no cost is reported.
     def pricing(env = ENV)
-      table = Pricing.parse(Insika::EnvSchema.read("INSIKA_MODEL_PRICING", env))
+      table = Pricing.from_env(env)
       table.empty? ? nil : table
     end
 

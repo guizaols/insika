@@ -2772,12 +2772,13 @@ end
 
     def render_models
       @period = request.params["period"]
+      @agent = presence(request.params["agent"])
       @provider = presence(request.params["provider"])
       @model = presence(request.params["model"])
       # Dates count only for "Custom range" (or a bare ?from&to link): picking a fixed period wins.
       range = model_custom_range(request.params["from"], request.params["to"]) if [nil, "custom"].include?(@period)
       @range_from, @range_to = range&.map { |t| t.strftime("%Y-%m-%d") }
-      args = { period: @period || "7d", provider: @provider, model: @model }
+      args = { period: @period || "7d", agent: @agent, provider: @provider, model: @model }
       args.merge!(from: range[0], to: range[1] + 86_400) if range # `to` is inclusive: through the end of that day
       @report = insika[:model_metrics_store]&.report(**args)
       @period = @report ? @report["period"] : (%w[24h 7d 30d].include?(@period) ? @period : "7d")
