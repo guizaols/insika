@@ -2441,6 +2441,14 @@ end
     end
 
     COLD_AGENT_DAYS = 3
+    STALLED_AFTER = 10 * 60
+
+    def last_role(session)
+      return session.last_role if session.respond_to?(:last_role)
+
+      last = Array(session.messages).last
+      last.is_a?(Hash) ? last["role"].to_s : nil
+    end
 
     # The operational half of the home, all over the last 24h and the agent
     # filter: cost (vs the 24h before), outcomes, turn p95 and failures, tool
@@ -2457,6 +2465,18 @@ end
         { agent: agent, conversations: list.size, today: list.count { |s| (t = utc_time(s.updated_at)) && t >= now - 86_400 },
           messages: list.sum { |s| message_count(s) } }
       end.sort_by { |row| [-row[:today], -row[:conversations], row[:agent]] }.first(8)
+      # Stalled: the customer spoke last, 10+ minutes ago, within the last 24h.
+      stalled_from, stalled_to = now - 86_400, now - STALLED_AFTER
+      @stalled = agent_sessions(window, @agent).filter_map do |s|
+        t = utc_time(s.updated_at)
+        next unless t && t >= stalled_from && t <= stalled_to && last_role(s) == "user"
+
+        { id: s.id, agent: session_agent(s), waiting: t }
+      end.sort_by { |row| row[:waiting] }.first(8)
+      # Cost and tokens per UTC day, 14 days: a 30d report ending at tomorrow's
+      # midnight has daily buckets on calendar days; the last 14 are ours.
+      midnight = Time.utc(now.year, now.month, now.day) + 86_400
+      @daily = Array(metrics&.report(period: "30d", agent: @agent, now: midnight)&.fetch("series")).last(HOME_WINDOW_DAYS)
       cold_floor = now - COLD_AGENT_DAYS * 86_400
       @cold_agents = profiles ? profiles.all.map { |p| p.id.to_s }.sort.reject do |id|
         Array(by_agent[id]).any? { |s| (t = utc_time(s.updated_at)) && t >= cold_floor }
@@ -2831,6 +2851,14 @@ end
       return "Daily" if step <= 86_400
 
       "#{(step / 86_400.0).round}-day intervals"
+    end
+
+    # Money for the home: cents above a dollar, 4 significant digits below it,
+    # so a day of cheap turns never reads as $0.00.
+    def usd(value)
+      return "—" if value.nil?
+
+      value.abs >= 1 || value.zero? ? format("$%.2f", value) : format("$%.4g", value)
     end
 
     def model_chart_value(value, unit)
