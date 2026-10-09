@@ -1371,6 +1371,15 @@ end
       expect(body).not_to include("s-2")
     end
 
+    it "chats?q= finds a session by its customer name or customer key, any case" do
+      named = sess("s-1", "bia")
+      named.vars["customer_name"] = "Maria Souza"
+      app, = build_app(sessions: { "s-1" => named, "s-2" => sess("s-2", "bia") })
+      client = login(app)
+      expect(client.get("/chats?q=maria").body).to include("s-1").and(satisfy { |b| !b.include?("s-2") })
+      expect(client.get("/chats?q=C-S-2").body).to include("s-2").and(satisfy { |b| !b.include?("s-1") })
+    end
+
     it "tasks?agent= narrows by the task's command payload" do
       tasks = { "t-1" => TaskDouble.new(id: "t-1", status: :completed,
                                         command: { "payload" => { "agent" => "bia" } },

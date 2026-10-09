@@ -271,13 +271,16 @@ module Insika
 
     def stats_of(record)
       last = Array(record["messages"]).last
+      vars = record["vars"] || {}
       { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
-        "agent" => (record["vars"] || {})["agent"], "last_role" => last.is_a?(Hash) ? last["role"] : nil }.compact
+        "agent" => vars["agent"], "customer" => vars["customer"], "customer_name" => vars["customer_name"],
+        "last_role" => last.is_a?(Hash) ? last["role"] : nil }.compact
     end
 
     def to_stat(key, stat)
       Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
-               message_count: stat["message_count"].to_i, vars: { "agent" => stat["agent"] }.compact,
+               message_count: stat["message_count"].to_i,
+               vars: stat.slice("agent", "customer", "customer_name"),
                last_role: stat["last_role"])
     end
 
