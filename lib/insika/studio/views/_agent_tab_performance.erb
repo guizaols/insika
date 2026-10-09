@@ -1,0 +1,34 @@
+<!-- ── Performance ───────────────────────────────────────────────────────── -->
+<% periods = { "24h" => "24h", "7d" => "7 days", "30d" => "30 days" } %>
+<% q = Rack::Utils.escape(@agent.id) %>
+<section class="section" id="performance" data-tabs-target="panel">
+  <div class="section-head">
+    <h2>Performance</h2>
+    <p class="muted">The same numbers as the <a href="/studio/home?agent=<%= q %>" data-turbo-frame="_top">home</a> and <a href="/studio/models?agent=<%= q %>" data-turbo-frame="_top">Models</a>, for this agent. Latency is the whole turn; first balloon is what a channel customer waits.</p>
+  </div>
+  <div class="card">
+    <table class="grid">
+      <thead><tr><th></th><% periods.each_value do |label| %><th class="num"><%= label %></th><% end %></tr></thead>
+      <tbody>
+        <% pct = ->(ms) { ms.nil? ? "—" : format("%.1fs", ms / 1000.0) } %>
+        <% rows = [
+             ["Conversations", ->(p) { @perf_activity[p][:conversations] }],
+             ["Messages", ->(p) { @perf_activity[p][:messages] }],
+             ["Outcomes", ->(p) { @perf_activity[p][:outcomes] }],
+             ["Cost", ->(p) { usd(@perf.dig(p, "totals", "cost")) }],
+             ["Model requests", ->(p) { @perf.dig(p, "totals", "requests") || 0 }],
+             ["Tokens in / out", ->(p) { t = @perf.dig(p, "totals") || {}; "#{t['input_tokens'] || 0} / #{t['output_tokens'] || 0}" }],
+             ["Turns", ->(p) { @perf.dig(p, "turns", "count") || 0 }],
+             ["Failed turns", ->(p) { t = @perf.dig(p, "turns"); t && t["count"].positive? ? format("%d (%.1f%%)", t["failures"], t["failures"] * 100.0 / t["count"]) : "—" }],
+             ["ttft p50 / p95", ->(p) { w = @perf.dig(p, "turns", "windows", "ttft_ms") || {}; "#{pct.(w['p50'])} / #{pct.(w['p95'])}" }],
+             ["Turn p50 / p95", ->(p) { w = @perf.dig(p, "turns", "windows", "total_ms") || {}; "#{pct.(w['p50'])} / #{pct.(w['p95'])}" }],
+             ["First balloon p95", ->(p) { pct.(@perf.dig(p, "turns", "windows", "first_balloon_ms", "p95")) }],
+             ["Tool calls ok", ->(p) { tools = Array(@perf.dig(p, "turns", "tools")); calls = tools.sum { |t| t["calls"] }; calls.zero? ? "—" : format("%.1f%% of %d", (calls - tools.sum { |t| t["failures"] }) * 100.0 / calls, calls) }]
+           ] %>
+        <% rows.each do |label, value| %>
+          <tr><td><%= label %></td><% periods.each_key do |p| %><td class="num"><%= value.(p) %></td><% end %></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>

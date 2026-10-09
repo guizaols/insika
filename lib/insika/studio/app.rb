@@ -1845,6 +1845,7 @@ end
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
+      agent_performance(id, outcomes)
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
       # the per-agent cache-hit series (nil store -> the view's
@@ -2438,6 +2439,27 @@ end
       @msg_trend = message_delta(sessions, now)
       @persistence = insika.dig(:config, :persistence)
       view("home")
+    end
+
+    # The agent page's Performance tab: per fixed period (24h/7d/30d) the
+    # conversations and messages it touched (session stats), its outcomes, and
+    # the model/turn numbers from ModelMetricsStore#windows (one read).
+    def agent_performance(id, outcomes)
+      now = Time.now.utc
+      @perf = insika[:model_metrics_store]&.windows(agent: id, now: now) || {}
+      store = insika[:session_store]
+      stats = if store.nil? then []
+              elsif store.respond_to?(:all_stats) then store.all_stats
+              else every_record(store)
+              end
+      mine = agent_sessions(stats, id)
+      outcome_times = Array(outcomes&.all(agent: id)).map { |r| r.at.to_s }
+      @perf_activity = Insika::ModelMetricsStore::PERIODS.to_h do |period, seconds|
+        cut = now - seconds
+        touched = mine.select { |s| (t = utc_time(s.updated_at)) && t >= cut }
+        [period, { conversations: touched.size, messages: touched.sum { |s| message_count(s) },
+                   outcomes: outcome_times.count { |at| at >= cut.iso8601 } }]
+      end
     end
 
     COLD_AGENT_DAYS = 3
