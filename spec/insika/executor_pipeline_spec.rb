@@ -790,6 +790,18 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
       expect(ev.data).not_to have_key(:timing)
     end
 
+    it "writes the turn row (agent, model, windows) with the flag off" do
+      allow(Insika::TurnTiming).to receive(:enabled?).and_return(false)
+      metrics = Insika::ModelMetricsStore.new(store: backend)
+      session_store.create(id: "s1")
+      run_turn(build_executor(model_metrics_store: metrics), make_task)
+
+      row = backend.get(Insika::ModelMetricsStore::TURN_SCOPE, "t")
+      expect(row).to include("agent" => "sales")
+      expect(row["ttft_ms"]).to be_a(Numeric)
+      expect(row["total_ms"]).to be_a(Numeric)
+    end
+
     it "reports the turn's store calls when the backend counts them" do
       allow(Insika::TurnTiming).to receive(:enabled?).and_return(true)
       Insika::Stores::TurnCounter.attach(backend)

@@ -6,6 +6,10 @@ module Insika
   # Content-free request summaries; independent of the bounded diagnostic trace.
   class ModelMetricsStore
     SCOPE = "model_metrics"
+    # One row per completed turn (TurnTiming#metrics + agent/model/provider),
+    # keyed by task id; TaskStore#delete drops it with the task.
+    TURN_SCOPE = "turn_metrics"
+    TURN_WINDOWS = %w[ttft_ms total_ms first_balloon_ms queue_ms prep_ms tools_ms].freeze
     PERIODS = { "24h" => 86_400, "7d" => 7 * 86_400, "30d" => 30 * 86_400 }.freeze
     VALUES = %w[cost input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].freeze
     FIELDS = %w[type request_id at operation agent provider model status duration_ms turn].freeze + VALUES
@@ -43,6 +47,12 @@ module Insika
           @store.set(SCOPE, key, row)
         end
       end
+    rescue StandardError
+      nil
+    end
+
+    def record_turn(task_id:, row:)
+      @store.set(TURN_SCOPE, task_id.to_s, row)
     rescue StandardError
       nil
     end
@@ -86,6 +96,7 @@ module Insika
         "operations" => rows.group_by { |row| row["operation"] || "chat" }.sort.map do |operation, group|
           summarize(group).merge("operation" => operation)
         end,
+        "turns" => turn_report(from, now, agent: agent, provider: provider, model: model),
         "slowest" => rows.select { |row| row["duration_ms"] }.sort_by { |row| -row["duration_ms"] }
           .first(20).map { |row| row.reject { |key, _| key == "reported" }.merge(summarize([row])) },
         "history_note" => "History starts with deployment. Deleting a task removes its model history."
@@ -93,6 +104,35 @@ module Insika
     end
 
     private
+
+    # Turn latency (each window's p50/p95) and per-tool health over the turn rows.
+    def turn_report(from, to, agent:, provider:, model:)
+      # ponytail: whole-scope scan like #report; index by time when history grows.
+      turns = @store.list(TURN_SCOPE).filter_map do |key|
+        row = @store.get(TURN_SCOPE, key)
+        next unless row && row["at"]
+
+        at = Time.iso8601(row["at"])
+        next unless at >= from && at <= to
+        next unless (agent.nil? || row["agent"] == agent) &&
+                    (provider.nil? || row["provider"] == provider) && (model.nil? || row["model"] == model)
+
+        row
+      end
+      windows = TURN_WINDOWS.to_h do |window|
+        values = turns.filter_map { |row| row[window] }.sort
+        [window, { "measured" => values.size, "p50" => percentile(values, 50), "p95" => percentile(values, 95) }]
+      end
+      tools = turns.flat_map { |row| Array(row["tools"]) }.group_by(&:first).sort.map do |name, calls|
+        ms = calls.filter_map { |call| call[2] }.sort
+        { "tool" => name, "calls" => calls.size, "failures" => calls.count { |call| call[1] == false },
+          "p50_ms" => percentile(ms, 50), "p95_ms" => percentile(ms, 95) }
+      end
+      { "count" => turns.size, "windows" => windows, "tools" => tools }
+    end
+
+    # Nearest rank on a sorted list; nil when empty.
+    def percentile(sorted, pct) = sorted.empty? ? nil : sorted[(sorted.size * pct / 100.0).ceil - 1]
 
     def fold(row, data)
       row.merge!(data.slice("operation", "agent", "provider", "model", "turn").compact)
@@ -147,10 +187,7 @@ module Insika
         "retries" => rows.sum { |row| [row["attempts"] - 1, 0].max },
         "measured_requests" => durations.size
       }
-      [50, 90, 95].each do |percentile|
-        result["p#{percentile}_ms"] = durations[(durations.size * percentile / 100.0).ceil - 1] unless durations.empty?
-        result["p#{percentile}_ms"] ||= nil
-      end
+      [50, 90, 95].each { |pct| result["p#{pct}_ms"] = percentile(durations, pct) }
       VALUES.each do |field|
         values = rows.filter_map { |row| row[field] }
         result[field] = values.empty? ? nil : values.sum

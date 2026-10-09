@@ -287,6 +287,8 @@ module Insika
       capture_shared_result(call_id, result)
       timing = Thread.current[TIMING_KEY] || {}
       Thread.current[TIMING_KEY] = nil
+      ms = started ? ((monotonic - started) * 1000).round : nil
+      TurnTiming.current&.tool(real_name, ToolTraceStore.ok?(result), ms)
       return unless @trace_recorder && @state.task&.session_id
 
       @trace_recorder.record(
@@ -294,7 +296,7 @@ module Insika
         entry: { "turn" => @state.turn, "tool" => real_name, "call_id" => call_id.to_s,
                  "args" => args, "result" => result,
                  "gate" => result.is_a?(Blocked) || result.is_a?(Held) ? result["gate"] : nil,
-                 "ms" => started ? ((monotonic - started) * 1000).round : nil,
+                 "ms" => ms,
                  "at" => Time.now.utc.iso8601 }.merge(timing)
       )
     rescue StandardError

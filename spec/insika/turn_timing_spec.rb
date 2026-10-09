@@ -71,7 +71,7 @@ RSpec.describe Insika::TurnTiming do
     # a channel turn allocates TurnTiming even when INSIKA_TURN_TIMING
     # is off, but then to_h may carry ONLY first_balloon_ms — the full breakdown
     # marks are the flag's job.
-    it "records only inbound/first_balloon; the breakdown marks are no-ops" do
+    it "exposes only inbound/first_balloon; the breakdown windows stay out of #to_h" do
       t = described_class.new(breakdown: false)
       t.mark(:inbound)
       t.mark(:prep_start)
@@ -89,6 +89,24 @@ RSpec.describe Insika::TurnTiming do
       t.mark(:inbound)
 
       expect(t.to_h).to eq({})
+    end
+  end
+
+  describe "#metrics (the turn row, whatever the flag)" do
+    it "keeps every window, the queue wait and the tool calls even with breakdown: false" do
+      t = described_class.new(breakdown: false)
+      %i[inbound prep_start ask first_token done first_balloon].each { t.mark(_1) }
+      t.tool("search", true, 12)
+      t.tool("cart", false, 30)
+
+      m = t.metrics
+      expect(m.keys).to include("ttft_ms", "total_ms", "first_balloon_ms", "queue_ms", "prep_ms", "gen_ms")
+      expect(m).to include("tools_ms" => 42, "tools" => [["search", true, 12], ["cart", false, 30]])
+      expect(t.to_h.keys).to eq([:first_balloon_ms])
+    end
+
+    it "omits windows and tools that never happened" do
+      expect(described_class.new.metrics).to eq({})
     end
   end
 
