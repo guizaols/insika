@@ -3389,6 +3389,18 @@ end
     expect(stale_row).not_to include('class="presence present"')
   end
 
+  it "chats: customer_name labels the row and the viewer; the customer key stays searchable" do
+    sess = StoredSession.new(id: "sess-named", updated_at: "t",
+                              vars: { "agent" => "bia", "customer" => "5511999", "customer_name" => "Maria Souza" },
+                              messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-named" => sess })
+    client = login(app)
+    body = client.get("/chats").body
+    expect(body).to include('<span class="name">Maria Souza</span>')
+    expect(body).to match(/data-filter-text="sess-named 5511999 Maria Souza bia/)
+    expect(client.get("/sessions/sess-named").body).to include("<h2>Maria Souza</h2>")
+  end
+
   it "chats: a frame request for session-detail still renders the full page (no row is pre-selected on the index)" do
     sess = StoredSession.new(id: "sess-idx-frame", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-idx-frame" => sess })

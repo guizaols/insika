@@ -26,9 +26,10 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
     )
   end
 
-  def task(message, customer: nil, tenant: nil, id: nil)
+  def task(message, customer: nil, customer_name: nil, tenant: nil, id: nil)
     payload = { agent: "a", message: message }
     payload[:customer] = customer if customer
+    payload[:customer_name] = customer_name unless customer_name.nil?
     @task_n = (@task_n || 0) + 1
     task_store.create(command: Insika::Command.build(:send_message, payload, tenant: tenant).to_h,
                       session_id: "s1", id: id || "t-#{@task_n}")
@@ -83,6 +84,29 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
 
     expect(session_store.find("s1").vars["customer"]).to eq("123")
     expect(session_store.find("s1").vars["agent"]).to eq("a")
+  end
+
+  # customer_name is a display label: unlike `customer` it follows the latest
+  # value sent, and a non-String is ignored.
+  it "stamps vars['customer_name'] and keeps it current, without touching the customer key" do
+    session_store.create(id: "s1")
+    executor = build_executor
+    allow(executor).to receive(:create_chat).and_return(FakeChat.new)
+    run = lambda do |id, **opts|
+      Sync do
+        executor.spawn(task("oi", id: id, **opts), profile: Insika::AgentProfile.build(id: "a", model: "m"))
+        executor.instance_variable_get(:@running)[id]&.wait
+      end
+    end
+
+    run.call("t-a", customer: "123", customer_name: "Maria")
+    expect(session_store.find("s1").vars).to include("customer" => "123", "customer_name" => "Maria")
+
+    run.call("t-b", customer: "456", customer_name: "Maria Souza")
+    expect(session_store.find("s1").vars).to include("customer" => "123", "customer_name" => "Maria Souza")
+
+    run.call("t-c", customer_name: { "first" => "x" })
+    expect(session_store.find("s1").vars["customer_name"]).to eq("Maria Souza")
   end
 
   # A turn with no customer (an API call, a load run) still names its agent on the
