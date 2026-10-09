@@ -3449,6 +3449,20 @@ end
     expect(body).to match(%r{<span class="label">Failed turns</span>\s*<span class="value tnum">100.0%</span>})
     expect(body).to include('href="/studio/chats?agent=bia"', "<td>search</td>")
     expect(body).to include('No conversation in 3+ days: <a href="/studio/agents/chef">chef</a>')
+    expect(body).to include('aria-label="reported cost per day, last 14 days"', "$1.50 in 14 days")
+    expect(body).to include('<turbo-frame id="home-ops" target="_top" data-live-home-target="ops">')
+  end
+
+  it "home lists conversations waiting for a reply: customer spoke last, 10+ minutes ago, within 24h" do
+    now = Time.now.utc
+    mk = ->(id, ago, role) { StoredSession.new(id: id, updated_at: (now - ago).iso8601, vars: { "agent" => "bia" },
+                                               messages: [{ "role" => "user", "content" => "oi" }, { "role" => role, "content" => "x" }]) }
+    app, = build_app(sessions: { "w-waiting" => mk.("w-waiting", 30 * 60, "user"), "w-fresh" => mk.("w-fresh", 60, "user"),
+                                 "w-answered" => mk.("w-answered", 30 * 60, "assistant"), "w-old" => mk.("w-old", 2 * 86_400, "user") })
+    body = login(app).get("/home").body
+    waiting = body[/Waiting for a reply.*?<\/section>/m]
+    expect(waiting).to include("w-waiting")
+    expect(waiting).not_to include("w-fresh", "w-answered", "w-old")
   end
 
   it "root redirects to the overview home" do
