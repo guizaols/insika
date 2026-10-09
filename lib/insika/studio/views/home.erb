@@ -23,20 +23,24 @@
     </div>
   </header>
 
+  <% totals = @day && @day["totals"] %>
+  <% turns = @day && @day["turns"] %>
+  <% p95 = turns && turns["windows"]["total_ms"]["p95"] %>
+  <% cost = totals && totals["cost"] %>
   <div class="kpi-strip">
     <% window = "last 14 days" %>
-    <% [["conversations", "Conversations", @conv_trend, (window if @agent)],
-        ["messages", "Messages", @msg_trend, window],
-        ["agents", "Agents", nil, nil],
-        ["skills", "Skills", nil, nil],
-        ["tools", "Tools", nil, nil],
-        ["providers", "LLM providers", nil, nil]].each do |key, label, trend, sub| %>
+    <% [["Conversations", @counts["conversations"], @conv_trend, (window if @agent)],
+        ["Messages", @counts["messages"], @msg_trend, window],
+        ["Outcomes", @outcomes_24h || "—", nil, "last 24h"],
+        ["Cost", cost.nil? ? "—" : format("$%.2f", cost), nil, @day_before_cost.nil? ? "last 24h" : format("last 24h · $%.2f before", @day_before_cost)],
+        ["Turn p95", p95.nil? ? "—" : format("%.1fs", p95 / 1000.0), nil, turns ? "#{turns['count']} turns · 24h" : "last 24h"],
+        ["Failed turns", turns && turns["count"].positive? ? format("%.1f%%", turns["failures"] * 100.0 / turns["count"]) : "—", nil, turns ? "#{turns['failures']} in 24h" : "last 24h"]].each do |label, value, trend, sub| %>
       <% delta = (trend && !trend.zero?) ? "#{trend.positive? ? '+' : '-'}#{trend.abs}" : nil %>
-      <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta, sub: sub }) %>
+      <%== render("_kpi", locals: { label: label, value: value, delta: delta, sub: sub }) %>
     <% end %>
   </div>
 
-  <p class="report-note">Conversation and message totals reflect this agent filter. Configuration counts include all agents. Changes compare today with yesterday.</p>
+  <p class="report-note">Every number follows the agent filter. Conversations and messages compare today with yesterday; cost, outcomes and turns cover the last 24 hours. <a href="/studio/models<%= "?agent=#{Rack::Utils.escape(@agent)}" if @agent %>">Models</a> has the detail.</p>
 
   <div class="home-grid">
     <section class="card home-activity">
@@ -113,6 +117,47 @@
           <% end %>
         <% end %>
       </ul>
+    </section>
+  </div>
+
+  <div class="home-grid">
+    <section class="card">
+      <div class="section-head"><h2>Agents</h2><span class="muted">conversations · last 14 days</span></div>
+      <% if @agent_ranking.empty? %>
+        <div class="empty">No agent conversations yet.</div>
+      <% else %>
+        <table class="grid">
+          <thead><tr><th>agent</th><th class="num">today</th><th class="num">14 days</th><th class="num">messages</th></tr></thead>
+          <tbody>
+            <% @agent_ranking.each do |row| %>
+              <tr><td><a href="/studio/chats?agent=<%= Rack::Utils.escape(row[:agent]) %>"><%= row[:agent] %></a></td>
+                <td class="num"><%= row[:today] %></td><td class="num"><%= row[:conversations] %></td><td class="num"><%= row[:messages] %></td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+      <% unless @cold_agents.empty? %>
+        <p class="muted">No conversation in <%= COLD_AGENT_DAYS %>+ days: <%== @cold_agents.map { |id| %(<a href="/studio/agents/#{Rack::Utils.escape(id)}">#{Rack::Utils.escape_html(id)}</a>) }.join(", ") %></p>
+      <% end %>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Tool health</h2><span class="muted">last 24h</span></div>
+      <% tools = turns ? turns["tools"].sort_by { |t| [-t["failures"], -t["calls"]] }.first(8) : [] %>
+      <% if tools.empty? %>
+        <div class="empty">No tool calls in the last 24h.</div>
+      <% else %>
+        <table class="grid">
+          <thead><tr><th>tool</th><th class="num">calls</th><th class="num">ok %</th><th class="num">p95 ms</th></tr></thead>
+          <tbody>
+            <% tools.each do |t| %>
+              <tr><td><%= t["tool"] %></td><td class="num"><%= t["calls"] %></td>
+                <td class="num"><%= format("%.1f", (t["calls"] - t["failures"]) * 100.0 / t["calls"]) %></td>
+                <td class="num"><%= t["p95_ms"] || "—" %></td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
     </section>
   </div>
 </div>
