@@ -29,8 +29,10 @@ when coverage is incomplete, they are subtotals, and a dash means no value was
 reported. An unknown-cost failed attempt followed by a priced success leaves
 partial cost coverage even when the subtotal is known.
 
-Every completed turn also leaves one row (agent, model, provider and its
-windows), whatever `INSIKA_TURN_TIMING` says; that flag only decides what the
+Every turn also leaves one row (agent, model, provider, status and its
+windows), whatever `INSIKA_TURN_TIMING` says. A failed turn keeps its row with
+the stage that failed and a total that runs to the failure, so timeouts stay in
+the p95 and the page shows the turn failure rate by stage; that flag only decides what the
 response exposes. **Turn latency** shows p50/p95 of ttft (the provider's first
 token), total, first balloon (what a channel customer waits), queue (debounce
 and FIFO wait before the turn starts), prep and tools. **Tool health** lists

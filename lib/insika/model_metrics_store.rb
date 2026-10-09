@@ -128,7 +128,10 @@ module Insika
         { "tool" => name, "calls" => calls.size, "failures" => calls.count { |call| call[1] == false },
           "p50_ms" => percentile(ms, 50), "p95_ms" => percentile(ms, 95) }
       end
-      { "count" => turns.size, "windows" => windows, "tools" => tools }
+      failed = turns.select { |row| row["status"] == "failed" }
+      { "count" => turns.size, "failures" => failed.size,
+        "failure_stages" => failed.group_by { |row| row["stage"] || "unknown" }.transform_values(&:size).sort.to_h,
+        "windows" => windows, "tools" => tools }
     end
 
     # Nearest rank on a sorted list; nil when empty.
