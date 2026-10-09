@@ -340,6 +340,11 @@ module Insika
           profiles: profiles, executor: executor, budget_ledger: spine.budget_ledger,
           event_stream: spine.event_stream
         )
+        # RubyLLM's model catalog (prices included) in the store, refreshed
+        # daily by one worker and reloaded by the rest.
+        executor.tick.model_registry = Insika::ModelRegistry.new(
+          store: spine.backend, interval: (tick_env("INSIKA_MODEL_REFRESH_HOURS") || 24) * 3600
+        )
         # the distillation engine — the tick-duty that finds idle
         # customer sessions and distills them on its own worker fiber (a
         # supervisor child, started in serving mode next to the tick).
