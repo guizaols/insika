@@ -217,7 +217,11 @@ module Insika
 
     # What a dashboard needs of a session without its messages: a few bytes per
     # session, written with it, instead of the whole record (messages included).
-    Stat = Data.define(:id, :updated_at, :message_count, :vars)
+    # last_role: who spoke last ("user" = the customer is waiting); nil on stats
+    # written before it existed, until the session's next write.
+    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role) do
+      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil) = super
+    end
 
     # -> [Stat] every session's stats, in no particular order: small enough to read
     # whole, so a reader never depends on the order they were written in.
@@ -266,13 +270,15 @@ module Insika
     end
 
     def stats_of(record)
+      last = Array(record["messages"]).last
       { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
-        "agent" => (record["vars"] || {})["agent"] }
+        "agent" => (record["vars"] || {})["agent"], "last_role" => last.is_a?(Hash) ? last["role"] : nil }.compact
     end
 
     def to_stat(key, stat)
       Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
-               message_count: stat["message_count"].to_i, vars: { "agent" => stat["agent"] }.compact)
+               message_count: stat["message_count"].to_i, vars: { "agent" => stat["agent"] }.compact,
+               last_role: stat["last_role"])
     end
 
     def key_for(id)
