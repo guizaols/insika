@@ -1449,9 +1449,10 @@ end
     end
 
     it "home?agent= narrows the counts and the recent list" do
-      app, = build_app(sessions: { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") })
+      fresh = ->(id, agent) { StoredSession.new(**sess(id, agent).to_h, updated_at: Time.now.utc.iso8601) }
+      app, = build_app(sessions: { "s-1" => fresh.("s-1", "bia"), "s-2" => fresh.("s-2", "chef") })
       body = login(app).get("/home?agent=bia").body
-      expect(body).to include('<span class="value tnum">1</span>')
+      expect(body).to match(%r{<span class="label">Conversations</span>\s*<span class="value tnum">1</span>})
       expect(body).not_to include("s-2")
     end
 
@@ -3426,6 +3427,42 @@ end
     expect(body).to include("Recent conversations")
     expect(body).to include("/studio/sessions/sess-home-00001") # recent rail links to the viewer
     expect(body).to include('class="barchart"')                 # SVG activity chart
+  end
+
+  it "overview home shows 24h cost, outcomes, turn health, the agent ranking and cold agents" do
+    now = Time.now.utc
+    backend = Insika::Stores::Memory.new
+    Insika::TaskStore.new(store: backend).create(id: "t", command: {})
+    metrics = Insika::ModelMetricsStore.new(store: backend)
+    metrics.record(task_id: "t", entry: { "type" => "llm_usage", "request_id" => "r", "at" => now.iso8601, "agent" => "bia", "cost" => 1.5 })
+    metrics.record(task_id: "t", entry: { "type" => "llm_request", "request_id" => "r", "at" => now.iso8601, "agent" => "bia", "duration_ms" => 5 })
+    metrics.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "bia", "status" => "failed", "total_ms" => 2500,
+                                             "tools" => [["search", false, 40]] })
+    sess = StoredSession.new(id: "s-bia", updated_at: now.iso8601, vars: { "agent" => "bia" }, messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "s-bia" => sess }, model_metrics_store: metrics,
+                     outcomes: [{ tenant: "", agent: "bia", outcome: "sale", at: now }])
+    body = login(app).get("/home").body
+
+    expect(body).to match(%r{<span class="label">Cost</span>\s*<span class="value tnum">\$1.50</span>})
+    expect(body).to match(%r{<span class="label">Outcomes</span>\s*<span class="value tnum">1</span>})
+    expect(body).to match(%r{<span class="label">Turn p95</span>\s*<span class="value tnum">2.5s</span>})
+    expect(body).to match(%r{<span class="label">Failed turns</span>\s*<span class="value tnum">100.0%</span>})
+    expect(body).to include('href="/studio/chats?agent=bia"', "<td>search</td>")
+    expect(body).to include('No conversation in 3+ days: <a href="/studio/agents/chef">chef</a>')
+    expect(body).to include('aria-label="reported cost per day, last 14 days"', "$1.50 in 14 days")
+    expect(body).to include('<turbo-frame id="home-ops" target="_top" data-live-home-target="ops">')
+  end
+
+  it "home lists conversations waiting for a reply: customer spoke last, 10+ minutes ago, within 24h" do
+    now = Time.now.utc
+    mk = ->(id, ago, role) { StoredSession.new(id: id, updated_at: (now - ago).iso8601, vars: { "agent" => "bia" },
+                                               messages: [{ "role" => "user", "content" => "oi" }, { "role" => role, "content" => "x" }]) }
+    app, = build_app(sessions: { "w-waiting" => mk.("w-waiting", 30 * 60, "user"), "w-fresh" => mk.("w-fresh", 60, "user"),
+                                 "w-answered" => mk.("w-answered", 30 * 60, "assistant"), "w-old" => mk.("w-old", 2 * 86_400, "user") })
+    body = login(app).get("/home").body
+    waiting = body[/Waiting for a reply.*?<\/section>/m]
+    expect(waiting).to include("w-waiting")
+    expect(waiting).not_to include("w-fresh", "w-answered", "w-old")
   end
 
   it "root redirects to the overview home" do

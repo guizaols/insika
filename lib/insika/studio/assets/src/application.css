@@ -558,8 +558,8 @@
   /* ── Overview home: KPI strip + activity chart + conversations ───────── */
   .home-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:.75rem; align-items:start; }
   @media (max-width:900px) { .home-grid { grid-template-columns:1fr; } }
-  .home-activity .section-head, .home-recent .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:.6rem; margin-bottom:.875rem; }
-  .home-activity .section-head h2, .home-recent .section-head h2 { font-size:var(--text); font-weight:600; margin:0; }
+  .home-grid .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:.6rem; margin-bottom:.875rem; }
+  .home-grid .section-head h2 { font-size:var(--text); font-weight:600; margin:0; }
 
   /* inline SVG bar chart — geometry via attributes, fill via class (CSP-safe) */
   .barchart { display:block; width:100%; height:11rem; overflow:visible; }

@@ -398,6 +398,7 @@ RSpec.describe Insika::SessionStore do
       expect(stats.keys).to contain_exactly("a", "b")
       expect([stats["a"].message_count, stats["a"].vars["agent"], stats["a"].updated_at])
         .to eq([2, "bia", sessions.find("a").updated_at])
+      expect([stats["a"].last_role, stats["b"].last_role]).to eq(["assistant", nil])
     end
 
     it "deleting a session deletes its stats" do

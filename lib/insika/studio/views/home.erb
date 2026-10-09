@@ -23,20 +23,27 @@
     </div>
   </header>
 
+  <%# home-ops: everything below the header. live-home reloads this frame
+      (debounced) when a turn ends, so the numbers follow the traffic. %>
+  <turbo-frame id="home-ops" target="_top" data-live-home-target="ops">
+  <% totals = @day && @day["totals"] %>
+  <% turns = @day && @day["turns"] %>
+  <% p95 = turns && turns["windows"]["total_ms"]["p95"] %>
+  <% cost = totals && totals["cost"] %>
   <div class="kpi-strip">
     <% window = "last 14 days" %>
-    <% [["conversations", "Conversations", @conv_trend, (window if @agent)],
-        ["messages", "Messages", @msg_trend, window],
-        ["agents", "Agents", nil, nil],
-        ["skills", "Skills", nil, nil],
-        ["tools", "Tools", nil, nil],
-        ["providers", "LLM providers", nil, nil]].each do |key, label, trend, sub| %>
+    <% [["Conversations", @counts["conversations"], @conv_trend, (window if @agent)],
+        ["Messages", @counts["messages"], @msg_trend, window],
+        ["Outcomes", @outcomes_24h || "—", nil, "last 24h"],
+        ["Cost", usd(cost), nil, @day_before_cost.nil? ? "last 24h" : "last 24h · #{usd(@day_before_cost)} before"],
+        ["Turn p95", p95.nil? ? "—" : format("%.1fs", p95 / 1000.0), nil, turns ? "#{turns['count']} turns · 24h" : "last 24h"],
+        ["Failed turns", turns && turns["count"].positive? ? format("%.1f%%", turns["failures"] * 100.0 / turns["count"]) : "—", nil, turns ? "#{turns['failures']} in 24h" : "last 24h"]].each do |label, value, trend, sub| %>
       <% delta = (trend && !trend.zero?) ? "#{trend.positive? ? '+' : '-'}#{trend.abs}" : nil %>
-      <%== render("_kpi", locals: { label: label, value: @counts[key], delta: delta, sub: sub }) %>
+      <%== render("_kpi", locals: { label: label, value: value, delta: delta, sub: sub }) %>
     <% end %>
   </div>
 
-  <p class="report-note">Conversation and message totals reflect this agent filter. Configuration counts include all agents. Changes compare today with yesterday.</p>
+  <p class="report-note">Every number follows the agent filter. Conversations and messages compare today with yesterday; cost, outcomes and turns cover the last 24 hours. <a href="/studio/models<%= "?agent=#{Rack::Utils.escape(@agent)}" if @agent %>">Models</a> has the detail.</p>
 
   <div class="home-grid">
     <section class="card home-activity">
@@ -115,4 +122,92 @@
       </ul>
     </section>
   </div>
+
+  <div class="home-grid">
+    <section class="card">
+      <div class="section-head"><h2>Cost per day</h2><span class="muted">reported USD · tokens in the tooltip · UTC days</span></div>
+      <% d_costs = @daily.map { |b| b["cost"] || 0 } %>
+      <% if @daily.empty? || d_costs.sum.zero? %>
+        <div class="empty">No reported cost in the last 14 days.</div>
+      <% else %>
+        <% d_max = [d_costs.max, 0.000001].max %>
+        <svg class="barchart" viewBox="0 0 700 176" preserveAspectRatio="none" role="img" aria-label="reported cost per day, last 14 days">
+          <% n = @daily.size; slot = 700.0 / n; bw = slot * 0.58 %>
+          <% @daily.each_with_index do |b, i| %>
+            <% c = b["cost"] || 0; h = (c / d_max) * 150.0; x = (i * slot) + ((slot - bw) / 2.0) %>
+            <% tokens = %w[input_tokens output_tokens].sum { |k| b[k].to_i } %>
+            <rect class="bar<%== ' bar-empty' if c.zero? %>" x="<%= format('%.1f', x) %>" y="<%= format('%.1f', c.zero? ? 157.0 : 160.0 - h) %>"
+                  width="<%= format('%.1f', bw) %>" height="<%= format('%.1f', c.zero? ? 3.0 : [h, 3.0].max) %>" rx="2">
+              <title><%= Time.iso8601(b["at"]).utc.strftime('%b %-d') %> · <%= usd(c) %> · <%= b["requests"] %> requests · <%= tokens %> tokens</title>
+            </rect>
+          <% end %>
+          <line class="barchart-axis-line" x1="0" y1="160" x2="700" y2="160" />
+        </svg>
+        <div class="barchart-axis">
+          <span><%= Time.iso8601(@daily.first["at"]).utc.strftime('%b %-d') %></span>
+          <span class="peak"><%= usd(d_costs.sum) %> in 14 days · peak <%= usd(d_max) %>/day</span>
+          <span><%= Time.iso8601(@daily.last["at"]).utc.strftime('%b %-d') %></span>
+        </div>
+      <% end %>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Waiting for a reply</h2><span class="muted">customer spoke last, 10+ min ago · 24h</span></div>
+      <% if @stalled.empty? %>
+        <div class="empty">No conversation is waiting.</div>
+      <% else %>
+        <table class="grid">
+          <thead><tr><th>conversation</th><th>agent</th><th class="num">waiting</th></tr></thead>
+          <tbody>
+            <% @stalled.each do |row| %>
+              <tr><td><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(row[:id]) %>" title="<%= row[:id] %>"><%= row[:id][0, 20] %></a></td>
+                <td><%= row[:agent].empty? ? "—" : row[:agent] %></td><td class="num"><%= time_ago(row[:waiting].iso8601) %></td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+    </section>
+  </div>
+
+  <div class="home-grid">
+    <section class="card">
+      <div class="section-head"><h2>Agents</h2><span class="muted">conversations · last 14 days</span></div>
+      <% if @agent_ranking.empty? %>
+        <div class="empty">No agent conversations yet.</div>
+      <% else %>
+        <table class="grid">
+          <thead><tr><th>agent</th><th class="num">today</th><th class="num">14 days</th><th class="num">messages</th></tr></thead>
+          <tbody>
+            <% @agent_ranking.each do |row| %>
+              <tr><td><a href="/studio/chats?agent=<%= Rack::Utils.escape(row[:agent]) %>"><%= row[:agent] %></a></td>
+                <td class="num"><%= row[:today] %></td><td class="num"><%= row[:conversations] %></td><td class="num"><%= row[:messages] %></td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+      <% unless @cold_agents.empty? %>
+        <p class="muted">No conversation in <%= COLD_AGENT_DAYS %>+ days: <%== @cold_agents.map { |id| %(<a href="/studio/agents/#{Rack::Utils.escape(id)}">#{Rack::Utils.escape_html(id)}</a>) }.join(", ") %></p>
+      <% end %>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Tool health</h2><span class="muted">last 24h</span></div>
+      <% tools = turns ? turns["tools"].sort_by { |t| [-t["failures"], -t["calls"]] }.first(8) : [] %>
+      <% if tools.empty? %>
+        <div class="empty">No tool calls in the last 24h.</div>
+      <% else %>
+        <table class="grid">
+          <thead><tr><th>tool</th><th class="num">calls</th><th class="num">ok %</th><th class="num">p95 ms</th></tr></thead>
+          <tbody>
+            <% tools.each do |t| %>
+              <tr><td><%= t["tool"] %></td><td class="num"><%= t["calls"] %></td>
+                <td class="num"><%= format("%.1f", (t["calls"] - t["failures"]) * 100.0 / t["calls"]) %></td>
+                <td class="num"><%= t["p95_ms"] || "—" %></td></tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+    </section>
+  </div>
+  </turbo-frame>
 </div>
