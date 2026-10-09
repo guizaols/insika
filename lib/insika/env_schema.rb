@@ -114,7 +114,7 @@ module Insika
       spec(name: "INSIKA_MODEL_PRICING", description: "JSON rates table (USD per million tokens) for the estimated-cost attribute; unset -> no cost reported."),
       spec(name: "INSIKA_SLOW_STORE_MS", type: :integer, description: "Log every SQLite store call that takes at least this many ms, with its caller (off when unset)."),
       spec(name: "INSIKA_MODEL_VISIBLE_TRACES", type: :boolean, description: "Record the full model request per turn (model_visible_traces). Default on; 0 stops the write (heavy on SQLite)."),
-      spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Emit per-turn TTFB breakdown in responses (opt-in)."),
+      spec(name: "INSIKA_TURN_TIMING", type: :boolean, description: "Expose the per-turn TTFB breakdown in responses (opt-in; Studio always records it)."),
       spec(name: "INSIKA_SUBAGENT_DEPTH_CAP", type: :integer, description: "Max delegation depth in the subagent graph (default 5)."),
       spec(name: "INSIKA_SUBAGENT_FANOUT_CAP", type: :integer, description: "Max parallel children in spawn_subagents (default 8)."),
       spec(name: "INSIKA_ARTIFACT_SIGNING_KEY", secret: true, description: "HMAC key for signed artifact links (INSIKA_ARTIFACT_SIGNING_TTL). Unset -> no signed artifact surface."),

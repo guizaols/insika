@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Insika
-  # Opt-in per-turn latency breakdown (locate the
-  # TTFB cost with real-turn data). OFF unless INSIKA_TURN_TIMING is set — when
-  # off the Executor never allocates one and the hot path pays only `nil&.mark`.
+  # Per-turn latency clock. Every turn runs one (a few clock reads); the turn's
+  # numbers land in ModelMetricsStore's turn rows (#metrics). INSIKA_TURN_TIMING
+  # only decides what the RESPONSE exposes (#to_h) and whether store calls count.
   #
   # Splits a turn into the three windows that answer "is TTFB local or provider?":
   #   prep_ms  — prep_start -> ask: ALL local work before the provider call
@@ -27,12 +27,6 @@ module Insika
       Insika::EnvSchema.truthy?(Insika::EnvSchema.read("INSIKA_TURN_TIMING", env))
     end
 
-    # The marks that only mean something under INSIKA_TURN_TIMING. A `breakdown:
-    # false` clock (a channel turn with the flag off) ignores them and measures
-    # only first_balloon_ms.
-    BREAKDOWN_MARKS = %i[prep_start ask first_token done].freeze
-    private_constant :BREAKDOWN_MARKS
-
     # Fiber-storage slot holding the running turn's clock. Child fibers (parallel
     # tool calls, context providers) inherit it, so their store calls count too.
     FIBER_KEY = :insika_turn_timing
@@ -46,19 +40,21 @@ module Insika
       parts.first == "config" ? parts.first(2).join(":") : parts.first.to_s
     end
 
-    # breakdown: true (the default) is the flag-on clock: prep/ttft/gen/total.
-    # false is the   channel clock: only :inbound -> :first_balloon,
-    # so a channel turn with the flag off still answers H-latência.
+    # breakdown: true (the default) exposes prep/ttft/gen/total in #to_h.
+    # false exposes only first_balloon_ms (the flag-off contract); every mark is
+    # still taken, so #metrics is complete either way.
     def initialize(breakdown: true)
       @marks = {}
       @breakdown = breakdown
+      @tools = []
     end
 
     def mark(name)
-      return unless @breakdown || !BREAKDOWN_MARKS.include?(name)
-
       @marks[name] ||= Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
+
+    # One tool call of this turn (ToolEnvelope#trace): [name, ok, ms].
+    def tool(name, ok, ms) = @tools << [name.to_s, ok, ms]
 
     # Has this mark fired? Used by `SendMessage` to prove the channel clock was
     # stamped at 202 acceptance (`:inbound` before the debounce window), and by
@@ -77,10 +73,25 @@ module Insika
         total_ms: delta(:prep_start, :done),
         first_balloon_ms: delta(:inbound, :first_balloon)
       }.compact
+      h = h.slice(:first_balloon_ms) unless @breakdown
       return h unless @store_calls
 
       h.merge(store_calls: @store_calls.values.sum,
               store_calls_by: @store_calls.sort_by { |call, n| [-n, call] }.to_h)
+    end
+
+    # The turn row ModelMetricsStore keeps: every window, whatever the flag.
+    # queue_ms is inbound -> pipeline start (debounce + FIFO wait), the part of
+    # first_balloon_ms that is not the turn's own work. tools_ms sums the calls,
+    # so parallel calls count more than their wall time.
+    def metrics
+      {
+        "prep_ms" => delta(:prep_start, :ask), "ttft_ms" => delta(:ask, :first_token),
+        "gen_ms" => delta(:first_token, :done), "total_ms" => delta(:prep_start, :done),
+        "first_balloon_ms" => delta(:inbound, :first_balloon), "queue_ms" => delta(:inbound, :prep_start),
+        "tools_ms" => (@tools.sum { |_, _, ms| ms.to_i } unless @tools.empty?),
+        "tools" => (@tools unless @tools.empty?)
+      }.compact
     end
 
     # One store call made during this turn (see Stores::TurnCounter).
