@@ -4026,11 +4026,12 @@ end
 
     it "passes native GET filters to the report and renders measured coverage safely" do
       store = double
-      expect(store).to receive(:report).with(period: "24h", provider: "bad<provider", model: "model&one").and_return(metrics)
+      expect(store).to receive(:report).with(period: "24h", agent: "ag<ent", provider: "bad<provider", model: "model&one").and_return(metrics)
       app, = build_app(model_metrics_store: store)
-      body = login(app).get("/models?period=24h&provider=bad%3Cprovider&model=model%26one").body
+      body = login(app).get("/models?period=24h&agent=ag%3Cent&provider=bad%3Cprovider&model=model%26one").body
 
-      expect(body).to include('href="/studio/models"', 'aria-current="page"', 'name="period"', 'name="provider"', 'name="model"')
+      expect(body).to include('href="/studio/models"', 'aria-current="page"', 'name="period"', 'name="agent"', 'name="provider"', 'name="model"')
+      expect(body).to include("ag&lt;ent")
       expect(body).to include("0.25", "1 of 2", "p50", "p90", "p95", "10", "5", "3", "2", "—")
       expect(body).to include("bad&lt;provider", "model&amp;one", 'href="/studio/tasks/id+%26+a%2Fb"')
       expect(body).not_to include("bad<provider", "model&one")
@@ -4038,7 +4039,7 @@ end
 
     it "passes a custom date range (inclusive end day) and keeps the dates in the form" do
       store = double
-      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil,
+      expect(store).to receive(:report).with(period: "custom", agent: nil, provider: nil, model: nil,
         from: Time.utc(2026, 9, 1), to: Time.utc(2026, 9, 16)).and_return(metrics.merge("period" => "custom"))
       app, = build_app(model_metrics_store: store)
       body = login(app).get("/models?period=custom&from=2026-09-01&to=2026-09-15").body
@@ -4047,10 +4048,10 @@ end
 
     it "ignores a reversed, malformed or year-plus range, and dates under a fixed period" do
       store = double
-      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
-      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
-      expect(store).to receive(:report).with(period: "custom", provider: nil, model: nil).and_return(metrics)
-      expect(store).to receive(:report).with(period: "24h", provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "custom", agent: nil, provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "custom", agent: nil, provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "custom", agent: nil, provider: nil, model: nil).and_return(metrics)
+      expect(store).to receive(:report).with(period: "24h", agent: nil, provider: nil, model: nil).and_return(metrics)
       app, = build_app(model_metrics_store: store)
       client = login(app)
       client.get("/models?period=custom&from=2026-09-15&to=2026-09-01")

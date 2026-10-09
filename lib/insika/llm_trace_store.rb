@@ -5,7 +5,7 @@ module Insika
   class LLMTraceStore
     SCOPE = "llm_traces"
     MAX_PER_TASK = 200
-    TEXT_FIELDS = %w[type operation provider model status request_id exception_class at].freeze
+    TEXT_FIELDS = %w[type operation agent provider model status request_id exception_class at].freeze
     NUMBER_FIELDS = %w[turn duration_ms input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens cost].freeze
 
     def initialize(store:)

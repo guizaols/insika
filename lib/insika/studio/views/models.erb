@@ -8,6 +8,9 @@
 
   <form method="get" action="/studio/models" class="model-toolbar">
     <div class="model-filter-group">
+      <label><span>Agent</span><select name="agent"><option value="">All agents</option>
+        <% (Array(@report && @report["agents"]) + [@agent]).compact.uniq.sort.each do |agent| %><option value="<%= agent %>"<%== ' selected' if @agent == agent %>><%= agent %></option><% end %>
+      </select></label>
       <label><span>Provider</span><select name="provider"><option value="">All providers</option>
         <% (Array(@report && @report["providers"]) + [@provider]).compact.uniq.sort.each do |provider| %><option value="<%= provider %>"<%== ' selected' if @provider == provider %>><%= provider %></option><% end %>
       </select></label>
