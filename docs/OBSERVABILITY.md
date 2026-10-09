@@ -29,6 +29,15 @@ when coverage is incomplete, they are subtotals, and a dash means no value was
 reported. An unknown-cost failed attempt followed by a priced success leaves
 partial cost coverage even when the subtotal is known.
 
+Every completed turn also leaves one row (agent, model, provider and its
+windows), whatever `INSIKA_TURN_TIMING` says; that flag only decides what the
+response exposes. **Turn latency** shows p50/p95 of ttft (the provider's first
+token), total, first balloon (what a channel customer waits), queue (debounce
+and FIFO wait before the turn starts), prep and tools. **Tool health** lists
+every tool call in those turns: calls, ok %, p50/p95 ms. A call is a failure
+when its result carries `error`; tools ms sums calls, so parallel calls count
+more than their wall time.
+
 The page reads content-free summaries stored independently of the capped task
 trace. History starts when the summaries are deployed; earlier requests are not
 backfilled. Task deletion, retention, and tenant purge remove their summaries.

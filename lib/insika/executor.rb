@@ -907,10 +907,10 @@ module Insika
     # turn-timeout wrapping everything via Async::Task#with_timeout — NEVER
     # stdlib Timeout.timeout.
     def run_pipeline(task, profile, actor, resume_from, timing = nil)
-      # a CHANNEL turn always allocates the clock — first_balloon_ms
-      # (inbound -> first outbox flush) is H-latência and must not depend on
-      # INSIKA_TURN_TIMING. When the flag is off the clock measures ONLY that
-      # window (`breakdown: false`); the full prep/ttft/gen/total stays opt-in.
+      # Every turn runs the clock (a few clock reads): its windows become the
+      # turn row in ModelMetricsStore. INSIKA_TURN_TIMING only widens what the
+      # response exposes (`breakdown:`); with it off a channel turn still
+      # reports first_balloon_ms (inbound -> first outbox flush).
       #
       # A channel turn may already carry its clock: `SendMessage` stamped
       # `:inbound` at 202 acceptance (before the debounce window and the
@@ -919,9 +919,7 @@ module Insika
       # engine-initiated) falls back to allocating and stamps now — `mark` is
       # first-write-wins, so a threaded clock is never re-stamped.
       channel_turn = !channel_transport(task).nil?
-      timing ||= if TurnTiming.enabled? || channel_turn
-                   TurnTiming.new(breakdown: TurnTiming.enabled?)
-                 end
+      timing ||= TurnTiming.new(breakdown: TurnTiming.enabled?)
       # Store calls count into this turn's clock (Stores::TurnCounter). Assigned
       # even when nil, so a turn without a clock never feeds the previous one's.
       Fiber[TurnTiming::FIBER_KEY] = timing
@@ -1314,11 +1312,12 @@ module Insika
       # Additive sibling — the answer text stays text on purpose; the channel
       # consumes the parts next to it. Absent when nothing was generated.
       data[:output_parts] = st.output_parts if st.output_parts && !st.output_parts.empty?
-      data[:timing] = timing.to_h if timing # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
+      exposed = timing&.to_h
+      data[:timing] = exposed unless exposed.nil? || exposed.empty? # opt-in TTFB breakdown (INSIKA_TURN_TIMING)
       # best-effort persist of the same timing onto the task record —
       # the Studio task page reads it from there. A failure here must not re-fail
       # the turn (the task is already committed and the event already carries it).
-      persist_turn_timing(task, timing)
+      persist_turn_timing(task, timing, profile, st.usage)
       # WS5: the agent declared it cannot proceed (signal_stuck). The turn still
       # COMPLETES (its final message was published) — but the consumer must be able
       # to act on that, so the contract carries it twice: a dedicated :turn_stuck
@@ -2633,8 +2632,9 @@ module Insika
       persist_turn(task, profile, state, content, reply_origin: MessageOrigin::ENGINE,
                    session: state.guardrail_block&.[](:source) != "edge", timing: timing)
       data = { task_id: task.id, content: content, usage: state.usage }
-      data[:timing] = timing.to_h if timing # a channel halt still measured
-      persist_turn_timing(task, timing)
+      exposed = timing&.to_h
+      data[:timing] = exposed unless exposed.nil? || exposed.empty? # a channel halt still measured
+      persist_turn_timing(task, timing, profile, state.usage)
       emit(:task_completed, data, task: task)
     end
 
@@ -2642,15 +2642,28 @@ module Insika
     # The record gains `timing` once, when the turn completes; a store failure
     # here is swallowed — the turn is already committed and the event already
     # carries the number.
-    def persist_turn_timing(task, timing)
+    # The full windows also go to ModelMetricsStore as the turn's row (agent,
+    # model, provider), flag or not.
+    def persist_turn_timing(task, timing, profile, usage)
       return unless timing
 
+      record_turn_metrics(task, timing, profile, usage)
       hash = timing.to_h
       return if hash.empty?
 
       @task_store.record_timing(task.id, hash)
     rescue Insika::Error
       nil
+    end
+
+    def record_turn_metrics(task, timing, profile, usage)
+      return unless @model_metrics_store.respond_to?(:record_turn)
+
+      usage ||= {}
+      @model_metrics_store.record_turn(task_id: task.id, row: timing.metrics.merge(
+        "at" => Time.now.utc.iso8601(6), "agent" => profile.id.to_s,
+        "model" => usage[:model]&.to_s, "provider" => usage[:provider]&.to_s
+      ).compact)
     end
 
       # Emits one :guardrail_flagged per flag the OutputValidator appended in
