@@ -49,7 +49,7 @@
           <% marker_agent = session_agent(@session) %>
           <header class="operation-summary">
             <div class="section-head">
-              <h2><%= presence(session_customer(@session)) || "Conversation" %></h2>
+              <h2><%= presence(session_customer_label(@session)) || "Conversation" %></h2>
               <p class="muted"><%= marker_agent.empty? ? "No agent recorded" : marker_agent %> · <%= Array(@session.messages).size %> messages</p>
             </div>
             <div class="actions">

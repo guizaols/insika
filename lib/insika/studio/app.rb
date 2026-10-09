@@ -1951,6 +1951,13 @@ end
       vars.is_a?(Hash) ? vars["customer"].to_s : ""
     end
 
+    # The label a conversation shows: the caller's customer_name, else the
+    # customer key. Blank when neither was sent.
+    def session_customer_label(session)
+      vars = session.respond_to?(:vars) ? session.vars : nil
+      presence(vars.is_a?(Hash) ? vars["customer_name"] : nil) || session_customer(session)
+    end
+
     # The Chats/History "active" presence dot: lit while the session's last
     # activity sits inside the same 5-minute window the home dashboard's
     # conversation rail uses (views/home.erb) — one rule, read in both places.
