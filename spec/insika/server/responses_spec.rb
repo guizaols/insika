@@ -27,6 +27,8 @@ RSpec.describe Insika::Server::Responses do
     it "keeps an optional String customer_name; ignores any other shape" do
       body = { model: "insika:a", user: "c", input: "oi", customer_name: "Maria" }
       expect(described_class.parse_request(body, req)[:customer_name]).to eq("Maria")
+      body[:customer_phone] = "5511999998888"
+      expect(described_class.parse_request(body, req)[:customer_phone]).to eq("5511999998888")
       body[:customer_name] = { "first" => "x" }
       expect(described_class.parse_request(body, req)).not_to have_key(:customer_name)
     end

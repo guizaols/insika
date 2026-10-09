@@ -26,10 +26,11 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
     )
   end
 
-  def task(message, customer: nil, customer_name: nil, tenant: nil, id: nil)
+  def task(message, customer: nil, customer_name: nil, customer_phone: nil, tenant: nil, id: nil)
     payload = { agent: "a", message: message }
     payload[:customer] = customer if customer
     payload[:customer_name] = customer_name unless customer_name.nil?
+    payload[:customer_phone] = customer_phone unless customer_phone.nil?
     @task_n = (@task_n || 0) + 1
     task_store.create(command: Insika::Command.build(:send_message, payload, tenant: tenant).to_h,
                       session_id: "s1", id: id || "t-#{@task_n}")
@@ -107,6 +108,10 @@ RSpec.describe "Insika::Executor + customer memory scope (WS8)" do
 
     run.call("t-c", customer_name: { "first" => "x" })
     expect(session_store.find("s1").vars["customer_name"]).to eq("Maria Souza")
+
+    run.call("t-d", customer_phone: "+55 11 99999-8888")
+    expect(session_store.find("s1").vars).to include("customer_name" => "Maria Souza",
+                                                     "customer_phone" => "+55 11 99999-8888")
   end
 
   # A turn with no customer (an API call, a load run) still names its agent on the
