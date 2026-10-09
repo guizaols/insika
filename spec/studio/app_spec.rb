@@ -1449,9 +1449,10 @@ end
     end
 
     it "home?agent= narrows the counts and the recent list" do
-      app, = build_app(sessions: { "s-1" => sess("s-1", "bia"), "s-2" => sess("s-2", "chef") })
+      fresh = ->(id, agent) { StoredSession.new(**sess(id, agent).to_h, updated_at: Time.now.utc.iso8601) }
+      app, = build_app(sessions: { "s-1" => fresh.("s-1", "bia"), "s-2" => fresh.("s-2", "chef") })
       body = login(app).get("/home?agent=bia").body
-      expect(body).to include('<span class="value tnum">1</span>')
+      expect(body).to match(%r{<span class="label">Conversations</span>\s*<span class="value tnum">1</span>})
       expect(body).not_to include("s-2")
     end
 
@@ -3426,6 +3427,28 @@ end
     expect(body).to include("Recent conversations")
     expect(body).to include("/studio/sessions/sess-home-00001") # recent rail links to the viewer
     expect(body).to include('class="barchart"')                 # SVG activity chart
+  end
+
+  it "overview home shows 24h cost, outcomes, turn health, the agent ranking and cold agents" do
+    now = Time.now.utc
+    backend = Insika::Stores::Memory.new
+    Insika::TaskStore.new(store: backend).create(id: "t", command: {})
+    metrics = Insika::ModelMetricsStore.new(store: backend)
+    metrics.record(task_id: "t", entry: { "type" => "llm_usage", "request_id" => "r", "at" => now.iso8601, "agent" => "bia", "cost" => 1.5 })
+    metrics.record(task_id: "t", entry: { "type" => "llm_request", "request_id" => "r", "at" => now.iso8601, "agent" => "bia", "duration_ms" => 5 })
+    metrics.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "bia", "status" => "failed", "total_ms" => 2500,
+                                             "tools" => [["search", false, 40]] })
+    sess = StoredSession.new(id: "s-bia", updated_at: now.iso8601, vars: { "agent" => "bia" }, messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "s-bia" => sess }, model_metrics_store: metrics,
+                     outcomes: [{ tenant: "", agent: "bia", outcome: "sale", at: now }])
+    body = login(app).get("/home").body
+
+    expect(body).to match(%r{<span class="label">Cost</span>\s*<span class="value tnum">\$1.50</span>})
+    expect(body).to match(%r{<span class="label">Outcomes</span>\s*<span class="value tnum">1</span>})
+    expect(body).to match(%r{<span class="label">Turn p95</span>\s*<span class="value tnum">2.5s</span>})
+    expect(body).to match(%r{<span class="label">Failed turns</span>\s*<span class="value tnum">100.0%</span>})
+    expect(body).to include('href="/studio/chats?agent=bia"', "<td>search</td>")
+    expect(body).to include('No conversation in 3+ days: <a href="/studio/agents/chef">chef</a>')
   end
 
   it "root redirects to the overview home" do

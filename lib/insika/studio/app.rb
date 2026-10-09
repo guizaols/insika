@@ -2398,7 +2398,9 @@ end
       ps = insika[:profile_source]
       @agent = presence(request.params["agent"])
       now = Time.now.utc
-      sessions = agent_sessions(window_sessions(now), @agent)
+      window = window_sessions(now)
+      sessions = agent_sessions(window, @agent)
+      home_operations(window, now, ps)
       @counts = {
         "conversations" => @agent ? sessions.size : session_total,
         "messages" => sessions.sum { |s| message_count(s) },
@@ -2436,6 +2438,29 @@ end
       @msg_trend = message_delta(sessions, now)
       @persistence = insika.dig(:config, :persistence)
       view("home")
+    end
+
+    COLD_AGENT_DAYS = 3
+
+    # The operational half of the home, all over the last 24h and the agent
+    # filter: cost (vs the 24h before), outcomes, turn p95 and failures, tool
+    # health — from ModelMetricsStore and OutcomeStore. The agent ranking and
+    # the cold agents read the unfiltered 14-day window: they compare agents.
+    def home_operations(window, now, profiles)
+      metrics = insika[:model_metrics_store]
+      @day = metrics&.report(period: "24h", agent: @agent, now: now)
+      @day_before_cost = metrics&.report(from: now - 2 * 86_400, to: now - 86_400, agent: @agent)&.dig("totals", "cost")
+      day_ago = (now - 86_400).iso8601
+      @outcomes_24h = insika[:outcome_store]&.all(agent: @agent)&.count { |r| r.at.to_s >= day_ago }
+      by_agent = window.group_by { |s| session_agent(s) }.reject { |agent, _| agent.empty? }
+      @agent_ranking = by_agent.map do |agent, list|
+        { agent: agent, conversations: list.size, today: list.count { |s| (t = utc_time(s.updated_at)) && t >= now - 86_400 },
+          messages: list.sum { |s| message_count(s) } }
+      end.sort_by { |row| [-row[:today], -row[:conversations], row[:agent]] }.first(8)
+      cold_floor = now - COLD_AGENT_DAYS * 86_400
+      @cold_agents = profiles ? profiles.all.map { |p| p.id.to_s }.sort.reject do |id|
+        Array(by_agent[id]).any? { |s| (t = utc_time(s.updated_at)) && t >= cold_floor }
+      end : []
     end
 
     # Every record of a session/task store: one bulk read when the store offers
