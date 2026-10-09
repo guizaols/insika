@@ -129,7 +129,7 @@
   <% turns = @report && @report["turns"] %>
   <% if turns && turns["count"].positive? %>
   <section class="card model-panel model-detail">
-    <div class="section-head"><h2>Turn latency</h2><span class="muted"><%= turns["count"] %> turns · ttft is the provider's first token, first balloon what the customer waits</span></div>
+    <div class="section-head"><h2>Turn latency</h2><span class="muted"><%= turns["count"] %> turns · <%= turns["failures"] %> failed (<%= format("%.1f", turns["failures"] * 100.0 / turns["count"]) %>%)<% unless turns["failure_stages"].empty? %>: <%= turns["failure_stages"].map { |k, v| "#{k} #{v}" }.join(", ") %><% end %> · ttft is the provider's first token, first balloon what the customer waits</span></div>
     <div class="model-table-scroll"><table class="grid">
       <thead><tr><th>window</th><th class="num">turns</th><th class="num">p50 (ms)</th><th class="num">p95 (ms)</th></tr></thead>
       <tbody>
