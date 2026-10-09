@@ -24,6 +24,13 @@ RSpec.describe Insika::Server::Responses do
       expect(out).to eq(agent: "agent-store-x", user: "chat-1", message: "oi")
     end
 
+    it "keeps an optional String customer_name; ignores any other shape" do
+      body = { model: "insika:a", user: "c", input: "oi", customer_name: "Maria" }
+      expect(described_class.parse_request(body, req)[:customer_name]).to eq("Maria")
+      body[:customer_name] = { "first" => "x" }
+      expect(described_class.parse_request(body, req)).not_to have_key(:customer_name)
+    end
+
     it "falls back to the X-Insika-Agent header when the model has no agent" do
       out = described_class.parse_request({ user: "c", input: "x" }, req("HTTP_X_INSIKA_AGENT" => "agent-y"))
       expect(out[:agent]).to eq("agent-y")
