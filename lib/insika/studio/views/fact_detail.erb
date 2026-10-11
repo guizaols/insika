@@ -64,7 +64,7 @@
                 <% if @filter %><input type="hidden" name="filter" value="<%= @filter %>"><% end %>
                 <label for="fact-rejection-note">Reason for rejection <span class="muted">(optional)</span></label>
                 <textarea id="fact-rejection-note" name="note" rows="2" placeholder="Why should this fact not be saved?"></textarea>
-                <button type="submit" class="secondary" data-turbo-submits-with="Rejecting…">Reject</button>
+                <button type="submit" class="danger" data-turbo-submits-with="Rejecting…">Reject</button>
               </form>
               <form method="post" action="/studio/facts/resolve" data-turbo-frame="_top">
                 <%== csrf_tag %>

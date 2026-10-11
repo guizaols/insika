@@ -44,9 +44,13 @@ Strict CSP `'self'` (no `unsafe-inline`): all JS/CSS comes from the same-origin 
 `layout.erb` declares `<meta name="view-transition" content="same-origin">`.
 Turbo 8 Drive then routes same-origin visits through the View Transitions API —
 no JS. The transition itself lives in `application.css` (`::view-transition-*`):
-a ~160ms cross-fade, the sidebar pinned via `view-transition-name` so it reads
+a 140ms cross-fade, the sidebar pinned via `view-transition-name` so it reads
 as fixed chrome, and a `prefers-reduced-motion` kill switch. Browsers without
 support degrade to the plain swap.
+
+Hover, focus, selection and disclosure transitions share the same 140ms timing.
+Cards stay in place; lists appear without staggered entry or decorative motion.
+Reduced-motion preferences disable animation and transitions.
 
 ## Miller columns / master-detail
 
@@ -87,6 +91,12 @@ studio/
 ```
 
 ## Design system
+
+Warm neutral surfaces and the amber accent share semantic tokens in both themes.
+Buttons and inputs use 36px minimum heights and 8px corners; tabs use 32px and 6px.
+Controls have a visible 2px focus outline. Primary actions use the foreground color;
+destructive actions use the danger color. These rules apply across the existing
+page shells and flows.
 
 A visual redesign (13 tasks) replaced the original card-per-record, chip-filter
 look with three page shells built on a shared token set (`views/_kpi.erb`,
