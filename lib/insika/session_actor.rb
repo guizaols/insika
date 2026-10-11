@@ -23,9 +23,12 @@ module Insika
   # would duplicate the invariant; putting it in the Executor would mix turn
   # execution with queue policy.
   class SessionActor
-    def initialize(session_id:, executor:, parent: Async::Task.current)
+    # `on_idle` is called with the actor once its queue drains and the loop ends, so
+    # the owner can drop it: an idle session holds no fiber.
+    def initialize(session_id:, executor:, parent: Async::Task.current, on_idle: nil)
       @session_id = session_id
       @executor = executor
+      @on_idle = on_idle
       @queue = Async::Queue.new
       @running = false
       # The turns sitting at the door: created and :queued, but not yet released to
@@ -112,8 +115,7 @@ module Insika
     # cache — a dead loop would black-hole queued turns).
     def alive? = !!@loop&.running?
 
-    # Shuts down the loop (server shutdown / tests — the loop blocks forever on
-    # dequeue when idle).
+    # Shuts down the loop (server shutdown / tests).
     def stop = @loop&.stop
 
     private
@@ -135,7 +137,12 @@ module Insika
           @running = false
           @current_task = nil
         end
+        # Ends with the last queued turn. A parked fiber per session ever seen grew a
+        # worker without bound; the next message starts a fresh actor. No yield sits
+        # between this check and the loop's end, so an enqueue cannot slip in.
+        break if @queue.empty?
       end
+      @on_idle&.call(self)
     end
 
     # Closes the turn's door and reports what it caught. The debounce

@@ -196,6 +196,10 @@ module Insika
     # scans, nothing mines).
     attr_accessor :harvest_engine
 
+    # Insika::MemoryTrim: hands freed malloc memory back to the OS when the worker
+    # goes quiet (a child of the turn supervisor, like the tick). nil = off.
+    attr_accessor :memory_trim
+
     # Forces the long-lived turn supervisor (and its tick/alert/distill/harvest
     # children — see #turn_parent) to start NOW instead of lazily on the first
     # served turn. Without this, a deployment whose only agents are scheduled
@@ -545,10 +549,9 @@ module Insika
       fail_spawn(task, e)
     end
 
-    # Shuts down all SessionActors (server shutdown / tests — the loop blocks
-    # forever on dequeue when idle).
+    # Shuts down all SessionActors (server shutdown / tests).
     def stop_session_actors
-      @session_actors.each_value(&:stop)
+      @session_actors.values.each(&:stop)
       @session_actors.clear
       nil
     end
@@ -783,7 +786,8 @@ module Insika
       return existing if existing&.alive?
 
       @session_actors[session_id] =
-        SessionActor.new(session_id: session_id, executor: self, parent: turn_parent)
+        SessionActor.new(session_id: session_id, executor: self, parent: turn_parent,
+                         on_idle: ->(actor) { @session_actors.delete(session_id) if @session_actors[session_id].equal?(actor) })
     end
 
     # a turn that arrived while the process is draining: left
@@ -841,6 +845,7 @@ module Insika
       # the harvest engine  lives on the same supervisor — its
       # worker fiber re-scans idle sessions off the turn path.
       @harvest_engine&.start(parent: @supervisor)
+      @memory_trim&.start(parent: @supervisor)
       @supervisor
     end
 

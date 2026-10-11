@@ -22,8 +22,10 @@ ENV BUNDLE_DEPLOYMENT=1 \
 # Gemfile.lock re-resolve) needs the OpenSSL headers + pkg-config to build its C
 # extension — without them `bundle install` fails on ruby:4.0.6-slim (linux).
 # wget + ca-certificates: to fetch the Litestream release tarball below.
+# libffi-dev: the `fiddle` gem (Insika::MemoryTrim -> malloc_trim) builds against it;
+# the runtime libffi already ships with the Ruby image.
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libssl-dev libpq-dev pkg-config wget ca-certificates && \
+    apt-get install --no-install-recommends -y build-essential git libssl-dev libpq-dev libffi-dev pkg-config wget ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Litestream binary (opt-in continuous SQLite replication → S3/R2 for backup/DR;

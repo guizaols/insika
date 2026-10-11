@@ -283,4 +283,23 @@ RSpec.describe Insika::SessionActor do
       sa.stop
     end
   end
+
+  # One parked fiber per session ever seen grew a worker's memory without bound.
+  it "ends its loop once the queue drains and tells the owner it is idle" do
+    Sync do |top|
+      exec = FakeExec.new
+      idle = []
+      sa = described_class.new(session_id: "s", executor: exec, parent: top, on_idle: ->(a) { idle << a })
+      sa.enqueue(task("t1"), profile: nil)
+      sa.enqueue(task("t2"), profile: nil)
+      top.sleep(0.02)
+      exec.release.enqueue(:go)
+      top.sleep(0.02)
+      expect(sa.alive?).to be(true) # t2 still to run
+      exec.release.enqueue(:go)
+      top.sleep(0.02)
+      expect(sa.alive?).to be(false)
+      expect(idle).to eq([sa])
+    end
+  end
 end

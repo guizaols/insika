@@ -154,6 +154,7 @@ RACK_APP = Rack::URLMap.new(
 # scheduled (no live chat) would otherwise never tick until unrelated traffic
 # happened to arrive first.
 W::EXECUTOR.supervised = true
+W::EXECUTOR.memory_trim = Insika::MemoryTrim.new(executor: W::EXECUTOR)
 W::EXECUTOR.start_supervisor!
 
 # Recovery BEFORE the listen, per worker — and AFTER serving mode. Falcon loads
