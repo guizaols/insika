@@ -9,6 +9,9 @@ module Insika
     # One row per completed turn (TurnTiming#metrics + agent/model/provider),
     # keyed by task id; TaskStore#delete drops it with the task.
     TURN_SCOPE = "turn_metrics"
+    # One row per closed UTC day the home charts: cost and requests, keyed "agent|YYYY-MM-DD"
+    # ("*" = every agent). See #home.
+    DAY_SCOPE = "model_metrics_day"
     TURN_WINDOWS = %w[ttft_ms total_ms first_balloon_ms queue_ms prep_ms tools_ms].freeze
     PERIODS = { "24h" => 86_400, "7d" => 7 * 86_400, "30d" => 30 * 86_400 }.freeze
     VALUES = %w[cost input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].freeze
@@ -70,24 +73,36 @@ module Insika
       end
     end
 
-    # Everything the Studio home shows, from one read of the last 14 days:
-    # the last 24h (totals + turns), the cost of the 24h before, and one bucket
-    # per UTC day (oldest first, today last).
+    # Everything the Studio home shows: the last 24h (totals + turns), the cost
+    # of the 24h before, and one bucket per UTC day (oldest first, today last).
+    # Rows are read for the last 48h only. A day that ended before that never
+    # changes again, so its cost and request count are kept in DAY_SCOPE the first
+    # time a home needs it: 14 days of rows, scattered across a big file, cost
+    # seconds on a cold disk.
+    # ponytail: day rows are never pruned (one per day per agent); a task deleted
+    # later still counts in a kept day.
     def home(agent: nil, now: Time.now.utc, days: 14)
       today = Time.utc(now.year, now.month, now.day)
-      from = today - (days - 1) * 86_400
-      rows = request_rows(from, now).select { |row| agent.nil? || row["agent"] == agent }
-      at = ->(row) { Time.iso8601(row["completed_at"]) }
       day_ago = now - 86_400
-      before = rows.select { |row| (t = at.(row)) >= day_ago - 86_400 && t < day_ago }
-      daily = rows.group_by { |row| at.(row).strftime("%F") }
+      recent_from = day_ago - 86_400
+      day_starts = Array.new(days) { |i| today - (days - 1 - i) * 86_400 }
+      tag = "#{agent || '*'}|"
+      kept = @store.entries(DAY_SCOPE, tag).to_h { |key, value| [key.delete_prefix(tag), value] }
+      missing = day_starts.select { |day| day + 86_400 <= recent_from && !kept.key?(day.strftime("%F")) }
+      timed = request_rows([recent_from, *missing].min, now)
+        .select { |row| agent.nil? || row["agent"] == agent }
+        .map { |row| [row, Time.iso8601(row["completed_at"])] }
+      by_day = timed.group_by { |_, t| t.strftime("%F") }.transform_values { |pairs| pairs.map(&:first) }
+      day_total = ->(key) { summarize(by_day.fetch(key, [])).slice("cost", "requests") }
+      fresh = missing.to_h { |day| [day.strftime("%F"), day_total.(day.strftime("%F"))] }
+      keep_days(tag, fresh)
       {
-        "totals" => summarize(rows.select { |row| at.(row) >= day_ago }),
+        "totals" => summarize(timed.filter_map { |row, t| row if t >= day_ago }),
         "turns" => turn_summary(turn_rows(day_ago, now, agent: agent, provider: nil, model: nil)),
-        "day_before_cost" => summarize(before)["cost"],
-        "daily" => Array.new(days) do |i|
-          day = from + i * 86_400
-          summarize(daily.fetch(day.strftime("%F"), [])).merge("at" => day.iso8601)
+        "day_before_cost" => summarize(timed.filter_map { |row, t| row if t >= recent_from && t < day_ago })["cost"],
+        "daily" => day_starts.map do |day|
+          key = day.strftime("%F")
+          (kept[key] || fresh[key] || day_total.(key)).merge("at" => day.iso8601)
         end
       }
     end
@@ -132,6 +147,15 @@ module Insika
     end
 
     private
+
+    # a failed write only means the next home computes those days again
+    def keep_days(tag, days)
+      return if days.empty?
+
+      @store.transaction { days.each { |key, value| @store.set(DAY_SCOPE, "#{tag}#{key}", value) } }
+    rescue StandardError
+      nil
+    end
 
     def request_rows(from, to) = rows_between(SCOPE, "completed_at", from, to)
 
