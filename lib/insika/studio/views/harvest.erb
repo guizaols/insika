@@ -86,7 +86,7 @@
             <input type="text" name="note" placeholder="why (optional)">
           </label>
           <button type="submit" class="primary" data-turbo-submits-with="Promoting…">Promote</button>
-          <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
+          <button type="submit" class="danger" formaction="/studio/harvest/reject">Reject</button>
         </form>
         <div class="skill-desc muted">
           Promoting saves and enables this skill for the agent. The previous state is saved so you can roll it back.
@@ -136,7 +136,7 @@
               <input type="hidden" name="agent" value="<%= cand.agent %>">
               <input type="hidden" name="candidate_id" value="<%= cand.id %>">
               <button type="submit" class="primary" data-turbo-submits-with="Checking…">Run checks</button>
-              <button type="submit" class="ghost" formaction="/studio/harvest/reject">Reject</button>
+              <button type="submit" class="danger" formaction="/studio/harvest/reject">Reject</button>
             </form>
           </li>
         <% end %>
