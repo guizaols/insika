@@ -147,22 +147,23 @@ RACK_APP = Rack::URLMap.new(
   "/" => APP
 )
 
-# recovery BEFORE the listen, per worker. Boot's Sync only returns
-# after the resumed turns finish, and Falcon only listens after `run`. Order
-# matters: the executor is still non-supervised here, so recovery replays
-# sequentially in Boot's transient reactor — `supervised = true` only after,
-# so the long-lived turn supervisor binds to Falcon's serving reactor.
-BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
-
-# Serving mode: turns are born as children of a long-lived supervisor and survive
-# the client disconnect. start_supervisor! forces it up now (Falcon already runs
-# config.ru inside the worker's live reactor, confirmed empirically — the task
-# below `supervised = true` is the same one requests later descend from) instead
-# of waiting for the first served turn: a deployment whose only agents are
+# Serving mode FIRST: turns are born as children of a long-lived supervisor and
+# survive the client disconnect, and a turn with a session goes through that
+# session's SessionActor (FIFO). start_supervisor! forces it up now instead of
+# waiting for the first served turn: a deployment whose only agents are
 # scheduled (no live chat) would otherwise never tick until unrelated traffic
 # happened to arrive first.
 W::EXECUTOR.supervised = true
 W::EXECUTOR.start_supervisor!
+
+# Recovery BEFORE the listen, per worker — and AFTER serving mode. Falcon loads
+# config.ru inside the worker's live reactor, so Boot only DISPATCHES the resumed
+# turns (it does not wait for them) and the listen follows right away. Serving
+# mode first puts each resumed turn in its session's SessionActor, so a message
+# that lands for that session right after the listen queues behind the resumed
+# turn instead of running beside it
+# (spec/insika/integration/boot_resume_serialization_spec.rb).
+BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 
 # shutdown is a drain, not a kill. This replaces async-container's
 # SIGINT/SIGTERM trap in THIS worker (config.ru loads per worker): the intake
