@@ -27,6 +27,10 @@ gem "opentelemetry-exporter-otlp", "~> 0.31" # OTLP exporter (SigNoz/Tempo/etc.)
 gem "opentelemetry-metrics-sdk", "~> 0.15"
 gem "opentelemetry-exporter-otlp-metrics", "~> 0.10"
 
+# Insika::MemoryTrim calls glibc's malloc_trim through fiddle (a bundled gem since
+# Ruby 3.5, so it must be named here). Absent -> the trim is a no-op.
+gem "fiddle"
+
 # OPT-IN Postgres store (INSIKA_DATABASE_URL). Not a gem dependency: it needs libpq,
 # and SQLite stays the default. Required lazily by Insika::Stores::Postgres.
 gem "pg", "~> 1.5"

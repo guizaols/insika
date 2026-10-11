@@ -73,6 +73,7 @@ require_relative "insika/checkpoint"
 require_relative "insika/command"
 require_relative "insika/hooks"
 require_relative "insika/middleware"
+require_relative "insika/memory_trim"
 # Production edge: windowed counters + the rate-limit/cost
 # Middleware. Both inert until configured (nil/0 = off).
 require_relative "insika/usage_ledger"
