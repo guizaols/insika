@@ -86,10 +86,13 @@ RSpec.describe Insika::Stores::SQLite do
       slow = described_class.new(path: db_path, slow_ms: 0, logger: Logger.new(io))
       slow.set("s", "k", 1)
       slow.list("s", "k")
+      slow.entries("s")
+      slow.recent("s", nil, 1)
       store.get("s", "k")
 
       expect(io.string).to match(/slow store set scope=s \d+\.\d ms at .*sqlite_spec\.rb:\d+/)
         .and match(/slow store list scope=s /)
+        .and match(/slow store entries scope=s /).and match(/slow store recent scope=s /)
         .and satisfy { |log| !log.include?("store get") }
     ensure
       slow&.close
