@@ -1,0 +1,22 @@
+# Optional front proxy for platforms that stop the old container before starting
+# the new one (e.g. any Railway service with a volume, which SQLite needs).
+# Deploy it as its own stateless service in front of Insika: while Insika
+# restarts, each request waits here and retries instead of failing.
+#
+#   PORT      port this proxy listens on
+#   UPSTREAM  Insika's private address, e.g. insika.railway.internal:8080
+
+{
+	admin off
+}
+
+:{$PORT}
+
+reverse_proxy {$UPSTREAM} {
+	# Retries only failed dials, so a request is never sent twice.
+	# Insika's boot (recovery + workers) must finish inside this window.
+	lb_try_duration 90s
+	lb_try_interval 250ms
+	# Pass SSE through unbuffered.
+	flush_interval -1
+}
