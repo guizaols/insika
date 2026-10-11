@@ -35,21 +35,32 @@ reporter = Insika.agent("reporter") do
            overrides: { turn_timeout: 600, max_tool_calls: 120 }
 
   # The generic, store-free skill: how a report is BUILT — the inline-SVG
-  # pattern (palette, table, pure-SVG bars, light/dark). No store ids, no
+  # pattern (palette, table, native controls, light/dark). No store ids, no
   # queries — that half is yours, and it lives in the merchant's pack, not here.
   skill "daily-digest",
         description: "How to build the daily sales digest as a self-contained HTML report",
         instructions: <<~MD
-          Build the digest as ONE self-contained HTML page:
-          - a <style> block with a light palette (e.g. #f8fafc bg, #0f172a text,
-            #6366f1 accent), plus a prefers-color-scheme: dark override;
-          - one <table> of the numbers (th/tbody, right-aligned amounts);
-          - one inline SVG bar chart (no <script>, no <img>, no <iframe>,
-            no external fonts or fetches — the report is served with
-            default-src 'none', so nothing external can load);
-          - a title and the run date.
-          Keep it readable on a phone. The report is the deliverable; the
-          channel message is just the link to it.
+          Build ONE self-contained executive HTML report with a <style> block:
+          - Lead with a clear title, period, generation date and concise,
+            evidence-backed takeaway. Name sources and limitations. Use only
+            supplied numbers; show missing data honestly and label demo data.
+          - Use warm neutrals and one amber accent (or the merchant's accent),
+            consistent type, spacing and KPI cards, and system dark mode.
+          - Include a responsive inline SVG or HTML bar chart with clear labels,
+            units and exact values, plus a captioned table with column headers.
+          - Offer Chart/Table through labeled, focusable native radios grouped
+            in a fieldset with a legend; use CSS :checked, not ARIA tabs.
+          - Use hover/focus tooltips in reserved space; keep them visible when
+            hovered. Add CSS highlights, a visible 2px focus outline, and
+            details/summary for supporting evidence. Exact values
+            must remain available on touch without hovering.
+          - Use 140ms color/opacity transitions; disable them for reduced motion.
+            No decorative animation. Print the full table and supporting details
+            regardless of the selected view or collapsed state; hide controls.
+          - This is a dated data snapshot, not a live feed. No scripts, event
+            handlers, forms, iframe, external fonts or fetches. The report's
+            default-src 'none' policy blocks external resources.
+          Keep it readable on a phone. The channel message is just the link.
         MD
 end
 

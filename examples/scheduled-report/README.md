@@ -23,6 +23,20 @@ DEEPSEEK_API_KEY=sk-... ruby examples/scheduled-report/report_agent.rb --serve
 
 Log in at `/studio` with the printed token and pick the `reporter` agent.
 
+## Report design
+
+[interactive-report.html](interactive-report.html) is a fictional-data example you
+can open locally without a provider key. It shows the executive layout: a dated
+takeaway, consistent KPI cards, warm neutrals with one amber accent, labeled charts,
+sources and limitations. It follows the system light/dark preference.
+
+The report uses CSS hover/focus highlights, native Chart/Table radio choices and
+expandable details. Values remain readable on touch and in the exact-value table;
+keyboard focus is visible. Transitions last 140ms and respect reduced motion.
+Printing includes the full table and details. No JavaScript or external resources
+are needed. Interactions explore the saved snapshot; they do not refresh its data.
+The skill guides future reports; it does not rewrite existing artifacts.
+
 ## What the file demonstrates
 
 - **The allowlist is the switch.** `tools %w[save_artifact]` is the ONLY
@@ -48,8 +62,8 @@ Log in at `/studio` with the printed token and pick the `reporter` agent.
   [`docs/SCHEDULING.md`](../../docs/SCHEDULING.md)); the `save_artifact` tool,
   the routes and the retention reach are the report destination (see
   [`docs/ARTIFACTS.md`](../../docs/ARTIFACTS.md)).
-- There is no real store here. The skill's "numbers" are whatever the model
-  can say about the (empty) day — the point is the pipeline, not the data. A
+- There is no real store here. Without supplied numbers the report should show
+  missing data; the HTML example labels its fictional numbers. A
   real report wires a data-defined tool (or an MCP server) with a read-only
   credential, and this is where the tenant rule becomes concrete: the store is
   a `{{ctx.*}}` binding the Executor deposits, **never** a parameter the model
