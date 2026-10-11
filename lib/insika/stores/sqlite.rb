@@ -18,7 +18,7 @@ module Insika
 
       # Prepended per instance when slow_ms is set; see #initialize.
       module SlowLog
-        %i[get set delete list scopes].each do |name|
+        %i[get set delete list entries recent scopes].each do |name|
           define_method(name) do |*args, &blk|
             t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
             result = super(*args, &blk)

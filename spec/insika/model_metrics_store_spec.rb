@@ -99,6 +99,21 @@ RSpec.describe "Durable model metrics" do
         expect(store.home(agent: "sales", now: now)["day_before_cost"]).to be_nil
       end
 
+      it "home keeps each closed day's cost and then reads only the last 48h of rows" do
+        record("llm_usage", id: "d5", at: (now - 5 * 86_400).iso8601, cost: 0.75)
+        record("llm_request", id: "d5", at: (now - 5 * 86_400).iso8601, duration_ms: 3, status: "succeeded")
+        record("llm_usage", id: "now", cost: 0.5)
+        record("llm_request", id: "now", duration_ms: 3, status: "succeeded")
+        expect(store.home(now: now)["daily"][-6]).to include("cost" => 0.75, "requests" => 1)
+
+        floors = []
+        store.define_singleton_method(:request_rows) { |from, to| floors << from; super(from, to) }
+        home = store.home(now: now)
+        expect(floors).to eq([now - 2 * 86_400])
+        expect(home["daily"][-6]).to include("cost" => 0.75, "requests" => 1)
+        expect(home["daily"].last).to include("cost" => 0.5)
+      end
+
       it "reads a window from the newest writes and stops before the old history" do
         old = now - 40 * 86_400
         rows = 3_000.times.map { |i| { "type" => "llm_request", "request_id" => "old#{i}", "at" => old.iso8601, "provider" => "deepseek", "model" => "flash", "duration_ms" => 1, "status" => "succeeded" } }
