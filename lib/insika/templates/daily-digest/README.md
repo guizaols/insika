@@ -20,6 +20,19 @@ Then open `/studio`, log in with the printed token, and either wait for the
 schedule (22:00 America/Sao_Paulo) or send a message to the "reporter" agent
 in the Playground — the artifact lands on the Artifacts tab either way.
 
+## Report design
+
+The skill asks for a dated executive takeaway, consistent KPI cards, warm neutrals
+with one amber accent, labeled charts, sources and limitations. Reports adapt to
+phone widths and the system light/dark preference. Native Chart/Table radio choices,
+CSS hover/focus highlights and expandable details work without JavaScript. Exact
+values remain accessible on touch and in a table; focus is visible, 140ms transitions
+respect reduced motion, and print includes the full table and details.
+
+See the [fictional-data example](https://github.com/guizaols/insika/blob/main/examples/scheduled-report/interactive-report.html).
+These interactions explore a saved snapshot, not live data. This guidance applies
+to newly generated reports; existing artifacts stay unchanged.
+
 ## What's real here
 
 - The **schedule** is a live engine feature: the tick actually fires this

@@ -17,10 +17,20 @@ module Insika
     class SaveArtifact < RubyLLM::Tool
       description "Save an HTML (or markdown / SVG) page — a report, a digest, " \
                   "a summary — and get back a URL to share. Use when the answer " \
-                  "is a document the channel message cannot carry."
+                  "is a document the channel message cannot carry. Executive reports " \
+                  "need a clear title, period, generation date, evidence-backed takeaway, " \
+                  "sources and limitations."
       parameter :title, description: "Short human-readable title (<= 200 chars)"
-      parameter :content, description: "The page content: HTML with inline SVG for charts, " \
-                            "markdown, or SVG. No scripts, no external resources."
+      parameter :content, description: "HTML, markdown, or SVG. HTML reports: use warm neutrals " \
+                            "and one amber or merchant accent, consistent type/spacing/KPI cards, " \
+                            "responsive SVG or HTML charts with labels, units and exact values/table. " \
+                            "Use CSS hover/focus highlights and hoverable tooltips in reserved space, " \
+                            "labeled native radio chart/table " \
+                            "choices and details; keep values accessible on touch and focus " \
+                            "visible. Support system dark mode, print with full tables/details, " \
+                            "and 140ms transitions disabled for reduced motion. Date the data " \
+                            "snapshot; never imply live updates. No scripts, event handlers, " \
+                            "forms, external resources or decorative animation."
       parameter :mime, description: "text/html (default), text/markdown, or image/svg+xml",
                    required: false
 

@@ -63,9 +63,39 @@ Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 
 X-Content-Type-Options: nosniff
 ```
 
-No script, no external fetch, no forms. The model writes HTML with **inline
-SVG** for charts — that is a skill instruction (palette, tables, pure-SVG bars),
-not engine code. A "real" charting need is a plugin.
+No script, no external fetch, no forms. The model writes self-contained HTML/CSS
+with **inline SVG** or HTML bars for charts. Native radio controls and
+`details`/`summary` still work inside this boundary.
+
+## Interactive executive reports
+
+The tool description and `daily-digest` skill guide future HTML reports. Existing
+artifacts keep their saved content. The
+[example report](https://github.com/guizaols/insika/blob/main/examples/scheduled-report/interactive-report.html)
+uses explicitly fictional data and works without JavaScript or dependencies.
+
+- Lead with the title, reporting period, generation date and a concise takeaway
+  supported by the numbers. Include sources and limitations; mark missing data
+  and fictional examples honestly.
+- Use warm neutral surfaces and one amber or merchant accent. Keep typography,
+  spacing and KPI cards consistent; support system dark mode and narrow screens.
+- Label charts with units and exact values. Use responsive SVG or HTML bars and a
+  captioned table with column headers, so touch users can read every value.
+- Switch Chart/Table with labeled, focusable native radios in a `fieldset` with
+  a `legend`, styled through CSS `:checked`. These are radios, not ARIA tabs.
+- Use CSS hover/focus tooltips in reserved space, highlights, a visible 2px focus
+  outline, and `details`/`summary` for supporting evidence. Keep tooltips visible
+  when the pointer moves onto them. Do not make hover the only way to
+  read data or use `<title>` as the only tooltip.
+- Limit color/opacity transitions to 140ms and disable them under
+  `prefers-reduced-motion: reduce`. Avoid decorative animation. Print styles
+  include the complete table and details regardless of selected/collapsed state,
+  hide controls and keep text legible; use the browser's print command.
+
+Interactivity explores a **dated snapshot**. It does not fetch new data, recompute
+the source or imply a live feed. A later report run saves a new artifact. Do not
+add scripts, event handlers (including `onclick` print buttons), external resources
+or form submissions to generated reports.
 
 ## Reasoning effort on a report turn
 
