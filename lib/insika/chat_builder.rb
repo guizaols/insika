@@ -114,9 +114,12 @@ module Insika
       # load_knowledge is a system default (outside the allowlist), like
       # load_skill — wired only with @knowledge_store present AND the
       # profile's opt-in (double gate, like remember). Reads the same
-      # (agent, tenant) scope the Knowledge context provider searches.
+      # (agent, tenant) scope the Knowledge context provider searches: the
+      # Command tenant, NOT state.tenant (the memory scope, which falls back to
+      # the session or adds the customer — a concept is never stored there).
       if @knowledge_store && Coercion.truthy?(state.profile.knowledge&.dig("retrieve"))
-        tools << Tools::LoadKnowledge.new(@knowledge_store, state.profile.id, tenant: state.tenant,
+        tools << Tools::LoadKnowledge.new(@knowledge_store, state.profile.id,
+                                          tenant: state.turn_context&.dig(:command_tenant),
                                           trace_recorder: @tool_trace_store, state: state)
       end
 

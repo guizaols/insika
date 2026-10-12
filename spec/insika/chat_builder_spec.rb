@@ -364,6 +364,16 @@ RSpec.describe Insika::ChatBuilder do
       expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(false)
     end
 
+    it "load_knowledge reads the Command tenant scope, not the memory scope" do
+      kstore.write("a", "troca", "corpo")
+      st = knowledge_state(knowledge: { "retrieve" => true })
+      st.tenant = "session:sim-1" # memory scope fallback without a Command tenant
+      st.turn_context = { command_tenant: nil }
+      builder_with_knowledge.configure_chat(chat, st)
+      lt = chat.tools.find { |t| t.is_a?(Insika::Tools::LoadKnowledge) }
+      expect(lt.execute(name: "troca")).to eq("corpo")
+    end
+
     it "without @knowledge_store: no load_knowledge even with retrieve:true (parity)" do
       builder.configure_chat(chat, knowledge_state(knowledge: { "retrieve" => true })) # builder without knowledge_store
       expect(chat.tools.any? { |t| t.is_a?(Insika::Tools::LoadKnowledge) }).to be(false)
