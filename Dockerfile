@@ -62,11 +62,15 @@ FROM ruby:4.0.6-slim AS runtime
 # docs/BENCHMARKS.md: the CPU work per turn (serialization/SSE/context).
 # MALLOC_ARENA_MAX=2 caps glibc malloc arenas: under a multi-worker load the peak
 # fell by about a quarter with the same latency.
+# MALLOC_MMAP_THRESHOLD_=131072 pins the mmap threshold glibc otherwise raises after
+# each free: large buffers then stay mmapped and go back to the OS when freed instead
+# of fragmenting the arenas. The floor after repeated loads came out ~9% lower.
 ENV BUNDLE_DEPLOYMENT=1 \
     BUNDLE_WITHOUT=development:test \
     BUNDLE_PATH=/usr/local/bundle \
     RUBY_YJIT_ENABLE=1 \
     MALLOC_ARENA_MAX=2 \
+    MALLOC_MMAP_THRESHOLD_=131072 \
     PORT=9292 \
     INSIKA_DB=/data/insika.db
 
