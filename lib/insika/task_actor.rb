@@ -41,8 +41,11 @@ module Insika
     end
 
     # Runs the block on an Async fiber CHILD of the parent. Returns the Task.
+    # The fiber yields nil: Async keeps a finished task linked to the siblings that
+    # follow it (List#remove! leaves `tail`), so one stale reference to an old turn
+    # keeps every later one reachable — with its result, unless the result is nil.
     def run(&turn_block)
-      @async_task = @parent.async { turn_block.call(self) }
+      @async_task = @parent.async { turn_block.call(self); nil }
     end
 
     # Drains the mailbox WITHOUT blocking (boundaries). `:cancel` raises (the top
