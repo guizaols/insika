@@ -143,6 +143,7 @@ module Insika
         break if @queue.empty?
       end
       @on_idle&.call(self)
+      nil # the finished task must not hold the actor (see TaskActor#run)
     end
 
     # Closes the turn's door and reports what it caught. The debounce
