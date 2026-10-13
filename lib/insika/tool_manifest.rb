@@ -73,6 +73,7 @@ module Insika
         "response" => binding[:response],
         "secret_headers" => binding[:secret_headers],
         "side_effect" => t["side_effect"],
+        "timeout" => t["timeout"],
         "group" => t["group"] || defaults["group"],       # per-group allowlist:
         "tags" => (Array(defaults["tags"]) | Array(t["tags"])), # inherited default; tags unioned
         # Per-tool only: "this result ends the turn" is a property of THIS backend's
