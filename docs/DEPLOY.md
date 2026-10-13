@@ -349,6 +349,21 @@ LITESTREAM_SECRET_ACCESS_KEY=...
 Credentials are read natively by Litestream (they are not in `deploy/litestream.yml`,
 which only references URL/endpoint/region via `${VAR}`).
 
+### One writer per replica path
+
+- **Never point two deployments at the same `LITESTREAM_REPLICA_URL`** (two services,
+  or staging and production). Both replicate into the same lineage and a later restore
+  can bring back the wrong database.
+- **A database already on the volume skips the restore** and is replicated as it is.
+  Give a new deployment an empty volume, and do not set the replica URL on a box whose
+  volume holds the wrong file — it will be copied over the backup.
+- **Moving a database** to another deployment or path: stop replication on the old box
+  first (unset the variable and redeploy), and give the new one a fresh path. If the old
+  box's local state is stale (`LTX file is missing`), run `litestream reset <db>`.
+- **Point-in-time recovery** into a separate file, to inspect before swapping it in:
+  `litestream ltx -level all <url>` lists the history, then
+  `litestream restore -txid <id> -o /data/recovered.db <url>`.
+
 ### Restore drill (the real "done" — an untested backup does not count)
 
 The pilot→production gap only closes once a restore has been **exercised**. Two ways:

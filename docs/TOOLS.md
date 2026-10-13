@@ -405,7 +405,7 @@ such as suggestion chips (same mechanism, when a channel asks for it).
 A tool appears in the Studio panel and enters an agent's tool-loop when it is
 **registered** in the catalog **and** allowed by the agent's policy allowlist.
 Three ways to write a data tool into the store — all **hot** (registry and catalog
-reload, no restart):
+reload, no restart; with several workers, the others pick the change up within ~2 s):
 
 1. **DSL** — `data_tool(name:, …)` in a `Insika.agent { … }` block.
 2. **Studio** — the Tools panel editor.
