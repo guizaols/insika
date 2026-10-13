@@ -64,6 +64,10 @@ module Insika
 
     attr_reader :recheck
 
+    # The token every config write bumps. Another process reads it to learn that
+    # something changed since it last looked (one small store read, never cached).
+    def version_token = @store.get(VERSION_SCOPE, VERSION_KEY)
+
     # Upsert (last-write-wins). -> value (the same Hash that was passed)
     def put(scope, key, value)
       s = ns(scope)

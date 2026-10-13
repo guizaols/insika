@@ -35,6 +35,9 @@ module Insika
     # -> [String] names, lexicographic order.
     def names = @cs.keys(SCOPE)
 
+    # Changes whenever any config is written, in any process (ConfigStore#version_token).
+    def version_token = @cs.version_token
+
     # -> [Hash] MASKED definitions (for the UI).
     def all
       names.filter_map { |n| get(n) }

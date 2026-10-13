@@ -161,4 +161,32 @@ RSpec.describe Insika::OverlayToolRegistry do
       expect(overlay.side_effect?("present_products")).to be(false)
     end
   end
+
+  describe "a data-tool written by another process" do
+    let(:shared) { Insika::Stores::Memory.new }
+    let(:now) { [0.0] }
+    let(:mine) do
+      described_class.new(base: base, http: http, recheck: 2, clock: -> { now[0] },
+                          tool_store: Insika::ToolStore.new(config_store: Insika::ConfigStore.new(store: shared)))
+    end
+    let(:other) { Insika::ToolStore.new(config_store: Insika::ConfigStore.new(store: shared)) }
+
+    it "shows up once the recheck window passes, with no reload of its own" do
+      expect(mine.names).not_to include("cep")
+      other.write(def_attrs(name: "cep"))
+      now[0] = 1.0
+      expect(mine.names).not_to include("cep")
+      now[0] = 3.0
+      expect(mine.names).to include("cep")
+      expect(mine.resolve("cep")).to be_a(Insika::Tools::DataDefinedTool)
+    end
+
+    it "a catalog over it follows" do
+      catalog = Insika::ToolCatalog.new(tool_registry: mine)
+      expect(catalog.all.map(&:name)).not_to include("cep")
+      other.write(def_attrs(name: "cep"))
+      now[0] = 3.0
+      expect(catalog.all.map(&:name)).to include("cep")
+    end
+  end
 end

@@ -25,6 +25,9 @@ module Insika
     end
 
     def all
+      gen = registry_generation
+      @entries = nil if gen != @generation
+      @generation = gen
       @entries ||= build_entries
     end
 
@@ -33,6 +36,7 @@ module Insika
     # restart. An in-flight turn has already captured `all`.
     def reload
       @entries = build_entries
+      @generation = registry_generation
       self
     end
 
@@ -89,5 +93,7 @@ module Insika
       desc = entry.description.downcase
       terms.sum { |term| (name.include?(term) ? 2 : 0) + (desc.include?(term) ? 1 : 0) }
     end
+
+    def registry_generation = @tool_registry.respond_to?(:generation) ? @tool_registry.generation : nil
   end
 end

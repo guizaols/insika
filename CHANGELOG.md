@@ -107,6 +107,10 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- Data-tools imported or edited in one worker now reach the others: the tool
+  registry checks the config version token (at most every 2 s) and rebuilds when
+  it moved, and the tool catalog follows. Before, the other workers kept the
+  catalog they booted with until a restart.
 - LLM providers authored at runtime reach every worker process, and survive a
   restart: each chat re-applies the stored providers when they changed. Before,
   only the worker that served the edit had the key, so a fallback on that
