@@ -39,11 +39,24 @@
 #
 #   sessions <state-dir> [--agent <id>] [--archive <dir>] [--json]
 #       Report the session data volume per agent — transcript/trajectory file
-#       counts, total bytes, message count, first/last timestamp. Sessions are
-#       NOT migrated into the Insika session store (Hermes decision carried
-#       over: history is archived, not imported); --archive <dir> copies the
-#       files to <dir>/<agent>/ for safe keeping. Transcripts may contain
-#       customer data — the copy is the operator's call.
+#       counts, total bytes, message count, first/last timestamp. --archive <dir>
+#       copies the files to <dir>/<agent>/ for safe keeping. Transcripts may
+#       contain customer data — the copy is the operator's call.
+#
+#   seed <state-dir> --agent <id> [--since DAYS] [--last N] [--skip PREFIX]
+#        [--only ID [--as ID]] [--dry-run] [--out FILE]
+#       Carries recent conversations over so a returning customer finds their
+#       history: reads the SQLite transcripts (root and procs/proc-*; the newest
+#       copy of a session wins), follows the active branch from the last
+#       compaction (its summary opens the seeded history), keeps the customer's
+#       text and the agent's replies — tool results and thinking are dropped —
+#       and POSTs /v1/conversations/<id>/seed. Only keys
+#       agent:<id>:openresponses-user:<id> are seeded; <id> is what follows. Needs the Insika setting evals.seeding on while it
+#       runs; a conversation that already has messages is skipped (409), so a
+#       re-run is safe. --dry-run prints counts only; --out writes the full plan
+#       (customer data) for review. --only seeds one conversation; --as writes
+#       it under another id (rehearse a real conversation on a test chat).
+#       Env: INSIKA_URL, INSIKA_GATEWAY_TOKEN.
 #
 #   import <pack-dir>
 #       Delegates to scripts/import_pack.rb (Insika::Pack.from_dir →
@@ -62,6 +75,9 @@ require "json"
 require "fileutils"
 require "optparse"
 require "rbconfig"
+require "net/http"
+require "uri"
+require "sqlite3"
 
 module MigrateOpenclaw
   class Error < StandardError; end
@@ -562,12 +578,172 @@ module MigrateOpenclaw
                               [--tools-from <pack-dir>] [--skill-conflict skip|overwrite|rename]
                               [--migrate-secrets]
            migrate_openclaw.rb sessions <state-dir> [--agent <id>] [--archive <dir>] [--json]
+           migrate_openclaw.rb seed <state-dir> --agent <id> [--since DAYS] [--last N]
+                              [--skip PREFIX] [--only ID [--as ID]] [--dry-run] [--out FILE]
            migrate_openclaw.rb import <pack-dir>
   USAGE
 
+  # ---- seed: conversation history -> Insika sessions ----------------------
+
+  BOUNDARY_TYPES = %w[compaction reset].freeze
+
+  def session_dbs(dir, agent)
+    [File.join(dir, "agents", agent, "agent", "openclaw-agent.sqlite"),
+     *Dir.glob(File.join(dir, "procs", "*", "agents", agent, "agent", "openclaw-agent.sqlite"))]
+      .select { |f| File.file?(f) }
+  end
+
+  # -> [{ "id", "history" => [{role, content}], "summary" }], oldest first.
+  def seed_plan(dir, agent:, since_days: 30, last: 20, skip: [], now: Time.now)
+    raise Error, "--last must be >= 1" unless last.to_i >= 1
+    cutoff = ((now.to_f - (since_days * 86_400)) * 1000).to_i
+    newest = {} # session_key -> [updated_at, db path, current_session_id]
+    dbs = session_dbs(dir, agent)
+    raise Error, "no openclaw-agent.sqlite for agent '#{agent}' under #{dir}" if dbs.empty?
+
+    dbs.each do |path|
+      with_db(path) do |db|
+        db.execute("SELECT session_key, current_session_id, updated_at FROM session_nodes WHERE updated_at >= ?",
+                   [cutoff]).each do |key, sid, at|
+          newest[key] = [at, path, sid] if newest[key].nil? || at > newest[key][0]
+        end
+      end
+    end
+
+    prefix = "agent:#{agent}:openresponses-user:"
+    newest.sort_by { |_, (at, _, _)| at }.filter_map do |key, (_, path, sid)|
+      next unless key.start_with?(prefix) # other channels/keys have no chat id to map
+
+      id = key.delete_prefix(prefix)
+      next if id.empty? || skip.any? { |p| id.start_with?(p) }
+
+      events = with_db(path) do |db|
+        db.execute("SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq", [sid])
+          .filter_map { |(json)| JSON.parse(json) rescue nil }
+      end
+      summary, history = conversation(events)
+      history = history.last(last)
+      # The summary opens this conversation's history: a memory note without a
+      # customer would land in the tenant-wide cell every conversation reads.
+      history.unshift({ "role" => "assistant", "content" => summary }) if summary && !history.empty?
+      { "id" => id, "history" => history, "summary" => summary } unless history.empty?
+    end
+  end
+
+  def with_db(path)
+    db = SQLite3::Database.new(path, readonly: true)
+    yield db
+  ensure
+    db&.close
+  end
+
+  # Entries that move the branch leaf when appended on the main line.
+  LEAF_TYPES = %w[message thinking_level_change model_change compaction reset branch_summary
+                  custom custom_message label session_info].freeze
+
+  # The active branch (parentId chain from the selected leaf: an explicit
+  # "leaf" event, else the last main-line entry — side appends do not move it),
+  # cut at the last compaction/reset. -> [summary or nil, [{role, content}]]
+  # with consecutive turns of the same role merged.
+  def conversation(events)
+    by_id = events.to_h { |e| [e["id"], e] }
+    leaf = events.reduce(nil) do |active, e|
+      if e["type"] == "leaf" then e["targetId"]
+      elsif LEAF_TYPES.include?(e["type"]) && e["appendMode"] != "side" then e["id"]
+      else active
+      end
+    end
+    path = []
+    cur = by_id[leaf]
+    while cur && !path.include?(cur)
+      path.unshift(cur)
+      cur = by_id[cur["parentId"]]
+    end
+
+    summary = nil
+    if (b = path.rindex { |e| BOUNDARY_TYPES.include?(e["type"]) })
+      boundary = path[b]
+      summary = boundary["summary"]
+      kept = path.index { |e| e["id"] && e["id"] == boundary["firstKeptEntryId"] }
+      path = (kept && kept < b ? path[kept...b] : []) + path[(b + 1)..]
+    end
+
+    history = path.each_with_object([]) do |e, acc|
+      m = e["message"]
+      next unless e["type"] == "message" && m.is_a?(Hash) && %w[user assistant].include?(m["role"])
+
+      text = message_text(m["content"])
+      text = strip_envelope(text) if m["role"] == "user"
+      next if text.empty?
+
+      if acc.last && acc.last["role"] == m["role"]
+        acc.last["content"] += "\n\n#{text}"
+      else
+        acc << { "role" => m["role"], "content" => text }
+      end
+    end
+    [summary, history]
+  end
+
+  def message_text(content)
+    return content.to_s.strip unless content.is_a?(Array)
+
+    content.filter_map { |c| c["text"] if c.is_a?(Hash) && c["type"] == "text" }.join("\n\n").strip
+  end
+
+  # The platform sends each turn as context blocks followed by the customer's
+  # text, joined by blank lines; a block opens with its tag alone on a line
+  # ("<tag ...>\n") and its closing tag ends the segment. Peel those leading
+  # blocks (and self-closing event tags like "<event .../>"); what is left is
+  # what the customer typed (inline markup like "<b>x</b> y" stays).
+  def strip_envelope(text)
+    loop do
+      s = text.lstrip
+      if (empty = s.match(/\A<[A-Za-z_][\w-]*(?:\s[^>]*)?\/>(?=\n\n|\z)/))
+        text = s[empty[0].size..]
+        next
+      end
+      open = s.match(/\A<([A-Za-z_][\w-]*)(?:\s[^>]*)?>\n/) or break
+      close_tag = "</#{open[1]}>"
+      close = s.index(close_tag) or break
+      rest = s[(close + close_tag.size)..]
+      break unless rest.empty? || rest.start_with?("\n\n")
+
+      text = rest
+    end
+    text.strip
+  end
+
+  # post: ->(id, body) -> HTTP status. -> { seeded, skipped, failed }.
+  def seed(plan, post:)
+    result = { "seeded" => 0, "skipped" => 0, "failed" => 0 }
+    plan.each do |s|
+      case (code = post.call(s["id"], { "history" => s["history"] }).to_i)
+      when 200 then result["seeded"] += 1
+      when 409 then result["skipped"] += 1
+      when 401, 403
+        raise Error, "refused (#{code}) after #{JSON.generate(result)}: check INSIKA_GATEWAY_TOKEN " \
+                     "and turn on the Insika setting evals.seeding while migrating"
+      else
+        result["failed"] += 1
+        warn "seed #{s['id']}: HTTP #{code}"
+      end
+    end
+    result
+  end
+
+  def http_post(base, token)
+    lambda do |id, body|
+      uri = URI.join(base.end_with?("/") ? base : "#{base}/", "v1/conversations/#{URI.encode_www_form_component(id)}/seed")
+      req = Net::HTTP::Post.new(uri, "Authorization" => "Bearer #{token}", "Content-Type" => "application/json")
+      req.body = body.to_json
+      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |h| h.request(req) }.code
+    end
+  end
+
   def cli(argv)
     # analyze is the default subcommand: a bare state-dir argument means analyze.
-    cmd = %w[analyze convert sessions import].include?(argv.first) ? argv.shift : "analyze"
+    cmd = %w[analyze convert sessions seed import].include?(argv.first) ? argv.shift : "analyze"
     case cmd
     when "analyze"
       options = {}
@@ -618,6 +794,35 @@ module MigrateOpenclaw
           archived = Dir.exist?(out_dir) ? Dir.children(out_dir).size : 0
           out_stream.puts "archived #{archived} files for #{r['id']} -> #{out_dir}"
         end
+      end
+    when "seed"
+      options = { since_days: 30, last: 20, skip: [] }
+      OptionParser.new do |o|
+        o.on("--agent ID") { |v| options[:agent] = v }
+        o.on("--since DAYS", Integer) { |v| options[:since_days] = v }
+        o.on("--last N", Integer) { |v| options[:last] = v }
+        o.on("--skip PREFIX") { |v| options[:skip] << v }
+        o.on("--only ID") { |v| options[:only] = v }
+        o.on("--as ID") { |v| options[:as] = v }
+        o.on("--dry-run") { options[:dry_run] = true }
+        o.on("--out FILE") { |v| options[:out] = v }
+        o.on("-h", "--help") { puts USAGE; exit 0 }
+      end.parse!(argv)
+      dir = argv.shift or abort(USAGE)
+      abort(USAGE) unless options[:agent]
+      plan = seed_plan(dir, **options.slice(:agent, :since_days, :last, :skip))
+      plan.select! { |p| p["id"] == options[:only] } if options[:only]
+      if options[:as]
+        abort("--as needs --only") unless options[:only]
+        plan.each { |p| p["id"] = options[:as] }
+      end
+      File.write(options[:out], JSON.pretty_generate(plan)) if options[:out]
+      puts "#{plan.size} conversations, #{plan.sum { |p| p['history'].size }} messages, " \
+           "#{plan.count { |p| p['summary'] }} with a compaction summary"
+      unless options[:dry_run]
+        base = ENV["INSIKA_URL"] or abort("INSIKA_URL is required")
+        token = ENV["INSIKA_GATEWAY_TOKEN"] or abort("INSIKA_GATEWAY_TOKEN is required")
+        puts JSON.generate(seed(plan, post: http_post(base, token)))
       end
     when "import"
       pack = argv.shift or abort(USAGE)

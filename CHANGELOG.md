@@ -10,6 +10,12 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- `scripts/migrate_openclaw.rb seed`: carries recent OpenClaw conversations into
+  Insika sessions (`POST /v1/conversations/:id/seed`) so a returning customer
+  keeps the context. Reads root and per-process SQLite transcripts, follows the
+  active branch from the last compaction, keeps only customer text and agent
+  replies, and skips conversations that already have messages. `--only`/`--as`
+  rehearse one conversation on a test chat.
 - Platform agent defaults (Studio › Settings › Agent defaults, or
   `update_settings` with `agent_defaults`): an agent with no value of its own
   for reliability, knowledge, memory retrieval, budget, alerts, guardrails,

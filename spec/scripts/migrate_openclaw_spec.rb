@@ -433,4 +433,139 @@ RSpec.describe MigrateOpenclaw do
       end
     end
   end
+
+  describe ".seed_plan / .seed (conversation history -> Insika sessions)" do
+    NOW = Time.utc(2026, 3, 31, 12)
+    MS = ->(t) { (t.to_f * 1000).to_i }
+
+    def db(root, rel)
+      path = File.join(root, rel, "agent/openclaw-agent.sqlite")
+      FileUtils.mkdir_p(File.dirname(path))
+      SQLite3::Database.new(path).tap do |d|
+        d.execute_batch(<<~SQL)
+          CREATE TABLE session_nodes (session_key TEXT PRIMARY KEY, current_session_id TEXT, updated_at INTEGER);
+          CREATE TABLE transcript_events (session_id TEXT, seq INTEGER, event_json TEXT, PRIMARY KEY (session_id, seq));
+        SQL
+      end
+    end
+
+    def session(d, key, sid, updated, events)
+      d.execute("INSERT INTO session_nodes VALUES (?,?,?)", [key, sid, MS.(updated)])
+      events.each_with_index { |e, i| d.execute("INSERT INTO transcript_events VALUES (?,?,?)", [sid, i + 1, e.to_json]) }
+    end
+
+    def msg(id, parent, role, content)
+      { "type" => "message", "id" => id, "parentId" => parent, "message" => { "role" => role, "content" => content } }
+    end
+
+    let(:root) { Dir.mktmpdir }
+    after { FileUtils.rm_rf(root) }
+
+    it "keeps the customer's text and the agent's replies, newest copy of a session wins" do
+      old = db(root, "agents/shop")
+      session(old, "agent:shop:openresponses-user:42", "w-old", NOW - 3600, [msg("a", nil, "user", "stale")])
+      fresh = db(root, "procs/proc-3/agents/shop")
+      session(fresh, "agent:shop:openresponses-user:42", "w-new", NOW - 60, [
+        { "type" => "session", "id" => "h" },
+        msg("1", "h", "user", [{ "type" => "text", "text" => "<canal>\nwhatsapp\n</canal>\n\n<memoria attr=\"x\">\na\n\nb\n</memoria>\n\nquero um sabão" }]),
+        msg("2", "1", "assistant", [{ "type" => "thinking", "thinking" => "private" }, { "type" => "toolCall", "id" => "t" }]),
+        msg("3", "2", "toolResult", [{ "type" => "text", "text" => "{\"rows\":[]}" }]),
+        msg("4", "3", "assistant", [{ "type" => "text", "text" => "Temos o concentrado." }]),
+        msg("5", "4", "assistant", "Quer ver?"),
+        msg("6", "5", "user", "<b>quero</b> sim"),
+        msg("7", "6", "user", "<checkout_pronto/>"),
+        msg("8", "7", "user", "<acao_webview id=\"x\"/>\n\nfechei")
+      ])
+      [old, fresh].each(&:close)
+
+      plan = described_class.seed_plan(root, agent: "shop", now: NOW)
+      expect(plan).to eq([{ "id" => "42", "history" => [
+        { "role" => "user", "content" => "quero um sabão" },
+        { "role" => "assistant", "content" => "Temos o concentrado.\n\nQuer ver?" },
+        { "role" => "user", "content" => "<b>quero</b> sim\n\nfechei" }
+      ], "summary" => nil }])
+    end
+
+    it "follows the active branch and starts at the last compaction, keeping its summary" do
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:7", "w", NOW, [
+        msg("1", nil, "user", "antes"),
+        msg("2", "1", "assistant", "resposta abandonada"),
+        msg("3", "1", "assistant", "resposta ativa"),
+        msg("4", "3", "user", "mantida"),
+        { "type" => "compaction", "id" => "c", "parentId" => "4", "summary" => "cliente quer kit", "firstKeptEntryId" => "4" },
+        msg("5", "c", "assistant", "depois")
+      ])
+      d.close
+
+      plan = described_class.seed_plan(root, agent: "shop", now: NOW).first
+      expect(plan["summary"]).to eq("cliente quer kit")
+      expect(plan["history"].map { |m| m["content"] }).to eq(["cliente quer kit", "mantida", "depois"])
+      expect(plan["history"].first["role"]).to eq("assistant")
+    end
+
+    it "honours an explicit leaf and ignores side appends" do
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:5", "w", NOW, [
+        msg("1", nil, "user", "oi"),
+        msg("2", "1", "assistant", "ramo escolhido"),
+        msg("3", "1", "assistant", "ramo descartado"),
+        { "type" => "leaf", "targetId" => "2" },
+        msg("4", "2", "assistant", "nota lateral").merge("appendMode" => "side")
+      ])
+      d.close
+
+      history = described_class.seed_plan(root, agent: "shop", now: NOW).first["history"]
+      expect(history.map { |m| m["content"] }).to eq(["oi", "ramo escolhido"])
+    end
+
+    it "filters by age and id prefix and keeps only the last N messages" do
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:old", "w1", NOW - (40 * 86_400), [msg("1", nil, "user", "x")])
+      session(d, "agent:shop:openresponses-user:sim-9", "w2", NOW, [msg("1", nil, "user", "x")])
+      session(d, "agent:shop:main", "w4", NOW, [msg("1", nil, "user", "x")])
+      session(d, "agent:shop:other-channel:8", "w5", NOW, [msg("1", nil, "user", "x")])
+      session(d, "agent:shop:openresponses-user:8", "w3", NOW,
+              (1..5).map { |i| msg(i.to_s, (i - 1).to_s, i.odd? ? "user" : "assistant", "m#{i}") })
+      d.close
+
+      plan = described_class.seed_plan(root, agent: "shop", since_days: 30, last: 2, skip: ["sim-"], now: NOW)
+      expect(plan.map { |p| p["id"] }).to eq(["8"])
+      expect { described_class.seed_plan(root, agent: "shop", last: 0, now: NOW) }
+        .to raise_error(MigrateOpenclaw::Error, /--last/)
+      expect(plan.first["history"].map { |m| m["content"] }).to eq(%w[m4 m5])
+    end
+
+    it "seed --only/--as rehearses one conversation under another id (CLI)" do
+      script = File.expand_path("../../scripts/migrate_openclaw.rb", __dir__)
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:prod-1", "w1", Time.now, [msg("1", nil, "user", "oi")])
+      session(d, "agent:shop:openresponses-user:prod-2", "w2", Time.now, [msg("1", nil, "user", "oi")])
+      d.close
+      out_file = File.join(root, "plan.json")
+      out, status = Open3.capture2e("ruby", script, "seed", root, "--agent", "shop", "--only", "prod-2",
+                                    "--as", "staging-9", "--dry-run", "--out", out_file)
+      expect(status).to be_success, out
+      expect(JSON.parse(File.read(out_file)).map { |p| p["id"] }).to eq(["staging-9"])
+
+      out, status = Open3.capture2e("ruby", script, "seed", root, "--agent", "shop", "--as", "x", "--dry-run")
+      expect(status).not_to be_success
+      expect(out).to include("--as needs --only")
+    end
+
+    it "seed posts each session, counts an already used conversation as skipped, stops when seeding is off" do
+      plan = [{ "id" => "1", "history" => [{ "role" => "user", "content" => "oi" }], "summary" => "s" },
+              { "id" => "2", "history" => [{ "role" => "user", "content" => "oi" }], "summary" => nil }]
+      sent = []
+      codes = { "1" => 200, "2" => 409 }
+      result = described_class.seed(plan, post: ->(id, body) { sent << [id, body] && codes[id] })
+      expect(result).to eq("seeded" => 1, "skipped" => 1, "failed" => 0)
+      expect(sent).to eq([["1", { "history" => plan[0]["history"] }], ["2", { "history" => plan[1]["history"] }]])
+
+      expect { described_class.seed(plan, post: ->(id, _) { id == "1" ? 200 : 403 }) }
+        .to raise_error(MigrateOpenclaw::Error, /refused \(403\) after \{"seeded":1.*evals.seeding/)
+      expect { described_class.seed(plan, post: ->(_, _) { 401 }) }
+        .to raise_error(MigrateOpenclaw::Error, /INSIKA_GATEWAY_TOKEN/)
+    end
+  end
 end
