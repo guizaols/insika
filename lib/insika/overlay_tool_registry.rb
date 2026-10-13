@@ -27,8 +27,10 @@ module Insika
   # are "data-defined" or MCP-discovered.
   class OverlayToolRegistry
     def initialize(base:, tool_store:, http:, egress: Insika::EgressGuard, egress_options: {}, event_stream: nil,
-                   mcp_registry: nil)
+                   mcp_registry: nil, recheck: 2, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @base = base
+      @recheck = recheck
+      @clock = clock
       @tool_store = tool_store
       @http = http
       @egress = egress
@@ -70,7 +72,16 @@ module Insika
     # Atomic swap of the dynamic index (after writing/removing a data-tool).
     def reload
       @dynamic = build_dynamic
+      @token = @tool_store.version_token
+      @checked_at = @clock.call
       self
+    end
+
+    # Changes when the data-tools were rebuilt; a catalog over this registry
+    # compares it to know its own index is stale.
+    def generation
+      dynamic
+      @token
     end
 
     # Is it a CODE tool (base)? Used by the authoring Command's validation.
@@ -78,8 +89,20 @@ module Insika
 
     private
 
+    # Another worker may have written a data-tool (import, Studio edit): at most
+    # every `recheck` seconds, compare the config version token and rebuild when it
+    # moved. The token moves on any config write, so a rebuild may find nothing new.
     def dynamic
-      @dynamic ||= build_dynamic
+      reload if @dynamic.nil? || stale?
+      @dynamic
+    end
+
+    def stale?
+      now = @clock.call
+      return false if now - @checked_at < @recheck
+
+      @checked_at = now
+      @tool_store.version_token != @token
     end
 
     # No I/O (McpToolRegistry#entries only reads McpStore#tools_cache) ->
