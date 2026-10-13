@@ -104,6 +104,15 @@ RSpec.describe Insika::ToolManifest do
       expect(Insika::ToolDefinition.from_h(a).side_effect).to be(true)
       expect(Insika::ToolDefinition.from_h(b).side_effect).to be(false)
     end
+
+    it "carries the per-tool timeout through to the definition" do
+      m = manifest(defaults: consumer_defaults,
+                   tools: [{ "name" => "slow", "endpoint" => "slow", "description" => "d", "timeout" => 20 },
+                           { "name" => "fast", "endpoint" => "fast", "description" => "d" }])
+      slow, fast = defn(m, secrets: secrets, env: env)
+      expect(Insika::ToolDefinition.from_h(slow).timeout).to eq(20)
+      expect(Insika::ToolDefinition.from_h(fast).timeout).to be_nil
+    end
   end
 
   describe "resolution of {{env.*}} / {{secret.*}}" do
