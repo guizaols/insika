@@ -441,7 +441,8 @@ module Insika
       # POST /v1/conversations/:id/seed — loads the snapshot an eval case starts from
       # (its `state:` — evidence ids, memory facts/notes, history, briefing fields)
       # into the conversation BEFORE its first turn. Body = the state mapping, plus an
-      # optional `customer` (the memory scope the turns will carry). Same Bearer as
+      # optional `customer` (the memory scope the turns will carry) and `agent` (the
+      # agent the Studio lists the conversation under). Same Bearer as
       # /v1/responses and the same id namespacing for a tenant, so the seeded session
       # IS the one the turn continues. 200 {session}; 409 when the conversation
       # already has messages (seeding a used one is a test bug, not a merge).
@@ -458,8 +459,9 @@ module Insika
         # the conversation id as the TURN will send it in `user` — the path
         # segment arrives percent-encoded (the eval transport encodes "loja:c1").
         conv = URI.decode_www_form_component(id)
-        payload = { id: scoped_session_id(tenant, conv), state: body.except(:customer) }
+        payload = { id: scoped_session_id(tenant, conv), state: body.except(:customer, :agent) }
         (customer = Insika::Coercion.presence(body[:customer])) && (payload[:customer] = customer)
+        (agent = Insika::Coercion.presence(body[:agent])) && (payload[:agent] = agent)
         command = Insika::Command.build(:seed_session, payload, transport: :http, tenant: tenant)
         session = dispatch_with_timeout(command)
         json_response(200, { session: session.to_h })

@@ -633,6 +633,13 @@ RSpec.describe Insika::Server::App do
       expect(bus.dispatched.first.payload[:id]).to eq("loja-a:eval-c1")
     end
 
+    it "passes the agent beside the state" do
+      bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
+      call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed", body: JSON.generate(state.merge(agent: "shop")))
+
+      expect(bus.dispatched.first.payload).to eq(id: "eval-c1", state: state, agent: "shop")
+    end
+
     it "without a customer the payload carries none" do
       bus = ServerBusDouble.new { |c| Seeded.new(c.payload[:id]) }
       call(seed_app(bus), "POST", "/v1/conversations/eval-c1/seed", body: JSON.generate(state))

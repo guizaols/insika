@@ -17,9 +17,15 @@ module Insika
     #   memory:   { facts: {}, notes: [] } -> the memory cell THIS turn will read
     #   briefing: { fields: {} }           -> the session briefing
     #
+    # An optional `agent` stamps vars["agent"] — what the Studio filters a session
+    # list by; a turn stamps it only when it brings a customer, so a seeded
+    # conversation nobody has written to yet would belong to no agent.
+    #
     # Refuses a session that already has messages (ConflictError -> 409): seeding a
     # used conversation is a test bug, not a merge — the case would assert against a
-    # state nobody wrote down. Synchronous; does not create a Task. -> Session.
+    # state nobody wrote down. The agent is still stamped when missing, so seeding
+    # again fixes conversations seeded before it was sent. Synchronous; does not
+    # create a Task. -> Session.
     class SeedSession
       def initialize(session_store:, memory_store:, event_stream:)
         @session_store = session_store
@@ -37,8 +43,12 @@ module Insika
 
         tenant = command.meta[:tenant] # the same source the turn reads — never the payload
         customer = AgentPayload.presence(p[:customer])
+        agent = AgentPayload.presence(p[:agent])
 
         session = @session_store.find(id) || @session_store.create(id: id, vars: {})
+        if agent && Coercion.presence(session.vars["agent"]).nil?
+          @session_store.update_vars(id, { "agent" => agent })
+        end
         unless session.messages.empty?
           raise Insika::ConflictError,
                 "session #{id} already has #{session.messages.size} message(s) — seed a fresh conversation"

@@ -16,6 +16,8 @@ it is released. Entries land with the pull request that makes the change.
   active branch from the last compaction, keeps only customer text and agent
   replies, and skips conversations that already have messages. `--only`/`--as`
   rehearse one conversation on a test chat.
+  Each session is stamped with `--agent`, so the Studio lists it under that
+  agent; re-running stamps sessions seeded before (they still answer 409).
 - Platform agent defaults (Studio › Settings › Agent defaults, or
   `update_settings` with `agent_defaults`): an agent with no value of its own
   for reliability, knowledge, memory retrieval, budget, alerts, guardrails,

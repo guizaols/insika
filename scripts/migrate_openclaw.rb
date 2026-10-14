@@ -715,10 +715,13 @@ module MigrateOpenclaw
   end
 
   # post: ->(id, body) -> HTTP status. -> { seeded, skipped, failed }.
-  def seed(plan, post:)
+  # agent: stamped on each session so the Studio lists it under that agent; a 409
+  # still stamps it, so re-running fixes sessions seeded without one.
+  def seed(plan, post:, agent: nil)
     result = { "seeded" => 0, "skipped" => 0, "failed" => 0 }
     plan.each do |s|
-      case (code = post.call(s["id"], { "history" => s["history"] }).to_i)
+      body = { "history" => s["history"], "agent" => agent }.compact
+      case (code = post.call(s["id"], body).to_i)
       when 200 then result["seeded"] += 1
       when 409 then result["skipped"] += 1
       when 401, 403
@@ -822,7 +825,7 @@ module MigrateOpenclaw
       unless options[:dry_run]
         base = ENV["INSIKA_URL"] or abort("INSIKA_URL is required")
         token = ENV["INSIKA_GATEWAY_TOKEN"] or abort("INSIKA_GATEWAY_TOKEN is required")
-        puts JSON.generate(seed(plan, post: http_post(base, token)))
+        puts JSON.generate(seed(plan, post: http_post(base, token), agent: options[:agent]))
       end
     when "import"
       pack = argv.shift or abort(USAGE)
