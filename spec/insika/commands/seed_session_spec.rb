@@ -49,6 +49,17 @@ RSpec.describe Insika::Commands::SeedSession do
     expect(event_stream.events.map(&:type)).to eq([:session_seeded])
   end
 
+  # The Studio filters a session list by vars["agent"]; a turn stamps it only with a
+  # customer, so a seeded conversation must carry it itself.
+  it "stamps the agent on the session, also on a 409 so re-seeding fixes old sessions" do
+    expect(seed(id: "mig-1", agent: "shop", state: state).vars["agent"]).to eq("shop")
+
+    session_store.create(id: "mig-2", vars: {})
+    session_store.append_messages("mig-2", [{ "role" => "user", "content" => "oi" }])
+    expect { seed(id: "mig-2", agent: "shop", state: state) }.to raise_error(Insika::ConflictError)
+    expect(session_store.find("mig-2").vars["agent"]).to eq("shop")
+  end
+
   # A snapshot can carry the cards a search would have returned, so a case can
   # grade a presentation without a lookup in the turn. A card's id counts as seen.
   it "seeds evidence cards with their ids (a presentation tool can show them)" do

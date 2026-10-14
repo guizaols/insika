@@ -562,6 +562,10 @@ RSpec.describe MigrateOpenclaw do
       expect(result).to eq("seeded" => 1, "skipped" => 1, "failed" => 0)
       expect(sent).to eq([["1", { "history" => plan[0]["history"] }], ["2", { "history" => plan[1]["history"] }]])
 
+      sent.clear
+      described_class.seed(plan.first(1), post: ->(id, body) { sent << [id, body] && 200 }, agent: "shop")
+      expect(sent).to eq([["1", { "history" => plan[0]["history"], "agent" => "shop" }]])
+
       expect { described_class.seed(plan, post: ->(id, _) { id == "1" ? 200 : 403 }) }
         .to raise_error(MigrateOpenclaw::Error, /refused \(403\) after \{"seeded":1.*evals.seeding/)
       expect { described_class.seed(plan, post: ->(_, _) { 401 }) }
