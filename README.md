@@ -139,6 +139,7 @@ navigates by.
 - [Load test](docs/LOADTEST.md) — load-testing and data topology.
 - [Soak](docs/SOAK.md) — the long run that finds what a short one cannot.
 - [Benchmark](docs/BENCHMARK.md) — the neutral, reproducible, provider-free engine benchmark.
+- [Performance](docs/PERFORMANCE.md) — what keeps a turn cheap (fibers, SQLite group commit, memory trim) and what was tried and left out.
 
 **Improve**
 

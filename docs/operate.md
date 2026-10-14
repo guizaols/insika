@@ -17,4 +17,5 @@ handing back a report, and knowing what the box will take before it takes it.
 - **[Soak](SOAK.md)** — the long run that finds what a short one cannot.
 - **[Benchmark](BENCHMARK.md)** — the engine's measured overhead, reproducible without an API key.
 - **[Cross-harness bench](CROSS-HARNESS-BENCH.md)** — the same store answered by six harnesses, graded on the store's own state.
+- **[Performance](PERFORMANCE.md)** — what keeps a turn cheap, and what was tried and left out.
 {: .card-grid }
