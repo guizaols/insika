@@ -2549,6 +2549,21 @@ end
     expect(bus.last(:review_guardrail_flag).payload).to include(session_id: "sess-fp", message: "0", flag: "0", status: "reported")
   end
 
+  it "the Inbox lists every queue oldest first and filters by type" do
+    reported = StoredSession.new(id: "sess-rp", updated_at: "2026-10-15T10:00:00Z", vars: { "agent" => "bia" },
+                                 messages: [{ "role" => "user", "content" => "x",
+                                              "guardrail_flags" => [{ "category" => "sexual", "review" => { "status" => "reported" } }] }])
+    app, = build_app(sessions: { "sess-rp" => reported }, pendings: [pending(tool: "refund_order")])
+    client = login(app)
+    body = client.get("/inbox").body
+    expect(body).to include("refund_order needs approval", 'href="/studio/approvals"')
+    expect(body).to include('href="/studio/inbox"', "<span>Inbox</span>")
+    only = client.get("/inbox?type=approval").body
+    expect(only).to include("refund_order needs approval")
+    expect(only).not_to include("Guardrail false positive")
+    expect(login(build_app.first).get("/inbox").body).to include("Nothing waiting on you.")
+  end
+
   it "a turn with several tool calls draws a waterfall of when each ran" do
     app, = build_app
     bars = app.allocate.send(:trace_waterfall, [

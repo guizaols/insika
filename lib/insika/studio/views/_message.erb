@@ -70,6 +70,7 @@
           <input type="hidden" name="flag" value="<%= fi %>">
           <% if state == "reported" %>
             <span class="status warn">reported as false positive</span>
+            <button type="submit" class="btn btn-sm" name="status" value="resolved">Mark resolved</button>
             <button type="submit" class="btn btn-sm ghost">Undo</button>
           <% elsif state == "resolved" %>
             <span class="status ok">false positive resolved</span>

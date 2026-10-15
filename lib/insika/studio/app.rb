@@ -290,6 +290,10 @@ module Studio
       r.root { r.redirect("/studio/home") }
 
       # --- Overview: at-a-glance dashboard ---------------------
+      r.on "inbox" do
+        r.is { r.get { render_inbox } }
+      end
+
       r.on "home" do
         r.is { r.get { render_home } }
       end
@@ -1575,6 +1579,7 @@ end
           ["Playground", "/studio/playground", :playground]
         ]],
         ["review", [
+          ["Inbox", "/studio/inbox", :approvals, counts.values.sum],
           ["Approvals", "/studio/approvals", :approvals, counts[:approvals]],
           # the human gate on distilled proposals (approve/reject/dismiss).
           ["Facts", "/studio/facts", :facts, counts[:facts]],
@@ -1629,6 +1634,7 @@ end
         [counts[:facts], "fact proposal(s) to review", "/studio/facts", "info"],
         [counts[:harvest], "mined skill(s) to review", "/studio/harvest", "info"],
         [counts[:refinement], "refinement run(s) to review", "/studio/refinement", "info"],
+        [counts[:false_positives], "guardrail false positive(s) reported", "/studio/inbox?type=false_positive", "err"],
         [Array(@stalled).size, "customer(s) waiting for a reply", "/studio/chats", "warn"],
         [failing, "tool(s) failing in 24h", "/studio/tools", "err"]
       ].select { |n, *| n.positive? }.map { |n, text, href, tone| ["#{n} #{text}", href, tone] }
@@ -1642,8 +1648,57 @@ end
         approvals: safe_count { insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR) },
         facts: safe_count { insika[:proposal_store]&.pending(limit: 100) },
         harvest: safe_count { insika[:harvest_store]&.awaiting_approval(limit: 100) },
-        refinement: safe_count { insika[:refinement_store]&.awaiting_approval(limit: 100) }
+        refinement: safe_count { insika[:refinement_store]&.awaiting_approval(limit: 100) },
+        false_positives: safe_count { reported_sessions }
       }
+    end
+
+    # Sessions holding a guardrail flag someone reported as a false positive
+    # and nobody resolved yet (stats only).
+    def reported_sessions
+      store = insika[:session_store]
+      store.respond_to?(:all_stats) ? store.all_stats.select { |s| s.reported.positive? } : []
+    end
+
+    INBOX_TYPES = { "approval" => "Approval", "fact" => "Fact", "skill" => "Skill",
+                    "refinement" => "Refinement", "false_positive" => "False positive" }.freeze
+
+    # The Review inbox: every item parked on a person, oldest first, each
+    # linking to the page where it is decided. -> [{ type:, title:, agent:, at:, href: }]
+    def inbox_items
+      tasks = insika[:task_store]
+      items = []
+      Array(insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR)).each do |pa|
+        items << { type: "approval", title: "#{pa.tool} needs approval", agent: (task = tasks&.find(pa.task_id)) && task_agent(task),
+                   at: pa.requested_at, href: "/studio/approvals" }
+      end
+      Array(insika[:proposal_store]&.pending(limit: 100)).each do |p|
+        items << { type: "fact", title: "#{p.key}: #{p.value}"[0, 120], agent: p.scope,
+                   at: p.created_at, href: "/studio/facts/#{Rack::Utils.escape_path(p.id)}" }
+      end
+      Array(insika[:harvest_store]&.awaiting_approval(limit: 100)).each do |c|
+        items << { type: "skill", title: "Mined skill: #{c.name}", agent: c.agent,
+                   at: c.updated_at, href: "/studio/harvest?agent=#{Rack::Utils.escape(c.agent.to_s)}" }
+      end
+      Array(insika[:refinement_store]&.awaiting_approval(limit: 100)).each do |run|
+        items << { type: "refinement", title: "Refinement run waiting for a decision", agent: run.agent_id,
+                   at: run.finished_at || run.started_at, href: "/studio/refinement/#{Rack::Utils.escape_path(run.id)}" }
+      end
+      reported_sessions.each do |st|
+        who = presence(st.vars["customer_name"]) || presence(st.vars["customer"]) || st.id
+        items << { type: "false_positive", title: "Guardrail false positive · #{who}", agent: st.vars["agent"],
+                   at: st.updated_at, href: "/studio/sessions/#{Rack::Utils.escape_path(st.id)}" }
+      end
+      items.sort_by { |i| i[:at].to_s }
+    end
+
+    def render_inbox
+      all = inbox_items
+      @inbox_counts = INBOX_TYPES.keys.to_h { |t| [t, all.count { |i| i[:type] == t }] }
+      @inbox_type = INBOX_TYPES.key?(request.params["type"]) ? request.params["type"] : nil
+      @inbox_total = all.size
+      @items = @inbox_type ? all.select { |i| i[:type] == @inbox_type } : all
+      view("inbox")
     end
 
     def safe_count
