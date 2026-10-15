@@ -49,14 +49,9 @@
           <div class="config-group" data-config-group="model"<%== " hidden" unless @config_group == "model" %>>
     <fieldset class="subgroup">
       <legend>Model</legend>
-    <div class="grid-2">
-      <label>model <span class="muted">(blank = platform <code>default_model</code>)</span>
-        <input type="text" name="model" value="<%= @agent.model %>" placeholder="inherit platform default">
+      <label>model <span class="muted">(blank = platform <code>default_model</code>; the list is Settings › LLM providers)</span>
+        <%== model_select("model", model_ref_of(@agent.model, @agent.provider), "inherit platform default") %>
       </label>
-      <label>provider
-        <input type="text" name="provider" value="<%= @agent.provider %>" placeholder="deepseek">
-      </label>
-    </div>
     </fieldset>
 
     <fieldset class="subgroup">

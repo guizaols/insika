@@ -67,10 +67,11 @@ module Studio
       else
         limits.delete(:steer_join)
       end
+      model, provider = model_ref_parts(r.params["model"], r.params["provider"])
       {
         id: @agent.id,
-        model: presence(r.params["model"]),
-        provider: r.params["provider"].to_s,
+        model: model,
+        provider: provider.to_s,
         memory: r.params["memory"] == "1",
         memory_retrieval: memory_retrieval_patch(r),
         knowledge: knowledge_patch(r),
@@ -115,6 +116,17 @@ module Studio
         capabilities_declared: list_patch(r, "capabilities_declared"),
         skills_eager: skills_eager_patch(r)
       }.merge(inherited_fields(r))
+    end
+
+    # The model picker posts ONE ref, "provider/model" (an OpenRouter model keeps its
+    # own slash: "openrouter/deepseek/x"). A separate `provider` field (API clients,
+    # older forms) wins as given. -> [model | nil, provider | nil]
+    def model_ref_parts(ref, provider)
+      model = presence(ref)
+      return [model, presence(provider)] if model.nil? || !presence(provider).nil? || !model.include?("/")
+
+      provider, model = model.split("/", 2)
+      [model, provider]
     end
 
     # The sections whose "use the platform default" box is checked save nil, so
@@ -678,12 +690,16 @@ module Studio
     # deep-merge writes and the ModelResolver reads as "no platform default");
     # fallback_models is a full-list replace (deep_merge substitutes arrays, so a
     # resubmit never accumulates).
+    # The pickers post refs: default_model splits into model/provider like the
+    # agent's; fallback_models arrives as one select per slot (blank slots dropped).
     def model_defaults_patch(r)
+      default_model, default_provider = model_ref_parts(r.params["default_model"], r.params["default_provider"])
+      fallbacks = r.params["fallback_models"]
       {
-        "default_model" => presence(r.params["default_model"]),
-        "default_provider" => presence(r.params["default_provider"]),
+        "default_model" => default_model,
+        "default_provider" => default_provider,
         "utility_model" => presence(r.params["utility_model"]),
-        "fallback_models" => split_list(r.params["fallback_models"]),
+        "fallback_models" => fallbacks.is_a?(Array) ? fallbacks.filter_map { |f| presence(f) } : split_list(fallbacks),
         # GLOBAL reasoning default (4-layer). Blank -> nil = provider default.
         "thinking" => presence(r.params["thinking"])
       }

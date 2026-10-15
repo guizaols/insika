@@ -46,9 +46,36 @@ RSpec.describe Insika::Reliability do
 
   it "a :fatal provider error is NEVER retried nor rotated (B9's structural rule)" do
     calls = 0
-    attempts = ->(_s, _n) { calls += 1; raise RubyLLM::UnauthorizedError.new("bad key") }
-    expect { run(attempts) }.to raise_error(RubyLLM::UnauthorizedError)
+    attempts = ->(_s, _n) { calls += 1; raise RubyLLM::BadRequestError.new("malformed") }
+    expect { run(attempts) }.to raise_error(RubyLLM::BadRequestError)
     expect(calls).to eq(1) # no retry, no fallback
+  end
+
+  # Fatal for the NODE, not the turn: a bad key or a model the provider does not
+  # have also hands the turn to the next node, once.
+  {
+    "401 (bad key)" => -> { RubyLLM::UnauthorizedError.new("bad key") },
+    "403 (no access)" => -> { RubyLLM::ForbiddenError.new("forbidden") },
+    "404 (unknown model)" => lambda {
+      response = Object.new
+      response.define_singleton_method(:status) { 404 }
+      response.define_singleton_method(:headers) { {} }
+      response.define_singleton_method(:body) { "model does not exist" }
+      RubyLLM::Error.new("The model `x` does not exist", response: response)
+    }
+  }.each do |label, error|
+    it "a #{label} skips to the fallback without retrying the node" do
+      seen = []
+      attempts = lambda do |sel, _n|
+        model = sel.respond_to?(:model) ? sel.model : sel[:model]
+        seen << model
+        raise error.call if model == "deepseek-v4-flash"
+
+        "ok"
+      end
+      expect(run(attempts)).to eq("ok")
+      expect(seen).to eq(%w[deepseek-v4-flash gpt-4o-mini])
+    end
   end
 
   # A 402 is fatal for THAT account, not for the turn: an exhausted balance

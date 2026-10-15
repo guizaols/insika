@@ -3139,7 +3139,7 @@ end
     client = login(app)
     body = client.get("/settings?s=models").body # drill: model defaults section
     expect(body).to include('name="default_model"')
-    expect(body).to include('name="fallback_models"')
+    expect(body).to include('name="fallback_models[]"')
     csrf = csrf_from(body)
     client.post("/settings/models", params: {
                   "default_model" => "deepseek-chat", "default_provider" => "deepseek",
@@ -3151,6 +3151,35 @@ end
     expect(patch["default_provider"]).to eq("deepseek")
     expect(patch["fallback_models"]).to eq(%w[deepseek/deepseek-chat openai/gpt-4o-mini])
     expect(patch["utility_model"]).to eq("deepseek-chat")
+  end
+
+  # The pickers post ONE "provider/model" ref per field (a typed provider prefix
+  # under a separate provider field reached the API doubled: "openai/openai/x").
+  it "the model pickers post refs: default splits into model/provider, fallbacks keep their order" do
+    app, bus = build_app
+    client = login(app)
+    csrf = csrf_from(client.get("/settings?s=models").body)
+    client.post("/settings/models", params: {
+                  "default_model" => "openrouter/deepseek/deepseek-v4.1-flash",
+                  "fallback_models" => ["openai/gpt-4o-mini", "", "deepseek/deepseek-chat"],
+                  "utility_model" => "deepseek/deepseek-chat", "_csrf" => csrf
+                })
+    patch = bus.last(:update_settings).payload[:patch]
+    expect(patch["default_model"]).to eq("deepseek/deepseek-v4.1-flash")
+    expect(patch["default_provider"]).to eq("openrouter")
+    expect(patch["fallback_models"]).to eq(%w[openai/gpt-4o-mini deepseek/deepseek-chat])
+    expect(patch["utility_model"]).to eq("deepseek/deepseek-chat")
+  end
+
+  it "the agent model picker offers the configured providers' models and splits the ref on save" do
+    app, bus = build_app(llm_providers: [{ api: "openai", base_url: "https://api.openai.com/v1",
+                                            models: %w[gpt-6-luna] }])
+    client = login(app)
+    body = client.get("/agents/bia").body
+    expect(body).to include('<option value="openai/gpt-6-luna"')
+
+    client.post("/agents/bia/config", params: { "model" => "openai/gpt-6-luna", "_csrf" => csrf_from(body) })
+    expect(bus.last(:update_agent).payload).to include(model: "gpt-6-luna", provider: "openai")
   end
 
   it "the edge-limits form dispatches update_settings with the edge layer only" do

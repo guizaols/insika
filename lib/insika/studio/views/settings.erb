@@ -73,12 +73,22 @@
         <p class="muted">The platform model layer, resolved at turn start as <strong>Chat pin › Agent model › platform default</strong>. An agent with no model of its own inherits <code>default_model</code>.</p>
         <form id="set-models" method="post" action="/studio/settings/models" data-controller="dirty-guard">
           <%== csrf_tag %>
-          <div class="grid-2">
-            <label>default_model <span class="muted">(agents without their own model)</span><input type="text" name="default_model" value="<%= @settings["default_model"] %>" placeholder="deepseek-v4-flash"></label>
-            <label>default_provider <span class="muted">(optional)</span><input type="text" name="default_provider" value="<%= @settings["default_provider"] %>" placeholder="deepseek"></label>
-          </div>
-          <label>fallback_models <span class="muted">(ordered chain; <code>provider/model</code> or <code>model</code>, comma or newline)</span><input type="text" name="fallback_models" value="<%= Array(@settings["fallback_models"]).join(", ") %>" placeholder="deepseek/deepseek-v4-flash, openai/gpt-4o-mini"></label>
-          <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span><input type="text" name="utility_model" value="<%= @settings["utility_model"] %>" placeholder="deepseek-v4-flash"></label>
+          <p class="muted">The lists below are the models of the configured LLM providers — add a provider or a model there to see it here.</p>
+          <label>default_model <span class="muted">(agents without their own model)</span>
+            <%== model_select("default_model", model_ref_of(@settings["default_model"], @settings["default_provider"]), "none") %>
+          </label>
+          <fieldset class="subgroup">
+            <legend>fallback_models <span class="muted">— tried in this order; blank slots are skipped</span></legend>
+            <% fallbacks = Array(@settings["fallback_models"]) %>
+            <div class="grid-2">
+              <% [fallbacks.size + 1, 5].max.times do |i| %>
+                <label><%= i + 1 %>. <%== model_select("fallback_models[]", fallbacks[i], "—") %></label>
+              <% end %>
+            </div>
+          </fieldset>
+          <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
+            <%== model_select("utility_model", @settings["utility_model"], "none") %>
+          </label>
           <label>reasoning <span class="muted">(global default — off/on/effort; blank = provider default)</span>
             <%== thinking_select("thinking", @settings["thinking"], "provider default") %>
           </label>

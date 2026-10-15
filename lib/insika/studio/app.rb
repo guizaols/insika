@@ -315,10 +315,10 @@ module Studio
           r.post do
             check_csrf!
             id = presence(r.params["id"])
+            model, provider = model_ref_parts(r.params["model"], r.params["provider"])
             result = with_flash("Agent '#{id}' created.") do
               dispatch(:create_agent, {
-                         id: id, model: presence(r.params["model"]),
-                         provider: presence(r.params["provider"]),
+                         id: id, model: model, provider: provider,
                          memory: r.params["memory"] == "1",
                          # Starts with nothing allowed: kits and the pickers decide
                          # what it gets (an "all" start made every kit a no-op).
@@ -1522,8 +1522,7 @@ end
           minted = presence(r.params["new_session_id"])
           session_id = typed_session ||
                        (minted if minted && insika[:session_store]&.find(minted)) ||
-                       create_session(id: minted, model: presence(r.params["model"]),
-                                      provider: presence(r.params["provider"]),
+                       create_session(id: minted, **pinned_model(r),
                                       thinking: presence(r.params["thinking"]))
           dispatch_send_message(agent: agent, session_id: session_id, message: message)
           # Optimistic echo of the just-sent message: survives the redirect
@@ -2022,6 +2021,47 @@ end
         %(<option value="#{value}"#{' selected' if value == cur}>#{label}</option>)
       end.join
       %(<select name="#{name}">#{rows}</select>)
+    end
+
+    # The model pickers offer ONLY refs that resolve: each Studio provider's declared
+    # models, plus the chat models of every provider RubyLLM holds a key for that the
+    # Studio does not declare (e.g. a DEEPSEEK_API_KEY deployment). A typed ref is how
+    # "openai/gpt-x" under provider "openai" reached the API as "openai/openai/gpt-x".
+    # -> ["provider/model", ...] sorted.
+    def model_refs
+      @model_refs ||= begin
+        providers = insika[:llm_provider_store] ? insika[:llm_provider_store].all : []
+        declared = providers.flat_map { |p| Array(p["models"]).map { |m| "#{p['api']}/#{m}" } }
+        apis = providers.map { |p| p["api"].to_s }
+        native = RubyLLM::Provider.configured_providers(RubyLLM.config).flat_map do |klass|
+          slug = klass.slug.to_s
+          apis.include?(slug) ? [] : RubyLLM.models.by_provider(slug).chat_models.map { |m| "#{slug}/#{m.id}" }
+        end
+        (declared + native).uniq.sort
+      end
+    end
+
+    # A <select> over model_refs. A stored value outside the list stays selectable
+    # (marked) so saving another field never silently rewrites it.
+    def model_select(name, current, blank_label)
+      cur = current.to_s
+      options = [["", blank_label]] + model_refs.map { |ref| [ref, ref] }
+      options << [cur, "#{cur} (not configured)"] unless cur.empty? || model_refs.include?(cur)
+      rows = options.map do |value, label|
+        v = Rack::Utils.escape_html(value)
+        %(<option value="#{v}"#{' selected' if value == cur}>#{Rack::Utils.escape_html(label)}</option>)
+      end.join
+      %(<select name="#{name}">#{rows}</select>)
+    end
+
+    # "provider/model" for a stored pair (the agent and the platform default keep
+    # them apart); a bare model when there is no provider.
+    def model_ref_of(model, provider)
+      m = model.to_s
+      p = provider.to_s
+      return "" if m.empty?
+
+      p.empty? ? m : "#{p}/#{m}"
     end
 
     # Renders the per-model reasoning map ({ "ref" => { "thinking" => v } }) back to
@@ -3702,6 +3742,12 @@ end
         t.session_id == session_id && %i[queued running waiting paused].include?(t.status)
       end
       task&.command&.dig("payload", "message")
+    end
+
+    # The playground's model picker -> { model:, provider: } for create_session.
+    def pinned_model(r)
+      model, provider = model_ref_parts(r.params["model"], r.params["provider"])
+      { model: model, provider: provider }
     end
 
     def create_session(id: nil, model: nil, provider: nil, thinking: nil)
