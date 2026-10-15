@@ -232,7 +232,8 @@ module Studio
       # Login: the only path without a session. GET shows the form; POST validates the
       # token in constant time and, if ok, marks the session and redirects.
       r.is "login" do
-        r.get { view("login") }
+        # Already signed in: the form would render inside the shell — go home.
+        r.get { authenticated? ? r.redirect("/studio/home") : view("login") }
         r.post do
           check_csrf!
           if authenticate(r.params["token"])

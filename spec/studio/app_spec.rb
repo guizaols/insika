@@ -5961,6 +5961,13 @@ end
     expect(login(build_app.first).get("/home").body).to include("Nothing waiting on you.")
   end
 
+  it "GET /login when already signed in goes to the Overview" do
+    app, = build_app
+    res = login(app).get("/login")
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/home")
+  end
+
   it "badges a Review nav item with its pending count, and shows none at zero" do
     app, = build_app(pendings: [pending(tool: "refund_order"), pending(tool: "refund_order")])
     body = login(app).get("/agents").body
