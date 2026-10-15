@@ -33,6 +33,13 @@ RSpec.describe Insika::Server::Responses do
       expect(described_class.parse_request(body, req)).not_to have_key(:customer_name)
     end
 
+    it "keeps an optional String context apart from the input; refuses any other shape" do
+      body = { model: "insika:a", user: "c", input: "oi", context: "<canal>sms</canal>" }
+      expect(described_class.parse_request(body, req)).to include(message: "oi", context: "<canal>sms</canal>")
+      expect { described_class.parse_request(body.merge(context: { "x" => 1 }), req) }
+        .to raise_error(Insika::ValidationError, /context/)
+    end
+
     it "falls back to the X-Insika-Agent header when the model has no agent" do
       out = described_class.parse_request({ user: "c", input: "x" }, req("HTTP_X_INSIKA_AGENT" => "agent-y"))
       expect(out[:agent]).to eq("agent-y")

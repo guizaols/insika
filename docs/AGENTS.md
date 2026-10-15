@@ -658,7 +658,8 @@ The model is asked `context`, a blank line, then `message`, and the transcript
 keeps the same text. The input guardrail, retrieval and routing read `message`
 alone, so a product name in `context` never blocks the customer, and the
 customer cannot slip past the guardrail by typing a caller's tags. Optional
-String; absent = the message alone.
+String; absent = the message alone. `POST /v1/responses` takes the same `context`
+next to `input`.
 
 ## Customer-scoped memory and the right to be forgotten
 
