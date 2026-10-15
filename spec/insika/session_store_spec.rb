@@ -408,6 +408,16 @@ RSpec.describe Insika::SessionStore do
         .to eq("agent" => "bia", "customer" => "c-1", "customer_name" => "Maria", "customer_phone" => "5511")
     end
 
+    it "stats count the messages a guardrail flagged, so Chats can filter on it" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "Mostra mais opções",
+                                       "guardrail_flags" => [{ "category" => "sexual" }] },
+                                     { "role" => "assistant", "content" => "..." }])
+      sessions.create(id: "b")
+      stats = sessions.all_stats.to_h { [_1.id, _1] }
+      expect([stats["a"].flagged, stats["b"].flagged]).to eq([1, 0])
+    end
+
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")
