@@ -659,7 +659,7 @@
   }
   .drill-pane { display:flex; flex-direction:column; min-width:0; min-height:0; }
   .drill-pane + .drill-pane { border-left:1px solid var(--line-1); }
-  .drill-master { flex:0 0 var(--master-w); background:var(--panel); }
+  .drill-master { flex:0 0 var(--pane-w, var(--master-w)); background:var(--panel); }
   .drill-detail { flex:1 1 auto; background:var(--ink); }
   .drill-pane-head {
     flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.4rem .6rem;
@@ -682,7 +682,7 @@
   .drill-detail .drill-pane-body { padding:1.25rem 1.5rem 2.25rem; }
 
   /* master: search + list of selectable items */
-  .drill-search { flex:0 0 auto; padding:.85rem 1rem; border-bottom:1px solid var(--line-1); }
+  .drill-search { flex:0 0 auto; padding:.85rem 1rem; border-bottom:1px solid var(--line-1); display:flex; flex-direction:column; gap:.5rem; }
   .drill-search .filter-input { margin:0; }
   .drill-list { display:flex; flex-direction:column; gap:.15rem; padding:.5rem .75rem 1rem; }
   .drill-item { display:block; border:1px solid transparent; padding:.6rem .75rem; border-radius:var(--radius-sm); color:var(--fg); transition:background var(--t-fast); }
@@ -721,7 +721,18 @@
     .drill { flex-direction:column; height:auto; }
     .drill-master { flex:0 0 auto; max-height:18rem; }
     .drill-pane + .drill-pane { border-left:0; border-top:1px solid var(--line-1); }
+    .drill > .col-resize { display:none; }
+    .drill > .col-resize + .drill-pane { border-top:1px solid var(--line-1); }
   }
+
+  /* Drag handle between miller columns (col_resize_controller). It stands in
+     for the pane's border-left, so the pane after it drops its own. */
+  .col-resize { flex:0 0 7px; margin:0 -3px; position:relative; z-index:1; cursor:col-resize; touch-action:none; }
+  .col-resize::before { content:""; position:absolute; inset:0 3px; background:var(--line-1); transition:background var(--t-fast); }
+  .col-resize:hover::before, .col-resize:focus-visible::before { background:var(--accent); inset:0 2px; }
+  .col-resize:focus-visible { outline:none; }
+  .col-resize + .drill-pane, .col-resize + .session-margin { border-left:0; }
+  body.col-resizing { cursor:col-resize; user-select:none; }
 
   /* ── Miller columns over turbo-frames ───────────────────
      The detail pane IS the <turbo-frame>: row links target it with
@@ -745,18 +756,27 @@
   /* ── Session viewer: transcript | metadata margin ─────── */
   .session-columns { display:flex; flex:1 1 auto; min-height:0; height:100%; }
   .session-transcript { flex:1 1 auto; min-width:0; overflow-y:auto; padding:1.1rem 1.5rem 2.5rem; }
-  .session-margin { flex:0 0 380px; border-left:1px solid var(--line-1); overflow-y:auto;
-    padding:.9rem 1rem 2.5rem; background:color-mix(in srgb,var(--surface-1) 55%,var(--panel)); }
+  .session-margin { flex:0 0 var(--pane-w, 380px); border-left:1px solid var(--line-1); overflow-y:auto;
+    padding:.9rem 1rem 2.5rem; background:color-mix(in srgb,var(--surface-1) 55%,var(--panel)); color:inherit; }
+  /* Wide: the margin is a column (the [popover] UA styles undone). Narrow: it is
+     a drawer opened by the Details button, so the transcript keeps the width. */
+  button.details-toggle, button.details-close { display:none; }
+  @media (min-width:1600px) {
+    .session-margin[popover] { display:block; position:static; inset:auto; width:auto; height:auto; margin:0; border:0; border-left:1px solid var(--line-1); }
+    .col-resize + .session-margin[popover] { border-left:0; }
+  }
+  @media (max-width:1599px) {
+    .session-columns > .col-resize { display:none; }
+    button.details-toggle { display:inline-flex; }
+    .session-margin[popover] { inset:0 0 0 auto; width:min(26rem,92vw); height:100dvh; margin:0; border:0; border-left:1px solid var(--line-2); box-shadow:var(--shadow-lg); }
+    .session-margin[popover]::backdrop { background:rgb(36 37 35 / .28); }
+    .session-margin button.details-close { display:block; margin:0 0 .75rem auto; }
+  }
   .session-margin .card { padding:.9rem 1rem; }
   .session-margin .card + .card { margin-top:.75rem; }
   .session-margin .trace-head { margin-bottom:.6rem; }
   .session-margin .trace-head h2 { font-size:var(--text-sm); }
   .session-margin .trace-head .muted { display:block; font-size:.625rem; }
-  @media (max-width:1100px) {
-    .session-columns { flex-direction:column; height:auto; overflow-y:auto; }
-    .session-transcript { overflow-y:visible; flex:0 0 auto; max-height:none; }
-    .session-margin { border-left:0; border-top:1px solid var(--line-1); flex:0 0 auto; overflow-y:visible; }
-  }
 
   /* Breadcrumbs + tab bar (agent page). The subnav IS the tabs: the hash picks
      the open section (tabs_controller), so the bar sits once under the page
