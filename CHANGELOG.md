@@ -115,13 +115,14 @@ it is released. Entries land with the pull request that makes the change.
   node, no backoff, and no circuit-breaker count (an open primary circuit fails
   fast without rotating). On the last node it still raises; a 400 still never
   rotates.
-- Studio model fields are pickers, not free text: the agent model, a new agent,
-  the playground pin and Settings' default, fallback (one slot per position) and
-  utility models list only `provider/model` refs of the configured providers
-  (their declared models, plus the chat models of key-only providers). A typed
-  `openai/gpt-x` under provider `openai` used to reach the API as
-  `openai/openai/gpt-x`. A stored value outside the list stays selectable, marked
-  "not configured".
+- Studio model fields are type-to-search pickers over the configured providers'
+  `provider/model` refs (their declared models, plus the chat models of key-only
+  providers): the agent model, a new agent, the playground pin and Settings'
+  default, fallback (one slot per position) and utility models. The server
+  refuses a ref outside the list — a typed `openai/gpt-x` under provider `openai`
+  used to reach the API as `openai/openai/gpt-x`. A stored value outside the list
+  is shown marked "not configured" and may be saved back unchanged. The plain
+  `model`/`provider` fields still pass as given for API clients.
 - Data-tools imported or edited in one worker now reach the others: the tool
   registry checks the config version token (at most every 2 s) and rebuilds when
   it moved, and the tool catalog follows. Before, the other workers kept the

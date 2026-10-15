@@ -32,7 +32,7 @@
         <summary>Model overrides <span class="muted">— new conversations only</span></summary>
         <p class="muted">Leave blank to use the agent’s defaults. An existing session keeps its saved model settings.</p>
         <div class="row">
-          <label>model<%== model_select("model", nil, "agent/platform default") %></label>
+          <label>model<%== model_select("model_ref", nil, "agent/platform default") %></label>
           <label>reasoning<%== thinking_select("thinking", nil, "agent/platform default") %></label>
         </div>
       </details>

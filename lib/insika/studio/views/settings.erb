@@ -75,19 +75,19 @@
           <%== csrf_tag %>
           <p class="muted">The lists below are the models of the configured LLM providers — add a provider or a model there to see it here.</p>
           <label>default_model <span class="muted">(agents without their own model)</span>
-            <%== model_select("default_model", model_ref_of(@settings["default_model"], @settings["default_provider"]), "none") %>
+            <%== model_select("default_model_ref", model_ref_of(@settings["default_model"], @settings["default_provider"]), "none") %>
           </label>
           <fieldset class="subgroup">
             <legend>fallback_models <span class="muted">— tried in this order; blank slots are skipped</span></legend>
             <% fallbacks = Array(@settings["fallback_models"]) %>
             <div class="grid-2">
               <% [fallbacks.size + 1, 5].max.times do |i| %>
-                <label><%= i + 1 %>. <%== model_select("fallback_models[]", fallbacks[i], "—") %></label>
+                <label><%= i + 1 %>. <%== model_select("fallback_refs[]", fallbacks[i], "empty") %></label>
               <% end %>
             </div>
           </fieldset>
           <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
-            <%== model_select("utility_model", @settings["utility_model"], "none") %>
+            <%== model_select("utility_model_ref", @settings["utility_model"], "none") %>
           </label>
           <label>reasoning <span class="muted">(global default — off/on/effort; blank = provider default)</span>
             <%== thinking_select("thinking", @settings["thinking"], "provider default") %>
