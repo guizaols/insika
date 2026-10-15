@@ -67,7 +67,7 @@ module Studio
       else
         limits.delete(:steer_join)
       end
-      model, provider = model_ref_parts(r.params["model"], r.params["provider"])
+      model, provider = picked_model(r, model_ref_of(@agent.model, @agent.provider))
       {
         id: @agent.id,
         model: model,
@@ -118,9 +118,17 @@ module Studio
       }.merge(inherited_fields(r))
     end
 
-    # The model picker posts ONE ref, "provider/model" (an OpenRouter model keeps its
-    # own slash: "openrouter/deepseek/x"). A separate `provider` field (API clients,
-    # older forms) wins as given. -> [model | nil, provider | nil]
+    # The Studio picker posts `model_ref` (checked against the list; `kept` = the
+    # stored ref, allowed back unchanged). Without it, the plain `model`/`provider`
+    # pair passes as given (API clients, older forms). -> [model | nil, provider | nil]
+    def picked_model(r, kept = nil)
+      return model_ref_parts(r.params["model"], r.params["provider"]) unless r.params.key?("model_ref")
+
+      model_ref_parts(checked_model_ref(r.params["model_ref"], kept), nil)
+    end
+
+    # ONE ref, "provider/model" (an OpenRouter model keeps its own slash:
+    # "openrouter/deepseek/x"). A separate `provider` wins as given.
     def model_ref_parts(ref, provider)
       model = presence(ref)
       return [model, presence(provider)] if model.nil? || !presence(provider).nil? || !model.include?("/")
@@ -690,16 +698,32 @@ module Studio
     # deep-merge writes and the ModelResolver reads as "no platform default");
     # fallback_models is a full-list replace (deep_merge substitutes arrays, so a
     # resubmit never accumulates).
-    # The pickers post refs: default_model splits into model/provider like the
-    # agent's; fallback_models arrives as one select per slot (blank slots dropped).
+    # The pickers post `*_ref` fields, each checked against the list (a stored
+    # value may come back unchanged): default_model splits into model/provider like
+    # the agent's; fallback_refs[] is one picker per slot (blank slots dropped).
+    # Without them, the plain fields pass as given (API clients, older forms).
     def model_defaults_patch(r)
-      default_model, default_provider = model_ref_parts(r.params["default_model"], r.params["default_provider"])
-      fallbacks = r.params["fallback_models"]
+      return plain_model_defaults(r) unless r.params.key?("default_model_ref")
+
+      current = insika[:settings_store] ? insika[:settings_store].get : {}
+      kept_default = model_ref_of(current["default_model"], current["default_provider"])
+      default_model, default_provider = model_ref_parts(checked_model_ref(r.params["default_model_ref"], kept_default), nil)
+      kept_fallbacks = Array(current["fallback_models"])
       {
         "default_model" => default_model,
         "default_provider" => default_provider,
+        "utility_model" => checked_model_ref(r.params["utility_model_ref"], current["utility_model"]),
+        "fallback_models" => Array(r.params["fallback_refs"]).filter_map { |f| checked_model_ref(f, kept_fallbacks) },
+        "thinking" => presence(r.params["thinking"])
+      }
+    end
+
+    def plain_model_defaults(r)
+      {
+        "default_model" => presence(r.params["default_model"]),
+        "default_provider" => presence(r.params["default_provider"]),
         "utility_model" => presence(r.params["utility_model"]),
-        "fallback_models" => fallbacks.is_a?(Array) ? fallbacks.filter_map { |f| presence(f) } : split_list(fallbacks),
+        "fallback_models" => split_list(r.params["fallback_models"]),
         # GLOBAL reasoning default (4-layer). Blank -> nil = provider default.
         "thinking" => presence(r.params["thinking"])
       }

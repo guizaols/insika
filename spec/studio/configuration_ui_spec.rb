@@ -164,7 +164,7 @@ RSpec.describe "Studio configuration editing" do
     expect(response.status).to eq(200)
     defaults = response.body[/<form id="set-models".*?<\/form>/m]
     reasoning = response.body[/<form id="set-model-params".*?<\/form>/m]
-    expect(defaults).to include('action="/studio/settings/models"', 'name="default_model"', 'name="_csrf"')
+    expect(defaults).to include('action="/studio/settings/models"', 'name="default_model_ref"', 'name="_csrf"')
     expect(defaults).not_to include('name="model_params"')
     expect(reasoning).to include('action="/studio/settings/model-params"', 'name="model_params"', 'name="_csrf"')
     expect(response.body).to include('form="set-models"', "Save model defaults", "Saved separately from platform model defaults.")

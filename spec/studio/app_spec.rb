@@ -686,7 +686,7 @@ end
      res = login(app).get("/agents/bia")
      expect(res.status).to eq(200)
      %w[config prompts skills memory outcomes history].each { |a| expect(res.body).to include("id=\"#{a}\"") }
-    expect(res.body).to include('name="model"')
+    expect(res.body).to include('name="model_ref"')
   end
 
    it "the prompts section is a drill: nothing selected shows the pick-a-file state" do
@@ -3138,8 +3138,8 @@ end
     app, bus = build_app
     client = login(app)
     body = client.get("/settings?s=models").body # drill: model defaults section
-    expect(body).to include('name="default_model"')
-    expect(body).to include('name="fallback_models[]"')
+    expect(body).to include('name="default_model_ref"')
+    expect(body).to include('name="fallback_refs[]"')
     csrf = csrf_from(body)
     client.post("/settings/models", params: {
                   "default_model" => "deepseek-chat", "default_provider" => "deepseek",
@@ -3155,31 +3155,63 @@ end
 
   # The pickers post ONE "provider/model" ref per field (a typed provider prefix
   # under a separate provider field reached the API doubled: "openai/openai/x").
+  # The datalist only suggests: the server refuses a ref outside the list.
+  def or_providers
+    [{ api: "openrouter", base_url: "https://openrouter.ai/api/v1",
+       models: %w[deepseek/deepseek-v4.1-flash z-ai/glm-5.3-flash] },
+     { api: "openai", base_url: "https://api.openai.com/v1", models: %w[gpt-6-luna] }]
+  end
+
   it "the model pickers post refs: default splits into model/provider, fallbacks keep their order" do
-    app, bus = build_app
+    app, bus = build_app(llm_providers: or_providers)
     client = login(app)
     csrf = csrf_from(client.get("/settings?s=models").body)
     client.post("/settings/models", params: {
-                  "default_model" => "openrouter/deepseek/deepseek-v4.1-flash",
-                  "fallback_models" => ["openai/gpt-4o-mini", "", "deepseek/deepseek-chat"],
-                  "utility_model" => "deepseek/deepseek-chat", "_csrf" => csrf
+                  "default_model_ref" => "openrouter/deepseek/deepseek-v4.1-flash",
+                  "fallback_refs" => ["openai/gpt-6-luna", "", "openrouter/z-ai/glm-5.3-flash"],
+                  "utility_model_ref" => "openai/gpt-6-luna", "_csrf" => csrf
                 })
     patch = bus.last(:update_settings).payload[:patch]
     expect(patch["default_model"]).to eq("deepseek/deepseek-v4.1-flash")
     expect(patch["default_provider"]).to eq("openrouter")
-    expect(patch["fallback_models"]).to eq(%w[openai/gpt-4o-mini deepseek/deepseek-chat])
-    expect(patch["utility_model"]).to eq("deepseek/deepseek-chat")
+    expect(patch["fallback_models"]).to eq(%w[openai/gpt-6-luna openrouter/z-ai/glm-5.3-flash])
+    expect(patch["utility_model"]).to eq("openai/gpt-6-luna")
+  end
+
+  it "a typed fallback outside the list is refused; a stored one may stay" do
+    app, bus = build_app(llm_providers: or_providers, settings: { "fallback_models" => ["z-ai/glm-5.3-flash"] })
+    client = login(app)
+    body = client.get("/settings?s=models").body
+    expect(body).to include("not configured")
+    csrf = csrf_from(body)
+
+    client.post("/settings/models", params: { "default_model_ref" => "", "fallback_refs" => ["xiaomi/mimo"],
+                                              "utility_model_ref" => "", "_csrf" => csrf })
+    expect(bus.last(:update_settings)).to be_nil
+    expect(client.get("/settings?s=models").body).to include("unknown model")
+
+    client.post("/settings/models", params: { "default_model_ref" => "", "fallback_refs" => ["z-ai/glm-5.3-flash"],
+                                              "utility_model_ref" => "", "_csrf" => csrf })
+    expect(bus.last(:update_settings).payload[:patch]["fallback_models"]).to eq(["z-ai/glm-5.3-flash"])
   end
 
   it "the agent model picker offers the configured providers' models and splits the ref on save" do
-    app, bus = build_app(llm_providers: [{ api: "openai", base_url: "https://api.openai.com/v1",
-                                            models: %w[gpt-6-luna] }])
+    app, bus = build_app(llm_providers: or_providers)
     client = login(app)
     body = client.get("/agents/bia").body
     expect(body).to include('<option value="openai/gpt-6-luna"')
+    expect(body).to include('name="model_ref"')
 
-    client.post("/agents/bia/config", params: { "model" => "openai/gpt-6-luna", "_csrf" => csrf_from(body) })
+    client.post("/agents/bia/config", params: { "model_ref" => "openai/gpt-6-luna", "_csrf" => csrf_from(body) })
     expect(bus.last(:update_agent).payload).to include(model: "gpt-6-luna", provider: "openai")
+  end
+
+  it "the agent model picker refuses a typed ref outside the list" do
+    app, bus = build_app(llm_providers: or_providers)
+    client = login(app)
+    csrf = csrf_from(client.get("/agents/bia").body)
+    client.post("/agents/bia/config", params: { "model_ref" => "openai/openai/gpt-6-luna", "_csrf" => csrf })
+    expect(bus.last(:update_agent)).to be_nil
   end
 
   it "the edge-limits form dispatches update_settings with the edge layer only" do

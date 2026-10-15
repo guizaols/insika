@@ -315,8 +315,8 @@ module Studio
           r.post do
             check_csrf!
             id = presence(r.params["id"])
-            model, provider = model_ref_parts(r.params["model"], r.params["provider"])
             result = with_flash("Agent '#{id}' created.") do
+              model, provider = picked_model(r)
               dispatch(:create_agent, {
                          id: id, model: model, provider: provider,
                          memory: r.params["memory"] == "1",
@@ -2041,17 +2041,28 @@ end
       end
     end
 
-    # A <select> over model_refs. A stored value outside the list stays selectable
-    # (marked) so saving another field never silently rewrites it.
+    # Type-to-search picker over model_refs (the _agent_picker idiom: <input list>
+    # over a <datalist>, native, no JS). The datalist suggests; the SERVER decides —
+    # `checked_model_ref` refuses a typed ref outside the list. A stored value outside
+    # it is shown as is, marked, and may be saved back unchanged.
     def model_select(name, current, blank_label)
       cur = current.to_s
-      options = [["", blank_label]] + model_refs.map { |ref| [ref, ref] }
-      options << [cur, "#{cur} (not configured)"] unless cur.empty? || model_refs.include?(cur)
-      rows = options.map do |value, label|
-        v = Rack::Utils.escape_html(value)
-        %(<option value="#{v}"#{' selected' if value == cur}>#{Rack::Utils.escape_html(label)}</option>)
-      end.join
-      %(<select name="#{name}">#{rows}</select>)
+      esc = ->(s) { Rack::Utils.escape_html(s.to_s) }
+      list_id = "model-options-#{@model_picker_seq = (@model_picker_seq || 0) + 1}"
+      options = model_refs.map { |ref| %(<option value="#{esc.(ref)}"></option>) }.join
+      stale = cur.empty? || model_refs.include?(cur) ? "" : %( <span class="muted">not configured</span>)
+      %(<input type="search" class="filter-input" name="#{esc.(name)}" list="#{list_id}" value="#{esc.(cur)}" ) +
+        %(autocomplete="off" placeholder="#{esc.(blank_label)} — type to search">#{stale}) +
+        %(<datalist id="#{list_id}">#{options}</datalist>)
+    end
+
+    # A picked ref must be one the picker offers; `kept` (the stored value) may come
+    # back unchanged even when it is no longer listed. Blank = nil (inherit/none).
+    def checked_model_ref(raw, kept = nil)
+      ref = presence(raw)
+      return ref if ref.nil? || model_refs.include?(ref) || Array(kept).include?(ref)
+
+      raise Insika::ValidationError, "unknown model '#{ref}' — pick one from the list (Settings › LLM providers)"
     end
 
     # "provider/model" for a stored pair (the agent and the platform default keep
@@ -3746,7 +3757,7 @@ end
 
     # The playground's model picker -> { model:, provider: } for create_session.
     def pinned_model(r)
-      model, provider = model_ref_parts(r.params["model"], r.params["provider"])
+      model, provider = picked_model(r)
       { model: model, provider: provider }
     end
 
