@@ -3967,7 +3967,8 @@ end
     # the head carries the count, so it's visible without opening anything
     expect(body).to include("370 tool(s)")
     # the tools panel is its own list-filter scope (distinct from the master's)
-    expect(body.scan('data-controller="list-filter"').size).to eq(2)
+    page = body[/<main.*<\/main>/m]
+    expect(page.scan('data-controller="list-filter"').size).to eq(2)
     expect(body).to include('data-filter-text="tool_1 does thing number 1 in great detail"')
     # each row: mono name, an ellipsis-clipped preview, and a <details> to expand the full text
     expect(body).to include('<code class="mono">tool_1</code>')
@@ -5879,6 +5880,13 @@ end
         "something-else" => "info", nil => "info"
       }.each { |status, klass| expect(app.send(:status_class, status)).to eq(klass) }
     end
+  end
+
+  it "renders the ⌘K palette with every nav page and agent" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('data-controller="palette"', 'class="palette"')
+    expect(body).to include('data-filter-text="review Approvals"', 'href="/studio/agents/bia"')
   end
 
   it "badges a Review nav item with its pending count, and shows none at zero" do

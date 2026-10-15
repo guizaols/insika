@@ -1596,6 +1596,16 @@ end
       ]
     end
 
+    # What the ⌘K palette lists: [group, label, href] for every nav page,
+    # then every agent.
+    def palette_entries
+      pages = nav_sections.flat_map do |group, items|
+        items.map { |label, href, _| [group, label, href] }
+      end
+      agents = Array(insika[:profile_source]&.ids).sort.map { |id| ["agent", id, "/studio/agents/#{Rack::Utils.escape_path(id)}"] }
+      pages + agents
+    end
+
     # Items parked on a human, per Review page — the sidebar badges. Read once
     # per request; a store that is missing or fails counts as 0 (the nav never
     # breaks a page).

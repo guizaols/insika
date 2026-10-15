@@ -38,9 +38,12 @@
     <% end %>
   </template>
   <% if authenticated? %>
-    <div class="app-shell">
+    <div class="app-shell" data-controller="palette">
       <aside class="sidebar">
         <a class="brand" href="/studio/home"><span class="dot"></span>Insika <small>Studio</small></a>
+        <button type="button" class="palette-open" data-action="palette#open">
+          <%== nav_icon(:search) %><span>Search</span><kbd>⌘K</kbd>
+        </button>
 
         <% nav_sections.each do |group, items| %>
           <div class="nav-group">
@@ -97,6 +100,22 @@
           <%== yield %>
         </main>
       </div>
+
+      <%# ⌘K palette: every page and agent, filtered client-side (list-filter). %>
+      <dialog class="palette" data-palette-target="dialog" data-controller="list-filter" aria-label="Jump to">
+        <input type="text" class="palette-query" autocomplete="off" placeholder="Jump to a page or agent…" aria-label="Jump to"
+               data-palette-target="query" data-list-filter-target="query"
+               data-action="input->list-filter#filter input->palette#reset keydown->palette#key">
+        <div class="palette-list" role="listbox">
+          <% palette_entries.each do |group, label, href| %>
+            <a href="<%= href %>" role="option" data-palette-target="item" data-list-filter-target="item"
+               data-filter-text="<%= group %> <%= label %>" data-action="click->palette#close">
+              <span><%= label %></span><small><%= group %></small>
+            </a>
+          <% end %>
+          <div class="palette-empty" data-list-filter-target="empty" hidden>No match.</div>
+        </div>
+      </dialog>
     </div>
   <% else %>
     <% if flash["error"] %>
