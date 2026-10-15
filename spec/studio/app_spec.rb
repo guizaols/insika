@@ -5881,10 +5881,17 @@ end
     end
   end
 
+  it "badges a Review nav item with its pending count, and shows none at zero" do
+    app, = build_app(pendings: [pending(tool: "refund_order"), pending(tool: "refund_order")])
+    body = login(app).get("/agents").body
+    expect(body).to include('class="nav-badge" aria-label="2 pending">2<')
+    expect(login(build_app.first).get("/agents").body).not_to include("nav-badge")
+  end
+
   it "a page's breadcrumb is its nav group, never a repeat of its own title" do
     app, = build_app
     body = login(app).get("/knowledge?agent=bia").body
-    expect(body).to include(%(<nav class="crumbs"><span>operate</span></nav>))
+    expect(body).to include(%(<nav class="crumbs"><span>insights</span></nav>))
     expect(body).not_to include(%(<nav class="crumbs"><span>knowledge</span></nav>))
   end
 end
