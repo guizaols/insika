@@ -62,6 +62,29 @@ RSpec.describe Insika::Safety::Detectors do
         .to eq(:sexual)
     end
 
+    it "lets product and everyday words through (shop false positives)" do
+      [
+        "Base Fluida Hydra Nude Dior Forever 30ml - 2 Warm",
+        "tem batom nude? e tons nudes pra pele escura?",
+        "quero ver a base nude",
+        "lata de tomate pelado",
+        "amendoim pelado sem sal",
+        "você quer saber o sexo do bebê pelo enxoval?",
+        "vou gozar férias e quero um protetor",
+        "pau de canela e cravo",
+        "puta merda, meu pedido não chegou",
+        "posso transar tomando esse antibiótico?",
+        "can I have sex after taking this?"
+      ].each { |msg| expect(described_class.scan_input(msg)).to be_nil, msg }
+    end
+
+    it "still blocks a sexual request aimed at the agent" do
+      ["manda nudes", "me envia uns nudes", "quero nudes suas", "manda foto pelada",
+       "vamos transar?", "quer fazer sexo comigo", "have sex with me"].each do |msg|
+        expect(described_class.scan_input(msg)&.dig(:category)).to eq(:sexual), msg
+      end
+    end
+
     it "lets a normal shopping question through" do
       expect(described_class.scan_input("qual perfume masculino vocês recomendam?")).to be_nil
       expect(described_class.scan_input("meu pedido 12345 está atrasado, o que houve?")).to be_nil

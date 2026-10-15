@@ -38,10 +38,17 @@ module Insika
             /\b(instru[çc][õo]es|prompt|regras|sistema|system)\b[^.?!]{0,60}\b(base64|rot13|codific|encode|cifr)\w*\b/i
           ],
           "sexual" => [
-            /\b(nudes?|pelad[oa]s?|s?exo|transar|transa\b|gozar|tes[ãa]o|s[ãa]fad[oa]|puta|pau|buceta|piroca|caralho\s+(duro|na))\b/i,
+            # Bare words only where no shop sense exists. "nude" (a lipstick or
+            # foundation shade), "pelado" (tomate pelado), "sexo" (sexo do bebê),
+            # "gozar" (gozar férias) and "pau" (pau de canela) are product or
+            # everyday words, so they block only inside a request aimed at the agent.
+            /\b(buceta|piroca|caralho\s+(duro|na))\b/i,
+            /\b(manda|mande|envia|envie|passa|passe)\s+(um[as]?\s+|uns\s+)?nudes?\b/i,
+            /\bnudes?\s+(sua|seu|suas|seus|tua|teu)\b/i,
+            /\bfotos?\s+((sua|tua)\s+)?pelad[oa]s?\b/i,
             /\bo\s+que\s+voc[êe]\s+faria\s+comigo\b/i,
             /\b(descrev|imagina|conta)\w*\b[^.?!]{0,30}\bcomigo\s+(na\s+cama|pelad)/i,
-            /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo)\b/i
+            /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo\s+comigo)\b/i
           ],
           "abuse" => [
             # Directed insult only — "a entrega foi uma merda" must NOT block;
@@ -58,7 +65,7 @@ module Insika
             /\b(ignore|disregard|forget)\b[^.?!]{0,30}\b(instructions|rules|prompt|above|previous|prior)\b/i
           ],
           "sexual" => [
-            /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
+            /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex\s+with\s+me|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
             /\bwhat\s+(would|will)\s+you\s+do\s+to\s+me\b/i
           ],
           "abuse" => [
