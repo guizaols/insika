@@ -100,7 +100,15 @@ module Insika
             # never rotated).
             retryable = retryable_failure?(e)
             raise unless retryable
-            raise if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
+            if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
+              # A 402 is fatal for THIS account only (balance gone): skip to the
+              # next node at once — no retry, no backoff, no breaker bump (an
+              # open primary circuit fails fast WITHOUT rotating).
+              raise unless ProviderErrorClassifier.billing?(e) && node != nodes.last
+
+              record_failure(tenant, selection, nil, e, agent)
+              break
+            end
 
             record_failure(tenant, selection, breaker, e, agent)
             # the last attempt of the last node re-raises; otherwise back off
