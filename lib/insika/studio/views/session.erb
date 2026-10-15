@@ -58,6 +58,9 @@
               </span>
               <span class="pill info" data-live-transcript-target="status" role="status">connecting…</span>
               <a class="btn btn-sm" href="/studio/playground?session_id=<%= Rack::Utils.escape(@session.id) %>" data-turbo-frame="_top">Continue in playground</a>
+              <%# Narrow screens: the metadata margin is a popover drawer (no JS — the
+                  Popover API toggles it, Esc and a click outside close it). %>
+              <button type="button" class="btn btn-sm details-toggle" popovertarget="session-details">Details</button>
             </div>
           </header>
           <div class="marker-row">
@@ -99,7 +102,11 @@
         </section>
 
         <%# ── Right margin: the session's metadata ──────────────────────── %>
-        <aside class="session-margin" aria-label="session metadata">
+        <div class="col-resize" role="separator" aria-orientation="vertical" aria-label="Resize details" tabindex="0"
+             data-controller="col-resize" data-col-resize-key-value="session-details" data-col-resize-side-value="next"
+             data-action="pointerdown->col-resize#start keydown->col-resize#key dblclick->col-resize#reset"></div>
+        <aside class="session-margin" id="session-details" popover aria-label="session metadata">
+          <button type="button" class="btn btn-sm details-close" popovertarget="session-details" popovertargetaction="hide">Close</button>
           <% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
           <% fields = briefing["fields"] || {} %>
           <% next_step = briefing["next_step"] %>

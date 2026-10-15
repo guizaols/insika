@@ -108,7 +108,7 @@ RSpec.describe "Studio operation screens" do
     expect(request("GET", "/chats?limit=200").body).not_to include("Load ")
 
     rare = request("GET", "/chats?agent=rare").body
-    expect(rare).to include("All agents", "106 conversations", "105 conversations", 'href="/studio/chats?agent=support"')
-    expect(rare).to match(%r{class="drill-item active" href="/studio/chats\?agent=rare"})
+    expect(rare).to include("All agents · 106", '<option value="support">support · 105</option>')
+    expect(rare).to include('<option value="rare" selected>rare · 1</option>')
   end
 end
