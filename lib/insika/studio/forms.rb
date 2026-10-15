@@ -127,6 +127,21 @@ module Studio
       model_ref_parts(checked_model_ref(r.params["model_ref"], kept), nil)
     end
 
+    # Any other model field the Studio renders as a picker posts "<field>_ref" (one
+    # ref) or "<field>_refs[]" (one per slot), checked like the agent model; `kept`
+    # (the stored value) may come back unchanged. The plain field passes as given.
+    def ref_param(r, field, kept)
+      key = "#{field}_ref"
+      r.params.key?(key) ? checked_model_ref(r.params[key], kept) : presence(r.params[field])
+    end
+
+    def ref_list_param(r, field, kept)
+      key = "#{field}_refs"
+      return list(r.params[field]) unless r.params.key?(key)
+
+      Array(r.params[key]).filter_map { |ref| checked_model_ref(ref, Array(kept)) }
+    end
+
     # ONE ref, "provider/model" (an OpenRouter model keeps its own slash:
     # "openrouter/deepseek/x"). A separate `provider` wins as given.
     def model_ref_parts(ref, provider)
@@ -165,10 +180,8 @@ module Studio
                  "top_k" => retrieval_top_k(r, "knowledge"))
       types = list(r.params["knowledge_types"])
       out["types"] = types unless types.empty?
-      %w[model prompt].each do |key|
-        value = presence(r.params["knowledge_#{key}"])
-        out[key] = value if value
-      end
+      (m = ref_param(r, "knowledge_model", (@agent.knowledge || {})["model"])) && (out["model"] = m)
+      (p = presence(r.params["knowledge_prompt"])) && (out["prompt"] = p)
       rerank = retrieval_rerank_patch(r, "knowledge")
       out["rerank"] = rerank if rerank
       out
@@ -262,7 +275,7 @@ module Studio
       enabled = r.params["distill_enabled"] == "1"
       out = { "enabled" => enabled }
       (p = presence(r.params["distill_prompt"])) && (out["prompt"] = p)
-      (m = presence(r.params["distill_model"])) && (out["model"] = m)
+      (m = ref_param(r, "distill_model", (@agent.distill || {})["model"])) && (out["model"] = m)
       %w[idle_hours min_messages max_proposals].each do |key|
         v = edge_int(r.params["distill_#{key}"], "distill_#{key}")
         out[key] = v unless v.nil?
@@ -289,7 +302,7 @@ module Studio
 
     def harvest_miner_patch(r)
       miner = {}
-      (m = presence(r.params["harvest_miner_model"])) && (miner["model"] = m)
+      (m = ref_param(r, "harvest_miner_model", (@agent.harvest || {}).dig("miner", "model"))) && (miner["model"] = m)
       window = {}
       (w = edge_int(r.params["harvest_miner_window"], "harvest_miner_window")) && (window["last_sessions"] = w)
       miner["window"] = window unless window.empty?
@@ -310,7 +323,7 @@ module Studio
       (f = edge_int(r.params["refinement_max_findings"], "refinement_max_findings")) && (out["max_findings"] = f)
       files = list(r.params["refinement_files"])
       out["files"] = files unless files.empty?
-      proposers = list(r.params["refinement_proposers"])
+      proposers = ref_list_param(r, "refinement_proposers", (@agent.refinement || {})["proposers"])
       out["proposers"] = proposers unless proposers.empty?
       (t = edge_int(r.params["refinement_budget_tokens"], "refinement_budget_tokens")) && (out["budget"] = { "tokens" => t })
       (e = edge_int(r.params["refinement_auto_apply_max_edits"], "refinement_auto_apply_max_edits")) && (out["auto_apply_max_edits"] = e)
@@ -337,7 +350,7 @@ module Studio
       retries = edge_int(r.params["reliability_retries"], "reliability_retries")
       backoff = presence(r.params["reliability_backoff"])
       timeout = edge_int(r.params["reliability_timeout"], "reliability_timeout")
-      fallback = list(r.params["reliability_fallback"])
+      fallback = ref_list_param(r, "reliability_fallback", (@agent.reliability || {})["fallback"])
       return nil if retries.nil? && backoff.nil? && timeout.nil? && fallback.empty?
 
       out = {}
@@ -563,6 +576,10 @@ module Studio
       end
     end
 
+    def stored_compaction_model
+      insika[:settings_store] ? insika[:settings_store].get.dig("compaction", "model") : nil
+    end
+
     def settings_patch(r)
       patch = {
         "streaming" => r.params["streaming"] == "1"
@@ -582,7 +599,7 @@ module Studio
       # when cleared (deep_merge — the defaults backstop a fresh record);
       # model blank = nil = the platform utility_model.
       compaction = { "enabled" => r.params["compaction_enabled"] == "1",
-                     "model" => presence(r.params["compaction_model"]) }
+                     "model" => ref_param(r, "compaction_model", stored_compaction_model) }
       %w[keep_last compact_after].each do |f|
         v = presence(r.params["compaction_#{f}"])
         compaction[f] = Integer(v) if v

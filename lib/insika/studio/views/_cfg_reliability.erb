@@ -27,7 +27,6 @@
             <input type="text" name="reliability_breaker_cooldown" value="<%= brk["cooldown"] %>" inputmode="numeric">
           </label>
         </div>
-        <label>fallback models <span class="muted">(comma-separated refs, tried after retries)</span>
-          <input type="text" name="reliability_fallback" value="<%= agent_list(rel["fallback"]) %>" placeholder="openai/gpt-4o-mini">
-        </label>
+        <p class="muted">fallback models — tried in this order after retries, before the platform's; blank slots are skipped</p>
+        <%== model_slots("reliability_fallback_refs", rel["fallback"]) %>
       </fieldset>

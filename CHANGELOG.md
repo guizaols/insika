@@ -123,6 +123,9 @@ it is released. Entries land with the pull request that makes the change.
   used to reach the API as `openai/openai/gpt-x`. A stored value outside the list
   is shown marked "not configured" and may be saved back unchanged. The plain
   `model`/`provider` fields still pass as given for API clients.
+  The same pickers cover the reliability fallback chain (agent and Agent
+  defaults) and the refinement proposers, one slot per position, and the
+  knowledge, distill, harvest-miner and compaction models.
 - Data-tools imported or edited in one worker now reach the others: the tool
   registry checks the config version token (at most every 2 s) and rebuilds when
   it moved, and the tool catalog follows. Before, the other workers kept the

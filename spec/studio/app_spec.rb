@@ -2914,7 +2914,7 @@ end
     expect(res.body).to include('name="turn_timeout"')
     # the compaction form is back now that the engine consumes the key (RFC-0044).
     expect(res.body).to include('name="compaction_enabled"', 'name="compaction_keep_last"',
-                                'name="compaction_compact_after"', 'name="compaction_model"')
+                                'name="compaction_compact_after"', 'name="compaction_model_ref"')
     csrf = csrf_from(res.body)
     client.post("/settings", params: {
                   "streaming" => "1", "turn_timeout" => "300", "_csrf" => csrf,
@@ -3204,6 +3204,25 @@ end
 
     client.post("/agents/bia/config", params: { "model_ref" => "openai/gpt-6-luna", "_csrf" => csrf_from(body) })
     expect(bus.last(:update_agent).payload).to include(model: "gpt-6-luna", provider: "openai")
+  end
+
+  it "the reliability fallback is one picker per slot, checked like the model" do
+    app, bus = build_app(llm_providers: or_providers)
+    client = login(app)
+    body = client.get("/agents/bia").body
+    expect(body).to include('name="reliability_fallback_refs[]"')
+    csrf = csrf_from(body)
+
+    client.post("/agents/bia/config", params: {
+                  "reliability_fallback_refs" => ["openai/gpt-6-luna", "", "openrouter/z-ai/glm-5.3-flash"],
+                  "_csrf" => csrf
+                })
+    expect(bus.last(:update_agent).payload[:reliability]["fallback"])
+      .to eq(%w[openai/gpt-6-luna openrouter/z-ai/glm-5.3-flash])
+
+    client.post("/agents/bia/config", params: { "reliability_fallback_refs" => ["google/gemini-3.8-flash"],
+                                                "_csrf" => csrf })
+    expect(bus.dispatched.count { |c| c.type == :update_agent }).to eq(1) # refused: no second update
   end
 
   it "the agent model picker refuses a typed ref outside the list" do
