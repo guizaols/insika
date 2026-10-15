@@ -1657,6 +1657,15 @@ end
     # they are looking at. No new state; just reads the process env.
     def env_label = (presence(Insika::EnvSchema.read("INSIKA_ENV")) || presence(ENV["RACK_ENV"]) || "local").to_s
 
+    # The top-of-page environment strip: nil on production (no strip), else
+    # the label plus a style — staging amber, anything else (dev, local) blue.
+    def env_banner
+      label = env_label.downcase
+      return nil if %w[production prod].include?(label)
+
+      { label: label, kind: label.start_with?("stag") ? "staging" : "other" }
+    end
+
     # Theme preference read from the cookie (applied server-side on <html> → no
     # flash). Strict allowlist: an unexpected value falls back to "auto".
     THEMES = %w[auto light dark].freeze

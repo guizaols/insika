@@ -3622,11 +3622,18 @@ end
     expect(body).to include(%(class="avatar sm avatar-h#{"chef".bytes.sum % 10}"))
   end
 
-  it "the sidebar shows the environment identity chip" do
+  it "shows the environment strip on staging and hides it on production" do
     app, = build_app
-    body = login(app).get("/agents").body
-    expect(body).to include('class="env-chip"')
-    expect(body).to include("environment")
+    begin
+      ENV["INSIKA_ENV"] = "staging"
+      expect(login(app).get("/agents").body).to include('class="env-banner staging"', "<b>staging</b>")
+      ENV["INSIKA_ENV"] = "dev"
+      expect(login(app).get("/agents").body).to include('class="env-banner other"')
+      ENV["INSIKA_ENV"] = "production"
+      expect(login(app).get("/agents").body).not_to include("env-banner")
+    ensure
+      ENV.delete("INSIKA_ENV")
+    end
   end
 
   it "cache-busts the dist assets (?v=) so a rebuild isn't masked by the browser cache" do
