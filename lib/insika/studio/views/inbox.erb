@@ -1,0 +1,36 @@
+<%# Review inbox — every item parked on a person, across Approvals, Facts,
+    Harvest, Refinement and guardrail false-positive reports. Oldest first;
+    each row opens the page where the decision is made. %>
+<header class="page-head">
+  <div>
+    <%== crumbs_for("Inbox") %>
+    <h1>Inbox<span class="sub"><%= @inbox_total %> waiting on a person</span></h1>
+  </div>
+</header>
+
+<nav class="segmented inbox-tabs" aria-label="Queue">
+  <a href="/studio/inbox"<%== ' aria-current="page"' unless @inbox_type %>>All&nbsp;<span class="count"><%= @inbox_total %></span></a>
+  <% Studio::App::INBOX_TYPES.each do |type, label| %>
+    <a href="/studio/inbox?type=<%= type %>"<%== ' aria-current="page"' if @inbox_type == type %>><%= label %>&nbsp;<span class="count"><%= @inbox_counts[type] %></span></a>
+  <% end %>
+</nav>
+
+<% if @items.empty? %>
+  <%== render("_empty", locals: { icon: :approvals, text: "Nothing waiting on you." }) %>
+<% else %>
+  <div class="card">
+    <table class="grid">
+      <thead><tr><th>type</th><th>item</th><th>agent</th><th>since</th></tr></thead>
+      <tbody>
+        <% @items.each do |i| %>
+          <tr>
+            <td><span class="inbox-type <%= i[:type] %>"><%= Studio::App::INBOX_TYPES[i[:type]] %></span></td>
+            <td><a href="<%= i[:href] %>"><%= i[:title] %></a></td>
+            <td class="mono"><%= i[:agent] %></td>
+            <td class="mono"><%= i[:at] ? time_ago(i[:at]) : "—" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% end %>

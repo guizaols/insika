@@ -265,6 +265,14 @@
   .chat-status { margin:0 var(--s-3) var(--s-3); }
   .chat-status .count { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); }
 
+  /* Review inbox. */
+  .inbox-tabs { margin:0 0 1rem; }
+  .inbox-tabs .count { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); }
+  .inbox-type { display:inline-block; font-size:var(--text-xs); padding:.1rem .5rem; border-radius:999px; background:var(--surface-2); color:var(--dim); white-space:nowrap; }
+  .inbox-type.approval { background:color-mix(in srgb,var(--warn) 14%,transparent); color:var(--warn); }
+  .inbox-type.fact { background:var(--accent-weak); color:var(--accent); }
+  .inbox-type.false_positive { background:color-mix(in srgb,var(--err) 12%,transparent); color:var(--err); }
+
   /* Overview "Needs attention" row. */
   .attention { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:0 0 1.5rem; padding:.75rem 1rem;
     border:1px solid var(--line-1); border-radius:var(--radius-lg); background:var(--panel); font-size:var(--text-sm); }
