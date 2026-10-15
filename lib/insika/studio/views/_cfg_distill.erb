@@ -18,7 +18,7 @@
     </label>
   </div>
   <label>model <span class="muted">(blank = the platform utility_model)</span>
-    <input type="text" name="distill_model" value="<%= dist["model"] %>" placeholder="deepseek-v4-flash">
+    <%== model_select("distill_model_ref", dist["model"], "platform utility_model") %>
   </label>
   <label>prompt <span class="muted">— what counts as a fact for THIS store (blank = the engine default)</span>
     <textarea name="distill_prompt" rows="3" placeholder="what counts as a customer fact for this store"><%= dist["prompt"] %></textarea>

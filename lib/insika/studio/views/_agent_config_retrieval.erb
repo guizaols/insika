@@ -32,7 +32,7 @@
             <input type="text" name="knowledge_types" value="<%= Array(knowledge["types"]).join(", ") %>" placeholder="fact, policy, objection">
           </label>
           <label>Learning model <span class="muted">— blank = platform utility model</span>
-            <input type="text" name="knowledge_model" value="<%= knowledge["model"] %>" placeholder="inherit platform utility model">
+            <%== model_select("knowledge_model_ref", knowledge["model"], "platform utility model") %>
           </label>
         </div>
         <label>Learning instructions <span class="muted">— blank = default instructions</span>

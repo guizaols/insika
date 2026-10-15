@@ -58,7 +58,7 @@
             <label>keep_last <span class="muted">(messages kept verbatim)</span><input type="text" name="compaction_keep_last" value="<%= @settings.dig("compaction", "keep_last") %>" inputmode="numeric"></label>
             <label>compact_after <span class="muted">(uncompacted messages that trigger it)</span><input type="text" name="compaction_compact_after" value="<%= @settings.dig("compaction", "compact_after") %>" inputmode="numeric"></label>
           </div>
-          <label>compaction model <span class="muted">(blank = the platform utility_model)</span><input type="text" name="compaction_model" value="<%= @settings.dig("compaction", "model") %>" placeholder="deepseek-v4-flash"></label>
+          <label>compaction model <span class="muted">(blank = the platform utility_model)</span><%== model_select("compaction_model_ref", @settings.dig("compaction", "model"), "platform utility_model") %></label>
           <p class="muted">When a session's uncompacted transcript grows past <code>compact_after</code> messages, everything but the last <code>keep_last</code> is summarized by the cheap model into one <code>&lt;conversation_summary&gt;</code> fragment; the tail stays verbatim and the boundary is stable (the prompt cache holds after it). Runs post-turn, off the critical path.</p>
           </details>
         </form>
@@ -79,12 +79,7 @@
           </label>
           <fieldset class="subgroup">
             <legend>fallback_models <span class="muted">— tried in this order; blank slots are skipped</span></legend>
-            <% fallbacks = Array(@settings["fallback_models"]) %>
-            <div class="grid-2">
-              <% [fallbacks.size + 1, 5].max.times do |i| %>
-                <label><%= i + 1 %>. <%== model_select("fallback_refs[]", fallbacks[i], "empty") %></label>
-              <% end %>
-            </div>
+            <%== model_slots("fallback_refs", @settings["fallback_models"], min: 5) %>
           </fieldset>
           <label>utility_model <span class="muted">(cheap internal tasks — titles, distillation)</span>
             <%== model_select("utility_model_ref", @settings["utility_model"], "none") %>

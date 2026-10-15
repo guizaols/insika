@@ -2056,6 +2056,16 @@ end
         %(<datalist id="#{list_id}">#{options}</datalist>)
     end
 
+    # An ORDERED list of refs (fallback chains, proposers): one picker per slot,
+    # posted as "<name>[]", always one empty slot more than stored (min `min`).
+    def model_slots(name, values, min: 3)
+      values = Array(values)
+      slots = [values.size + 1, min].max.times.map do |i|
+        %(<label>#{i + 1}. #{model_select("#{name}[]", values[i], 'empty')}</label>)
+      end
+      %(<div class="grid-2">#{slots.join}</div>)
+    end
+
     # A picked ref must be one the picker offers; `kept` (the stored value) may come
     # back unchanged even when it is no longer listed. Blank = nil (inherit/none).
     def checked_model_ref(raw, kept = nil)

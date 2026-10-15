@@ -14,7 +14,7 @@
       <input type="text" name="harvest_min_messages" value="<%= hv["min_messages"] %>" placeholder="3" inputmode="numeric">
     </label>
     <label>miner model <span class="muted">(blank = the platform utility_model)</span>
-      <input type="text" name="harvest_miner_model" value="<%= hvm["model"] %>" placeholder="deepseek-v4-flash">
+      <%== model_select("harvest_miner_model_ref", hvm["model"], "platform utility_model") %>
     </label>
     <label>miner window <span class="muted">(last N conversations)</span>
       <input type="text" name="harvest_miner_window" value="<%= hvm.dig("window", "last_sessions") %>" placeholder="200" inputmode="numeric">

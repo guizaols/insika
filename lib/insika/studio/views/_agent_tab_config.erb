@@ -225,9 +225,9 @@
         <label>files <span class="muted">(allowlist, comma-separated)</span>
           <input type="text" name="refinement_files" value="<%= agent_list(rf["files"]) %>" placeholder="IDENTITY.md">
         </label>
-        <label>proposers <span class="muted">(model refs, comma-separated)</span>
-          <input type="text" name="refinement_proposers" value="<%= agent_list(rf["proposers"]) %>" placeholder="deepseek/deepseek-v4-flash">
-        </label>
+        <div>proposers <span class="muted">(model refs)</span>
+          <%== model_slots("refinement_proposers_refs", rf["proposers"], min: 2) %>
+        </div>
       </div>
       <label>budget (tokens)
         <input type="text" name="refinement_budget_tokens" value="<%= rfb["tokens"] %>" inputmode="numeric">
