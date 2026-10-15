@@ -1606,6 +1606,22 @@ end
       pages + agents
     end
 
+    # The Overview's "Needs attention" row: [text, href, tone] for every
+    # non-zero item — review queues, customers waiting on a reply, tools that
+    # failed in the last 24h. `turns` is the metrics store's 24h turn block.
+    def attention_items(turns)
+      counts = review_counts
+      failing = Array(turns && turns["tools"]).count { |t| t["failures"].to_i.positive? }
+      [
+        [counts[:approvals], "approval(s) waiting", "/studio/approvals", "warn"],
+        [counts[:facts], "fact proposal(s) to review", "/studio/facts", "info"],
+        [counts[:harvest], "mined skill(s) to review", "/studio/harvest", "info"],
+        [counts[:refinement], "refinement run(s) to review", "/studio/refinement", "info"],
+        [Array(@stalled).size, "customer(s) waiting for a reply", "/studio/chats", "warn"],
+        [failing, "tool(s) failing in 24h", "/studio/tools", "err"]
+      ].select { |n, *| n.positive? }.map { |n, text, href, tone| ["#{n} #{text}", href, tone] }
+    end
+
     # Items parked on a human, per Review page — the sidebar badges. Read once
     # per request; a store that is missing or fails counts as 0 (the nav never
     # breaks a page).

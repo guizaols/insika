@@ -5889,6 +5889,13 @@ end
     expect(body).to include('data-filter-text="review Approvals"', 'href="/studio/agents/bia"')
   end
 
+  it "the Overview lists what needs attention, and says so when nothing does" do
+    app, = build_app(pendings: [pending(tool: "refund_order")])
+    body = login(app).get("/home").body
+    expect(body).to include('class="attention-item warn" href="/studio/approvals"', "1 approval(s) waiting")
+    expect(login(build_app.first).get("/home").body).to include("Nothing waiting on you.")
+  end
+
   it "badges a Review nav item with its pending count, and shows none at zero" do
     app, = build_app(pendings: [pending(tool: "refund_order"), pending(tool: "refund_order")])
     body = login(app).get("/agents").body
