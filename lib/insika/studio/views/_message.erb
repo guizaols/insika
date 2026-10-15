@@ -52,9 +52,14 @@
   <%# Guardrail flags the input check raised on this message (persisted with it,
       so they survive a reload) — same chip the live :guardrail_flagged event draws. %>
   <% Array(m["guardrail_flags"]).each do |f| %>
-    <details class="toolcard guardrail">
-      <summary><%== chip_icon(:guardrail) %><strong>guardrail flagged · <%= f["category"] || "?" %></strong></summary>
-      <pre><%= [f["source"], f["detail"]].compact.reject { |v| v.to_s.empty? }.join(" · ") %></pre>
+    <details class="toolcard guardrail" open>
+      <summary><%== chip_icon(:guardrail) %><strong>guardrail <%= f["action"] == "refuse" ? "blocked" : "flagged" %> · <%= f["category"] || "?" %></strong></summary>
+      <dl class="guardrail-why">
+        <% [["category", f["category"]], ["engine", f["source"]], ["action", f["action"]], ["matched", f["detail"]]].each do |label, value| %>
+          <% next if value.to_s.empty? %>
+          <dt><%= label %></dt><dd><%= value %></dd>
+        <% end %>
+      </dl>
     </details>
   <% end %>
   <%# Tool calls render BETWEEN bubbles (chips), not inside them — the same

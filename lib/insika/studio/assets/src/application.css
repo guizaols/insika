@@ -252,6 +252,14 @@
   .sidebar .brand { color:var(--side-fg); }
   .sidebar .brand small { color:var(--side-faint); }
 
+  /* Session: a turn's tool-call waterfall and the guardrail "why" list. */
+  .waterfall { display:block; width:100%; height:auto; max-height:10rem; margin:.25rem 0 .5rem; background:var(--surface-1); border-radius:var(--radius-sm); }
+  .waterfall rect.ok { fill:var(--accent-bg); }
+  .waterfall rect.err { fill:var(--err); }
+  .guardrail-why { display:grid; grid-template-columns:max-content 1fr; gap:.2rem .75rem; margin:.5rem 0 0; font-size:var(--text-sm); }
+  .guardrail-why dt { color:var(--faint); }
+  .guardrail-why dd { margin:0; font-family:var(--mono); font-size:var(--text-xs); overflow-wrap:anywhere; }
+
   /* Chats status tabs, under the master search. */
   .chat-status { margin:0 var(--s-3) var(--s-3); }
   .chat-status .count { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); }

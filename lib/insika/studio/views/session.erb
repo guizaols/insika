@@ -231,6 +231,16 @@
               <% traces.keys.sort.each do |turn| %>
                 <div class="trace-turn">
                   <div class="turn-label">turn <%= turn %></div>
+                  <%# Waterfall: when each call ran inside the turn (SVG geometry, CSP-safe). %>
+                  <% bars = trace_waterfall(traces[turn]) %>
+                  <% if bars.size > 1 %>
+                    <svg class="waterfall" viewBox="0 0 100 <%= bars.size * 6 %>" preserveAspectRatio="none" role="img"
+                         aria-label="<%= bars.map { |b| "#{b[:tool]} #{b[:ms]}ms" }.join(", ") %>">
+                      <% bars.each_with_index do |b, i| %>
+                        <rect class="<%= b[:ok] ? "ok" : "err" %>" x="<%= b[:x] %>" y="<%= i * 6 + 1 %>" width="<%= b[:w] %>" height="4" rx="0.6"><title><%= b[:tool] %> · <%= b[:ms] %>ms</title></rect>
+                      <% end %>
+                    </svg>
+                  <% end %>
                   <% traces[turn].each do |t| %>
                     <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
                       <summary>
