@@ -1546,53 +1546,72 @@ end
 
     def insika = self.class.insika
 
-    # Sidebar navigation, grouped by operator intent (build / runtime /
-    # operate). Each item: [label, href, icon-key]. The view marks the active item
-    # by comparing the path and renders the icon via `nav_icon`.
+    # Sidebar navigation, grouped by operator intent (operate / review /
+    # build / insights / platform). Each item: [label, href, icon-key] plus an
+    # optional pending count (Review items) the layout shows as a badge. The
+    # view marks the active item by comparing the path and renders the icon via
+    # `nav_icon`.
     def nav_sections
+      counts = review_counts
       [
         ["", [
           ["Home", "/studio/home", :home]
+        ]],
+        ["operate", [
+          ["Chats", "/studio/chats", :chats],
+          ["Customers", "/studio/customers", :chats],
+          ["Playground", "/studio/playground", :playground]
+        ]],
+        ["review", [
+          ["Approvals", "/studio/approvals", :approvals, counts[:approvals]],
+          # the human gate on distilled proposals (approve/reject/dismiss).
+          ["Facts", "/studio/facts", :facts, counts[:facts]],
+          # the human gate on mined skills (gate, promote, reject, rollback).
+          ["Harvest", "/studio/harvest", :harvest, counts[:harvest]],
+          ["Refinement", "/studio/refinement", :refinement, counts[:refinement]]
         ]],
         ["build", [
           ["Agents", "/studio/agents", :agents],
           ["Skills", "/studio/skills", :skills],
           ["Kits", "/studio/kits", :kits],
           ["Tools", "/studio/tools", :tools],
+          ["MCP", "/studio/mcp", :mcp],
           ["System files", "/studio/system-files", :system]
         ]],
-        ["runtime", [
-          ["MCP", "/studio/mcp", :mcp],
-          ["Settings", "/studio/settings", :settings]
-        ]],
-        ["operate", [
-          ["Chats", "/studio/chats", :chats],
-          ["Customers", "/studio/customers", :chats],
-          ["Playground", "/studio/playground", :playground],
+        ["insights", [
           ["Funnel", "/studio/funnel", :funnel],
-          # the Follow-ups page — scheduled, fired, blocked and
-          # cancelled records per agent + the per-arm A/B readout card.
+          # scheduled, fired, blocked and cancelled follow-ups per agent.
           ["Follow-ups", "/studio/followups", :followups],
-          # the Artifacts page — the report destination: per-agent
-          # list, sandboxed preview, signed sharing link.
+          # the report destination: per-agent list, preview, signed link.
           ["Artifacts", "/studio/artifacts", :artifacts],
-          # the Facts (wiki) page — the human gate on distilled
-          # proposals (approve/reject/dismiss, the latch, the CAS re-present).
-          ["Facts", "/studio/facts", :facts],
-          # the Harvest page — the human gate on mined skills
-          # (gate, promote, reject, rollback; the append-only promotion log).
-          ["Harvest", "/studio/harvest", :harvest],
-          # the Knowledge page — concepts the engine extracted from
-          # finished conversations; edit, delete, resolve a conflict.
+          # concepts the engine extracted from finished conversations.
           ["Knowledge", "/studio/knowledge", :knowledge],
-          ["Tasks", "/studio/tasks", :tasks],
+          ["Evals", "/studio/evals", :evals],
+          ["Tasks", "/studio/tasks", :tasks]
+        ] + parity_nav_item],
+        ["platform", [
           ["Models", "/studio/models", :settings],
-          ["Approvals", "/studio/approvals", :approvals],
-          ["Refinement", "/studio/refinement", :refinement],
-          ["Evals", "/studio/evals", :evals]
-        ] + parity_nav_item
-        ]
+          ["Settings", "/studio/settings", :settings]
+        ]]
       ]
+    end
+
+    # Items parked on a human, per Review page — the sidebar badges. Read once
+    # per request; a store that is missing or fails counts as 0 (the nav never
+    # breaks a page).
+    def review_counts
+      @review_counts ||= {
+        approvals: safe_count { insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR) },
+        facts: safe_count { insika[:proposal_store]&.pending(limit: 100) },
+        harvest: safe_count { insika[:harvest_store]&.awaiting_approval(limit: 100) },
+        refinement: safe_count { insika[:refinement_store]&.awaiting_approval(limit: 100) }
+      }
+    end
+
+    def safe_count
+      Array(yield).size
+    rescue StandardError
+      0
     end
 
     # NAV_ICONS + nav_icon moved to Studio::NavIcons.
@@ -1619,7 +1638,7 @@ end
       path == target || path.start_with?("#{target}/")
     end
 
-    # The nav group the current page sits in ("build" / "runtime" / "operate"),
+    # The nav group the current page sits in ("operate" / "review" / "build" / …),
     # or nil for the ungrouped Home.
     def nav_group
       group, = nav_sections.find { |_, items| items.any? { |(_, href, _)| nav_active?(href) } }

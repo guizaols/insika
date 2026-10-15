@@ -46,9 +46,10 @@
           <div class="nav-group">
             <% unless group.empty? %><div class="nav-label"><%= group %></div><% end %>
             <nav class="nav" aria-label="<%= group %>">
-              <% items.each do |label, href, icon| %>
+              <% items.each do |label, href, icon, count| %>
                 <a href="<%= href %>"<%== ' aria-current="page"' if nav_active?(href) %>>
                   <%== nav_icon(icon) %><span class="lbl"><%= label %></span>
+                  <% if count.to_i.positive? %><span class="nav-badge" aria-label="<%= count %> pending"><%= count %></span><% end %>
                 </a>
               <% end %>
             </nav>

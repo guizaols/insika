@@ -264,6 +264,7 @@
   .nav a svg { width:1rem; height:1rem; flex:0 0 auto; opacity:.85; }
   .nav a[aria-current="page"] { color:var(--side-fg); background:var(--side-active); font-weight:600; }
   .nav a[aria-current="page"] svg { color:var(--side-fg); opacity:1; }
+  .nav-badge { margin-left:auto; font-family:var(--mono); font-size:.6875rem; line-height:1; padding:.2rem .45rem; border-radius:999px; background:var(--accent-bg); color:var(--accent-fg); }
 
   /* Sidebar footer: health readout + theme + logout + environment identity */
   .sidebar-foot { margin-top:auto; padding-top:.75rem; display:flex; flex-direction:column; gap:.5rem; }
