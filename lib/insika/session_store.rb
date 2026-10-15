@@ -222,8 +222,10 @@ module Insika
     # session, written with it, instead of the whole record (messages included).
     # last_role: who spoke last ("user" = the customer is waiting); nil on stats
     # written before it existed, until the session's next write.
-    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role) do
-      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil) = super
+    # flagged: messages carrying a guardrail flag; 0 on stats written before it
+    # existed, until the session's next write.
+    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role, :flagged) do
+      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil, flagged: 0) = super
     end
 
     # -> [Stat] every session's stats, in no particular order: small enough to read
@@ -273,18 +275,21 @@ module Insika
     end
 
     def stats_of(record)
-      last = Array(record["messages"]).last
+      messages = Array(record["messages"])
+      last = messages.last
       vars = record["vars"] || {}
-      { "updated_at" => record["updated_at"], "message_count" => Array(record["messages"]).size,
+      flagged = messages.count { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? }
+      { "updated_at" => record["updated_at"], "message_count" => messages.size,
         "agent" => vars["agent"], "customer" => vars["customer"],
-        "last_role" => last.is_a?(Hash) ? last["role"] : nil, **vars.slice(*CUSTOMER_LABELS) }.compact
+        "last_role" => last.is_a?(Hash) ? last["role"] : nil, "flagged" => (flagged if flagged.positive?),
+        **vars.slice(*CUSTOMER_LABELS) }.compact
     end
 
     def to_stat(key, stat)
       Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
                message_count: stat["message_count"].to_i,
                vars: stat.slice("agent", "customer", *CUSTOMER_LABELS),
-               last_role: stat["last_role"])
+               last_role: stat["last_role"], flagged: stat["flagged"].to_i)
     end
 
     def key_for(id)

@@ -2886,6 +2886,7 @@ end
     def setup_chat_list(params)
       @agent = presence(params["agent"])
       @query = presence(params["q"].to_s.strip)
+      @status = CHAT_STATUSES.include?(params["status"]) ? params["status"] : nil
       @limit = [params["limit"].to_i, CHATS_PAGE].max
       store = insika[:session_store]
       return @sessions = [] unless store
@@ -2898,6 +2899,8 @@ end
                         .sort_by { |row| row.last }.reverse
       rows = agent_sessions(all, @agent)
       rows = rows.select { |s| chat_matches?(s, @query.downcase) } if @query
+      @status_counts = CHAT_STATUSES.to_h { |st| [st, rows.count { |s| chat_status?(s, st) }] }
+      rows = rows.select { |s| chat_status?(s, @status) } if @status
       rows = rows.sort_by { |s| s.updated_at.to_s }.reverse
       @chats_total = rows.size
       @sessions = rows.first(@limit).filter_map { |s| store.find(s.id) }
@@ -2911,8 +2914,35 @@ end
         .any? { |v| v.to_s.downcase.include?(query) }
     end
 
+    CHAT_STATUSES = %w[active flagged].freeze
+
+    # The Chats status tabs: "active" = touched in the last 5 minutes (the
+    # presence dot), "flagged" = a guardrail flagged one of its messages.
+    def chat_status?(stat, status)
+      case status
+      when "active" then session_fresh?(stat)
+      when "flagged" then session_flagged?(stat)
+      else true
+      end
+    end
+
+    def session_flagged?(session)
+      if session.respond_to?(:flagged) then session.flagged.positive?
+      else Array(session.respond_to?(:messages) ? session.messages : nil).any? { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? }
+      end
+    end
+
+    # Conversations of the same customer key (stats only) — the session's
+    # Customer card.
+    def customer_chat_count(customer)
+      store = insika[:session_store]
+      return 1 if customer.to_s.empty? || !store.respond_to?(:all_stats)
+
+      [store.all_stats.count { |s| s.vars["customer"].to_s == customer }, 1].max
+    end
+
     def chats_path(**extra)
-      query = Rack::Utils.build_query({ agent: @agent, q: @query, **extra }.compact)
+      query = Rack::Utils.build_query({ agent: @agent, q: @query, status: @status, **extra }.compact)
       query.empty? ? "/studio/chats" : "/studio/chats?#{query}"
     end
 

@@ -107,6 +107,18 @@
              data-action="pointerdown->col-resize#start keydown->col-resize#key dblclick->col-resize#reset"></div>
         <aside class="session-margin" id="session-details" popover aria-label="session metadata">
           <button type="button" class="btn btn-sm details-close" popovertarget="session-details" popovertargetaction="hide">Close</button>
+          <%# Who this conversation is with — the vars the caller sent, plus how
+              many conversations share the customer key (a link to them). %>
+          <% customer = presence(session_customer(@session)) %>
+          <% if customer %>
+            <div class="card">
+              <div class="trace-head"><h2>Customer</h2></div>
+              <div class="kv"><span>key</span><div class="mono"><%= customer %></div></div>
+              <% if (name = presence(session_customer_label(@session))) && name != customer %><div class="kv"><span>name</span><div><%= name %></div></div><% end %>
+              <% if (phone = session_customer_phone(@session)) %><div class="kv"><span>phone</span><div><%= phone %></div></div><% end %>
+              <div class="kv"><span>chats</span><div><a href="/studio/chats?q=<%= Rack::Utils.escape(customer) %>" data-turbo-frame="_top"><%= customer_chat_count(customer) %> conversation(s)</a></div></div>
+            </div>
+          <% end %>
           <% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
           <% fields = briefing["fields"] || {} %>
           <% next_step = briefing["next_step"] %>

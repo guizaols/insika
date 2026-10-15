@@ -252,6 +252,10 @@
   .sidebar .brand { color:var(--side-fg); }
   .sidebar .brand small { color:var(--side-faint); }
 
+  /* Chats status tabs, under the master search. */
+  .chat-status { margin:0 var(--s-3) var(--s-3); }
+  .chat-status .count { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); }
+
   /* Overview "Needs attention" row. */
   .attention { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:0 0 1.5rem; padding:.75rem 1rem;
     border:1px solid var(--line-1); border-radius:var(--radius-lg); background:var(--panel); font-size:var(--text-sm); }

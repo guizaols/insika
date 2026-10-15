@@ -1384,6 +1384,23 @@ end
       expect(client.get("/sessions/s-1").body).to include("bia · 5511999998888")
     end
 
+    it "chats?status=flagged keeps only conversations a guardrail flagged" do
+      flagged = sess("s-1", "bia")
+      flagged.messages.first["guardrail_flags"] = [{ "category" => "sexual" }]
+      app, = build_app(sessions: { "s-1" => flagged, "s-2" => sess("s-2", "bia") })
+      client = login(app)
+      body = client.get("/chats?status=flagged").body
+      expect(body).to include("s-1", 'aria-current="page"', "flagged")
+      expect(body).not_to include("hi s-2")
+      expect(client.get("/chats").body).to include("hi s-1", "hi s-2")
+    end
+
+    it "the session margin shows the customer and links their other conversations" do
+      app, = build_app(sessions: { "s-1" => sess("s-1", "bia") })
+      body = login(app).get("/sessions/s-1").body
+      expect(body).to include("<h2>Customer</h2>", "c-s-1", "/studio/chats?q=c-s-1")
+    end
+
     it "tasks?agent= narrows by the task's command payload" do
       tasks = { "t-1" => TaskDouble.new(id: "t-1", status: :completed,
                                         command: { "payload" => { "agent" => "bia" } },
