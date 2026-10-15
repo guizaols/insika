@@ -265,13 +265,13 @@
   .foot-actions { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
   .sidebar-foot .logout { margin:0; }
 
-  /* Environment identity chip (footer) — which box am I on. */
-  .env-chip { display:flex; align-items:center; gap:.6rem; padding:.55rem .5rem 0; border-top:1px solid var(--line-1); margin-top:.125rem; }
-  .env-mark { flex:0 0 auto; width:1.75rem; height:1.75rem; border-radius:var(--radius-sm); display:grid; place-items:center;
-    font-weight:700; font-size:var(--text-xs); color:var(--accent-fg); text-transform:uppercase; background:var(--accent-bg); }
-  .env-text { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
-  .env-text b { font-size:var(--text-sm); font-weight:600; color:var(--fg); text-transform:capitalize; }
-  .env-text small { font-size:.625rem; color:var(--faint); letter-spacing:.02em; }
+  /* Environment banner — top of the main column on any box that is not
+     production (INSIKA_ENV). Staging reads amber, anything else blue. */
+  .env-banner { display:flex; align-items:center; justify-content:center; gap:.6rem; flex-wrap:wrap;
+    padding:.3rem 1rem; font-size:var(--text-xs); border-bottom:1px solid; }
+  .env-banner b { font-family:var(--mono); font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
+  .env-banner.staging { color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,var(--panel)); border-color:color-mix(in srgb,var(--warn) 30%,transparent); }
+  .env-banner.other { color:var(--info); background:color-mix(in srgb,var(--info) 10%,var(--panel)); border-color:color-mix(in srgb,var(--info) 30%,transparent); }
 
   /* Tabs, filters and appearance share one selected-state treatment. */
   .theme-switch, .segmented, .subnav { display:inline-flex; flex-wrap:wrap; border:1px solid var(--line-1); border-radius:10px; background:var(--surface-1); padding:3px; gap:3px; }
