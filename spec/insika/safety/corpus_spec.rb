@@ -29,15 +29,18 @@ RSpec.describe Insika::Safety::Corpus do
   end
   let(:pt_br_sexual) do
     [
-      /\b(nudes?|pelad[oa]s?|s?exo|transar|transa\b|gozar|tes[ãa]o|s[ãa]fad[oa]|puta|pau|buceta|piroca|caralho\s+(duro|na))\b/i,
+      /\b(buceta|piroca|caralho\s+(duro|na))\b/i,
+      /\b(manda|mande|envia|envie|passa|passe)\s+(um[as]?\s+|uns\s+)?nudes?\b/i,
+      /\bnudes?\s+(sua|seu|suas|seus|tua|teu)\b/i,
+      /\bfotos?\s+((sua|tua)\s+)?pelad[oa]s?\b/i,
       /\bo\s+que\s+voc[êe]\s+faria\s+comigo\b/i,
       /\b(descrev|imagina|conta)\w*\b[^.?!]{0,30}\bcomigo\s+(na\s+cama|pelad)/i,
-      /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo)\b/i
+      /\b(quer|vamos)\b[^.?!]{0,20}\b(transar|fazer\s+sexo|sexo\s+comigo)\b/i
     ]
   end
   let(:en_sexual) do
     [
-      /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
+      /\b(horny|blow\s?job|hand\s?job|jerk\s+off|have\s+sex\s+with\s+me|send\s+(me\s+)?(a\s+)?nudes?|dick\s+pic)\b/i,
       /\bwhat\s+(would|will)\s+you\s+do\s+to\s+me\b/i
     ]
   end
