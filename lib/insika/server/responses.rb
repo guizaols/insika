@@ -48,6 +48,11 @@ module Insika
           out[:user_text] = body[:user_text]
         end
         (origin = Insika::MessageOrigin.parse!(body[:origin])) && (out[:origin] = origin)
+        # the caller's text that rides ahead of `input` to the model; guardrails read `input` alone
+        unless body[:context].nil? || body[:context].is_a?(String)
+          raise Insika::ValidationError, "context must be a string"
+        end
+        out[:context] = body[:context] if body[:context]
         # WS8: the optional customer_key — per-customer memory scope + purge handle
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
         # the optional labels the Studio shows and searches the conversation by
