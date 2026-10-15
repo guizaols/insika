@@ -2535,6 +2535,20 @@ end
     expect(login(app).get("/sessions/sess-gb").body).to include("guardrail blocked · sexual")
   end
 
+  it "a guardrail flag can be marked as a false positive from the session viewer" do
+    sess = StoredSession.new(id: "sess-fp", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "Mostra mais opções",
+                                          "guardrail_flags" => [{ "category" => "sexual", "action" => "refuse" }] }])
+    app, bus = build_app(sessions: { "sess-fp" => sess })
+    client = login(app)
+    body = client.get("/sessions/sess-fp").body
+    expect(body).to include('action="/studio/sessions/sess-fp/guardrail"', "Mark false positive")
+    res = client.post("/sessions/sess-fp/guardrail",
+                      params: { "_csrf" => csrf_from(body), "message" => "0", "flag" => "0", "status" => "reported" })
+    expect(res.status).to eq(302)
+    expect(bus.last(:review_guardrail_flag).payload).to include(session_id: "sess-fp", message: "0", flag: "0", status: "reported")
+  end
+
   it "a turn with several tool calls draws a waterfall of when each ran" do
     app, = build_app
     bars = app.allocate.send(:trace_waterfall, [

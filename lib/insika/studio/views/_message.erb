@@ -51,7 +51,8 @@
   </div>
   <%# Guardrail flags the input check raised on this message (persisted with it,
       so they survive a reload) — same chip the live :guardrail_flagged event draws. %>
-  <% Array(m["guardrail_flags"]).each do |f| %>
+  <% review = defined?(review) ? review : nil %>
+  <% Array(m["guardrail_flags"]).each_with_index do |f, fi| %>
     <details class="toolcard guardrail" open>
       <summary><%== chip_icon(:guardrail) %><strong>guardrail <%= f["action"] == "refuse" ? "blocked" : "flagged" %> · <%= f["category"] || "?" %></strong></summary>
       <dl class="guardrail-why">
@@ -60,6 +61,24 @@
           <dt><%= label %></dt><dd><%= value %></dd>
         <% end %>
       </dl>
+      <%# Session viewer only: report the flag as a false positive (or undo). %>
+      <% if review %>
+        <% state = f.dig("review", "status") %>
+        <form class="guardrail-review" method="post" action="<%= review[:path] %>">
+          <%== csrf_tag %>
+          <input type="hidden" name="message" value="<%= review[:message] %>">
+          <input type="hidden" name="flag" value="<%= fi %>">
+          <% if state == "reported" %>
+            <span class="status warn">reported as false positive</span>
+            <button type="submit" class="btn btn-sm ghost">Undo</button>
+          <% elsif state == "resolved" %>
+            <span class="status ok">false positive resolved</span>
+          <% else %>
+            <input type="hidden" name="status" value="reported">
+            <button type="submit" class="btn btn-sm">Mark false positive</button>
+          <% end %>
+        </form>
+      <% end %>
     </details>
   <% end %>
   <%# Tool calls render BETWEEN bubbles (chips), not inside them — the same

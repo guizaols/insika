@@ -993,6 +993,18 @@ module Studio
       r.on "sessions" do
         r.on String do |sid|
           sid = utf8(sid)
+          # POST /studio/sessions/:id/guardrail — a person's verdict on one
+          # guardrail flag (false positive / resolved / undo).
+          r.post "guardrail" do
+            check_csrf!
+            status = presence(r.params["status"])
+            with_flash(status ? "Guardrail flag marked #{status == "reported" ? "as a false positive" : status}." : "Guardrail report undone.") do
+              dispatch(:review_guardrail_flag, { session_id: sid, message: r.params["message"],
+                                                 flag: r.params["flag"], status: status })
+            end
+            r.redirect(presence(r.params["back"])&.start_with?("/studio/") ? r.params["back"] : "/studio/sessions/#{Rack::Utils.escape_path(sid)}")
+          end
+
           r.get do
             @session = insika[:session_store]&.find(sid)
             next_404 unless @session

@@ -95,7 +95,8 @@
               <% end %>
               <%# `prev` is what makes a STEERED message visible: a customer message that lands
                   right after a tool result arrived mid-run. See _message.erb. %>
-              <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+              <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil,
+                                                review: { path: "/studio/sessions/#{Rack::Utils.escape_path(@session.id)}/guardrail", message: i } }) %>
             <% end %>
           </div>
           <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@session.messages).empty? %>>This session has no messages.</div>
