@@ -32,7 +32,7 @@
 
 /* ============================================================================
    Insika Studio — shared visual system
-   Warm neutral surfaces, restrained amber, consistent controls and motion.
+   Cool neutral surfaces, a dark sidebar, one blue accent; amber is kept for warnings.
    Existing page shells, information density and navigation stay intact.
    Tailwind `base` brings the preflight/reset; every product class lives in
    @layer components. Theme-aware: tokens in :root, redefined under
@@ -46,14 +46,16 @@
      these tokens, so a theme is exactly one redefinition block. */
   :root {
     /* Light theme (default when data-theme=auto and OS is light) */
-    --ink:#f5f5f4; --panel:#ffffff; --field:#ffffff;
-    --surface-1:#eeefed; --surface-2:#e7e9e5; --surface-3:#dde1d9;
-    --line-1:#e0e3dc; --line-2:#cdd2c7; --line-3:#adb5a6;
-    --control-border:#81887d; --control-hover:#666d62;
-    --fg:#242523; --dim:#5f625d; --faint:#646862;
-    --accent:#805817; --accent-fg:#ffffff; --accent-bg:#805817;
-    --accent-weak:#f4ead7; --ring:var(--accent);
-    --ok:#176d45; --warn:#805817; --err:#b83232; --info:#2563eb;
+    --ink:#f6f7f9; --panel:#ffffff; --field:#ffffff;
+    --surface-1:#f1f3f6; --surface-2:#e9ecf1; --surface-3:#dde2e9;
+    --line-1:#e3e6eb; --line-2:#d5dae1; --line-3:#aab2bd;
+    --control-border:#7d8693; --control-hover:#5b6370;
+    --fg:#14171c; --dim:#5b6370; --faint:#5f6773;
+    --accent:#3155d6; --accent-fg:#ffffff; --accent-bg:#3155d6;
+    --accent-weak:#e8edfc; --ring:var(--accent);
+    --ok:#157347; --warn:#9a5b00; --err:#b42318; --info:#2563eb;
+    --side-bg:#111418; --side-line:#232833; --side-hover:#1c2026; --side-active:#262c37;
+    --side-fg:#ffffff; --side-dim:#c3c9d2; --side-faint:#8b94a1; --side-ok:#6fcf97;
     --diff-del:#b4232b; --diff-ins:#1a7f45;
     /* Avatar hues (h0 = brand accent, defined by --accent-*). */
     --av-1-bg:#d9e3ff; --av-1-fg:#2349b8;
@@ -71,8 +73,8 @@
        latin subset. */
     --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --radius:8px; --radius-sm:8px; --radius-lg:12px; --radius-xl:16px;
-    --shadow:0 1px 3px rgba(36,37,35,.08);
-    --shadow-lg:0 8px 24px rgba(36,37,35,.12);
+    --shadow:0 1px 3px rgba(20,23,28,.08);
+    --shadow-lg:0 8px 24px rgba(20,23,28,.12);
     --motion-duration:140ms; --t-fast:var(--motion-duration) ease; --t:var(--t-fast);
     --sidebar-w:240px;
     /* Type scale — 8 steps, no arbitrary sizes in components. */
@@ -82,14 +84,16 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --ink:#1c1d1b; --panel:#242623; --field:#20221f;
-      --surface-1:#30332f; --surface-2:#3b3e38; --surface-3:#454a40;
-      --line-1:#3b3f37; --line-2:#4c5246; --line-3:#646d5b;
-      --control-border:#7d8577; --control-hover:#a0a79a;
-      --fg:#eeeeea; --dim:#b7bbb2; --faint:#a0a79a;
-      --accent:#e4b669; --accent-fg:#1c1d1b; --accent-bg:#e4b669;
-      --accent-weak:#3d3322; --ring:var(--accent);
-      --ok:#80c9a0; --warn:#e4b669; --err:#f19a91; --info:#5b9bff;
+      --ink:#0f1115; --panel:#16191e; --field:#13161a;
+      --surface-1:#1d2127; --surface-2:#252a31; --surface-3:#2f353d;
+      --line-1:#262b32; --line-2:#343a43; --line-3:#4b535e;
+      --control-border:#6b7480; --control-hover:#9aa3ae;
+      --fg:#e8ebef; --dim:#aab2bd; --faint:#8f98a4;
+      --accent:#8aa4ff; --accent-fg:#0f1115; --accent-bg:#8aa4ff;
+      --accent-weak:#1f2a4d; --ring:var(--accent);
+      --ok:#6fcf97; --warn:#e4b669; --err:#f19a91; --info:#8aa4ff;
+      --side-bg:#0b0d10; --side-line:#1d2127; --side-hover:#171a1f; --side-active:#232833;
+      --side-fg:#ffffff; --side-dim:#c3c9d2; --side-faint:#8b94a1; --side-ok:#6fcf97;
       --diff-del:#ff8a8a; --diff-ins:#6ee7a8;
       --av-1-bg:#2c3f7a; --av-1-fg:#aec3ff;
       --av-2-bg:#1f5c3f; --av-2-fg:#7fe3ab;
@@ -106,14 +110,16 @@
     }
   }
   :root[data-theme="light"] {
-    --ink:#f5f5f4; --panel:#ffffff; --field:#ffffff;
-    --surface-1:#eeefed; --surface-2:#e7e9e5; --surface-3:#dde1d9;
-    --line-1:#e0e3dc; --line-2:#cdd2c7; --line-3:#adb5a6;
-    --control-border:#81887d; --control-hover:#666d62;
-    --fg:#242523; --dim:#5f625d; --faint:#646862;
-    --accent:#805817; --accent-fg:#ffffff; --accent-bg:#805817;
-    --accent-weak:#f4ead7; --ring:var(--accent);
-    --ok:#176d45; --warn:#805817; --err:#b83232; --info:#2563eb;
+    --ink:#f6f7f9; --panel:#ffffff; --field:#ffffff;
+    --surface-1:#f1f3f6; --surface-2:#e9ecf1; --surface-3:#dde2e9;
+    --line-1:#e3e6eb; --line-2:#d5dae1; --line-3:#aab2bd;
+    --control-border:#7d8693; --control-hover:#5b6370;
+    --fg:#14171c; --dim:#5b6370; --faint:#5f6773;
+    --accent:#3155d6; --accent-fg:#ffffff; --accent-bg:#3155d6;
+    --accent-weak:#e8edfc; --ring:var(--accent);
+    --ok:#157347; --warn:#9a5b00; --err:#b42318; --info:#2563eb;
+    --side-bg:#111418; --side-line:#232833; --side-hover:#1c2026; --side-active:#262c37;
+    --side-fg:#ffffff; --side-dim:#c3c9d2; --side-faint:#8b94a1; --side-ok:#6fcf97;
     --diff-del:#b4232b; --diff-ins:#1a7f45;
     --av-1-bg:#d9e3ff; --av-1-fg:#2349b8;
     --av-2-bg:#d3f0e0; --av-2-fg:#14663c;
@@ -124,19 +130,21 @@
     --av-7-bg:#fbdcd9; --av-7-fg:#b03128;
     --av-8-bg:#dde4f7; --av-8-fg:#36409c;
     --av-9-bg:#e3f3c9; --av-9-fg:#4f6d10;
-    --shadow:0 1px 3px rgba(36,37,35,.08);
-    --shadow-lg:0 8px 24px rgba(36,37,35,.12);
+    --shadow:0 1px 3px rgba(20,23,28,.08);
+    --shadow-lg:0 8px 24px rgba(20,23,28,.12);
     color-scheme:light;
   }
   :root[data-theme="dark"] {
-    --ink:#1c1d1b; --panel:#242623; --field:#20221f;
-    --surface-1:#30332f; --surface-2:#3b3e38; --surface-3:#454a40;
-    --line-1:#3b3f37; --line-2:#4c5246; --line-3:#646d5b;
-    --control-border:#7d8577; --control-hover:#a0a79a;
-    --fg:#eeeeea; --dim:#b7bbb2; --faint:#a0a79a;
-    --accent:#e4b669; --accent-fg:#1c1d1b; --accent-bg:#e4b669;
-    --accent-weak:#3d3322; --ring:var(--accent);
-    --ok:#80c9a0; --warn:#e4b669; --err:#f19a91; --info:#5b9bff;
+    --ink:#0f1115; --panel:#16191e; --field:#13161a;
+    --surface-1:#1d2127; --surface-2:#252a31; --surface-3:#2f353d;
+    --line-1:#262b32; --line-2:#343a43; --line-3:#4b535e;
+    --control-border:#6b7480; --control-hover:#9aa3ae;
+    --fg:#e8ebef; --dim:#aab2bd; --faint:#8f98a4;
+    --accent:#8aa4ff; --accent-fg:#0f1115; --accent-bg:#8aa4ff;
+    --accent-weak:#1f2a4d; --ring:var(--accent);
+    --ok:#6fcf97; --warn:#e4b669; --err:#f19a91; --info:#8aa4ff;
+    --side-bg:#0b0d10; --side-line:#1d2127; --side-hover:#171a1f; --side-active:#232833;
+    --side-fg:#ffffff; --side-dim:#c3c9d2; --side-faint:#8b94a1; --side-ok:#6fcf97;
     --diff-del:#ff8a8a; --diff-ins:#6ee7a8;
     --av-1-bg:#2c3f7a; --av-1-fg:#aec3ff;
     --av-2-bg:#1f5c3f; --av-2-fg:#7fe3ab;
@@ -227,7 +235,7 @@
 
   .sidebar {
     position:sticky; top:0; height:100vh; overflow-y:auto;
-    background:var(--panel); border-right:1px solid var(--line-1);
+    background:var(--side-bg); border-right:1px solid var(--side-line); color:var(--side-dim);
     display:flex; flex-direction:column; gap:.125rem; padding:.75rem .75rem .5rem;
   }
   .app-main { min-width:0; display:flex; flex-direction:column; }
@@ -241,27 +249,36 @@
   }
   .brand.big { font-size:var(--text-2xl); padding:0; margin-bottom:.5rem; }
 
+  .sidebar .brand { color:var(--side-fg); }
+  .sidebar .brand small { color:var(--side-faint); }
+
   /* Sidebar navigation — 30px rows, hairline gap, filled active state. */
   .nav-group { margin-top:.6rem; }
-  .nav-label { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); padding:0 .5rem .3rem; }
+  .nav-label { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--side-faint); padding:0 .5rem .3rem; }
   .nav { display:flex; flex-direction:column; gap:1px; }
   .nav a {
     display:flex; align-items:center; gap:.55rem; padding:.4rem .5rem; border-radius:var(--radius-sm);
-    color:var(--dim); font-size:var(--text); font-weight:500; transition:background var(--t-fast), color var(--t-fast);
+    color:var(--side-dim); font-size:var(--text); font-weight:500; transition:background var(--t-fast), color var(--t-fast);
   }
-  .nav a:hover { color:var(--fg); background:var(--surface-1); text-decoration:none; }
+  .nav a:hover { color:var(--side-fg); background:var(--side-hover); text-decoration:none; }
   .nav a svg { width:1rem; height:1rem; flex:0 0 auto; opacity:.85; }
-  .nav a[aria-current="page"] { color:var(--accent); background:var(--accent-weak); font-weight:600; }
-  .nav a[aria-current="page"] svg { color:var(--accent-bg); opacity:1; }
+  .nav a[aria-current="page"] { color:var(--side-fg); background:var(--side-active); font-weight:600; }
+  .nav a[aria-current="page"] svg { color:var(--side-fg); opacity:1; }
 
   /* Sidebar footer: health readout + theme + logout + environment identity */
   .sidebar-foot { margin-top:auto; padding-top:.75rem; display:flex; flex-direction:column; gap:.5rem; }
-  .health-card { border:1px solid var(--line-1); border-radius:var(--radius); background:var(--surface-1); padding:.55rem .7rem; }
+  .health-card { border:1px solid var(--side-line); border-radius:var(--radius); background:var(--side-hover); padding:.55rem .7rem; }
+  .health-card .pill.ok { color:var(--side-ok); }
   .health-card .row { display:flex; align-items:center; gap:.45rem; font-size:var(--text-sm); }
-  .health-card .stat { color:var(--dim); font-size:var(--text-xs); margin-top:.3rem; display:flex; flex-direction:column; gap:.1rem; }
+  .health-card .stat { color:var(--side-dim); font-size:var(--text-xs); margin-top:.3rem; display:flex; flex-direction:column; gap:.1rem; }
   .health-card .stat-row { display:flex; align-items:baseline; gap:.35rem; }
   .health-card .stat-row b { flex:0 0 auto; }
-  .health-card .stat b { color:var(--fg); font-weight:600; }
+  .health-card .stat b { color:var(--side-fg); font-weight:600; }
+  .sidebar .theme-switch { background:var(--side-hover); border-color:var(--side-line); }
+  .sidebar .theme-opt { color:var(--side-dim); }
+  .sidebar .theme-opt:hover, .sidebar .theme-opt.on { color:var(--side-fg); background:var(--side-active); box-shadow:none; }
+  .sidebar button.ghost { color:var(--side-dim); }
+  .sidebar button.ghost:hover { color:var(--side-fg); background:var(--side-hover); }
   .foot-actions { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
   .sidebar-foot .logout { margin:0; }
 
