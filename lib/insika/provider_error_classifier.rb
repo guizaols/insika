@@ -99,6 +99,13 @@ module Insika
         (names & RUBY_LLM_ERROR_NAMES).any? || transport?(names)
       end
 
+      # A 402: the account behind THIS provider cannot pay (exhausted balance).
+      # Still :fatal for that node, but another provider's account may be fine —
+      # Reliability rotates on it instead of killing the turn.
+      def billing?(error)
+        class_names(error).include?("RubyLLM::PaymentRequiredError") || http_status(error) == 402
+      end
+
       # The typed ProviderError the executor stores and emits.
       def wrap(error)
         c = classify(error)

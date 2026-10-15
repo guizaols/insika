@@ -51,6 +51,32 @@ RSpec.describe Insika::Reliability do
     expect(calls).to eq(1) # no retry, no fallback
   end
 
+  # A 402 is fatal for THAT account, not for the turn: an exhausted balance
+  # (DeepSeek "Insufficient Balance") must hand the turn to the next node at once —
+  # no retry on the dead node, no backoff, and no breaker bump (an open PRIMARY
+  # circuit fails fast WITHOUT rotating, which would kill every later turn).
+  it "a 402 (billing) skips to the fallback at once, without retrying the node" do
+    seen = []
+    attempts = lambda do |sel, _n|
+      model = sel.respond_to?(:model) ? sel.model : sel[:model]
+      seen << model
+      raise RubyLLM::PaymentRequiredError.new("Insufficient Balance") if model == "deepseek-v4-flash"
+
+      "ok from fallback"
+    end
+    expect(run(attempts)).to eq("ok from fallback")
+    expect(seen).to eq(%w[deepseek-v4-flash gpt-4o-mini])
+    expect(@slept).to be_nil
+    expect(circuit_store.state(tenant: nil, ref: "deepseek/deepseek-v4-flash", after: 3, within: 60, cooldown: 300))
+      .to eq(:closed)
+    expect(event_stream.events.map(&:type)).to include(:provider_failure, :provider_fallback)
+  end
+
+  it "a 402 on the LAST node still raises (nothing left to rotate to)" do
+    attempts = ->(_s, _n) { raise RubyLLM::PaymentRequiredError.new("Insufficient Balance") }
+    expect { run(attempts, chain: []) }.to raise_error(RubyLLM::PaymentRequiredError)
+  end
+
   it "a NON-provider error (a bug) is never retried either" do
     calls = 0
     attempts = ->(_s, _n) { calls += 1; raise "bug" }

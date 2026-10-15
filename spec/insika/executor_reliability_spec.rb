@@ -94,6 +94,26 @@ RSpec.describe "Insika::Executor + Reliability (WS3)" do
     expect(completed.data[:usage]).to include(model: "gpt-4o-mini", model_source: :fallback)
   end
 
+  # An exhausted provider balance used to kill every turn in under a second while
+  # the fallback chain sat unused.
+  it "primary account without balance (402) -> the fallback answers the turn" do
+    executor = build_executor
+    primary_chat.define_singleton_method(:ask) do |_message, &_blk|
+      raise RubyLLM::PaymentRequiredError.new("Insufficient Balance")
+    end
+    fallback_chat.define_singleton_method(:ask) do |message, &on_chunk|
+      @asked = message
+      on_chunk&.call(FakeChat::Response.new("final"))
+      RubyLLM::Message.new(role: :assistant, content: "final",
+                          tokens: RubyLLM::Tokens.new(input: 10, output: 5, cache_read: 0, cache_write: 0))
+    end
+
+    run_turn(executor, make_task("oi", id: "b1"), primary_chat)
+
+    expect(task_store.find("b1").status).to eq(:completed)
+    expect(fallback_chat.asked).to eq("oi")
+  end
+
   it "prices an unreported fallback cost at the fallback's own rate and names its provider" do
     pricing = Insika::Telemetry::Pricing.new("deepseek-v4-flash" => { "input" => 100, "output" => 100 },
                                              "gpt-4o-mini" => { "input" => 1, "output" => 2 })

@@ -109,6 +109,10 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- A provider account without balance (HTTP 402) no longer kills the turn: the
+  reliability loop moves straight to the next fallback node — no retry on the
+  account that cannot pay, no backoff, and no circuit-breaker count (an open
+  primary circuit fails fast without rotating). On the last node it still raises.
 - Data-tools imported or edited in one worker now reach the others: the tool
   registry checks the config version token (at most every 2 s) and rebuilds when
   it moved, and the tool catalog follows. Before, the other workers kept the
