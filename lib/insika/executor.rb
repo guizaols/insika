@@ -998,6 +998,7 @@ module Insika
       turn = resume_from ? resume_from.turn : 1
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
+      state.caller_context = extract_caller_context(task)
       state.shared_conversations = @shared_conversations if @shared_turns[task.id]
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
       stamp_customer_session(task, profile)
@@ -1747,7 +1748,7 @@ module Insika
               "routed delegate '#{agent_id}' at depth #{depth} exceeds cap #{cap}"
       end
 
-      result = spawn_and_await_child(child, state.message, depth, state)
+      result = spawn_and_await_child(child, ask_text(state), depth, state)
       if result[:error]
         raise Insika::RoutingError, "routed delegate '#{agent_id}' failed: #{result[:error]}"
       end
@@ -1874,10 +1875,10 @@ module Insika
           return ToolDefinition::Halt.new(content: continuation["halt"])
         end
       elsif state.media_attachments
-        text = state.message.to_s.empty? ? nil : state.message
-        chat.ask_later(text, with: state.media_attachments)
+        text = ask_text(state)
+        chat.ask_later(text.empty? ? nil : text, with: state.media_attachments)
       else
-        chat.ask_later(state.message)
+        chat.ask_later(ask_text(state))
       end
       complete_chat(state, chat, &each_chunk)
     end
@@ -2159,6 +2160,17 @@ module Insika
     def extract_message(task)
       payload = rebuild_command(task).payload
       payload["message"] || payload["input"]
+    end
+
+    def extract_caller_context(task)
+      text = rebuild_command(task).payload["context"].to_s.strip
+      text.empty? ? nil : text
+    end
+
+    # What the model is asked and the transcript keeps: the caller's context, then
+    # the message. Guardrails scanned `message` alone, before this point.
+    def ask_text(state)
+      [state.caller_context, state.message.to_s].compact.reject(&:empty?).join("\n\n")
     end
 
     def command_history(task)
@@ -3116,7 +3128,7 @@ module Insika
     def turn_transcript(state, content, origin: nil, reply_origin: nil)
       recorded = recorded_turn_messages(state)
       if recorded.empty?
-        return [stamp_guardrail_flags(MessageOrigin.stamp({ "role" => "user", "content" => state.message.to_s }, origin), state),
+        return [stamp_guardrail_flags(MessageOrigin.stamp({ "role" => "user", "content" => ask_text(state) }, origin), state),
                 MessageOrigin.stamp({ "role" => "assistant", "content" => content.to_s }, reply_origin)]
       end
 

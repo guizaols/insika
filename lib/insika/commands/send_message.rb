@@ -57,6 +57,11 @@ module Insika
           raise Insika::ValidationError, "message is required and non-empty (or a media part)"
         end
 
+        # `context` rides ahead of the message to the model; guardrails never read it.
+        unless p[:context].nil? || p[:context].is_a?(String)
+          raise Insika::ValidationError, "context must be a string"
+        end
+
         # session_id XOR history (both -> error; neither -> one-shot).
         if p[:session_id] && p[:history]
           raise Insika::ValidationError, "session_id and history are mutually exclusive"
@@ -230,7 +235,8 @@ module Insika
           origin: payload[:origin] || payload["origin"],
           event_id: payload[:event_id] || payload["event_id"],
           parts: payload[:parts] || payload["parts"],
-          customer: payload[:customer] || payload["customer"]
+          customer: payload[:customer] || payload["customer"],
+          context: payload[:context] || payload["context"]
         }
       end
 

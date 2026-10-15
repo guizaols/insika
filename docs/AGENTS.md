@@ -643,6 +643,23 @@ a running agent.
 
 Photos, voice notes and documents travel through the message contract as additive content parts, and the engine can hand generated images back the same way. See [Media](MEDIA.md).
 
+## Caller context next to the message
+
+A caller that wraps each message with its own text (channel rules, the products
+the customer was just shown) sends that text in `context`, not in `message`:
+
+```bash
+curl -X POST /v1/messages?stream=false -H "Authorization: Bearer $TOKEN" \
+  -d '{ "agent": "store-support", "session_id": "chat-7",
+        "context": "<channel>sms</channel>", "message": "show me more" }'
+```
+
+The model is asked `context`, a blank line, then `message`, and the transcript
+keeps the same text. The input guardrail, retrieval and routing read `message`
+alone, so a product name in `context` never blocks the customer, and the
+customer cannot slip past the guardrail by typing a caller's tags. Optional
+String; absent = the message alone.
+
 ## Customer-scoped memory and the right to be forgotten
 
 Memory is naturally **per customer, not per tenant**. A message that carries a

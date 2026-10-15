@@ -6,6 +6,10 @@ module Insika
   class TurnState
     attr_reader :task, :profile, :turn # turn identity (1-based)
     attr_accessor :message,            # input (Middleware may rewrite)
+                  :caller_context,     # payload `context`: text the caller sends WITH the message
+                  #                      (channel rules, what the customer already saw). The model
+                  #                      and the transcript get it ahead of the message; guardrails
+                  #                      and retrieval read `message` alone. nil = none.
                   :context,            # ContextPackage from the Builder
                   :allowed_tools,      # Resolution from the Policy Engine
                   :allowed_skills,
