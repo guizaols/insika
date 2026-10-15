@@ -99,11 +99,18 @@ module Insika
         (names & RUBY_LLM_ERROR_NAMES).any? || transport?(names)
       end
 
-      # A 402: the account behind THIS provider cannot pay (exhausted balance).
-      # Still :fatal for that node, but another provider's account may be fine —
-      # Reliability rotates on it instead of killing the turn.
-      def billing?(error)
-        class_names(error).include?("RubyLLM::PaymentRequiredError") || http_status(error) == 402
+      # :fatal for THIS node only: the account cannot pay (402), the key is wrong
+      # or lacks access (401/403), or the model does not exist there (404).
+      # Retrying the node never helps, but another node — another account,
+      # another model — may answer, so Reliability rotates instead of killing the
+      # turn. A 400 stays out: a malformed request fails on any node.
+      NODE_FATAL_ERROR_NAMES = %w[
+        RubyLLM::UnauthorizedError RubyLLM::PaymentRequiredError RubyLLM::ForbiddenError
+      ].freeze
+      NODE_FATAL_STATUSES = [401, 402, 403, 404].freeze
+
+      def node_fatal?(error)
+        (class_names(error) & NODE_FATAL_ERROR_NAMES).any? || NODE_FATAL_STATUSES.include?(http_status(error))
       end
 
       # The typed ProviderError the executor stores and emits.

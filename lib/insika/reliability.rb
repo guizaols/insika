@@ -6,8 +6,9 @@ module Insika
   # the circuit breaker — all as DATA on `AgentProfile#reliability`, never a
   # parallel code path. The failure classification is B9's
   # (ProviderErrorClassifier): ONLY :retryable / :rate_limited_* ever retry or
-  # rotate; a :fatal is re-raised immediately (a poisoned credential must not
-  # hammer N models).
+  # rotate; a :fatal is re-raised immediately (a malformed request fails on any
+  # model) — unless it is fatal only for that node (402/401/403/404:
+  # `ProviderErrorClassifier.node_fatal?`), which skips to the next node.
   #
   # Each ATTEMPT is a fresh chat built by the caller (the coordinator yields the
   # selection): a failed `ask` leaves its user message in the chat, so re-asking
@@ -101,10 +102,10 @@ module Insika
             retryable = retryable_failure?(e)
             raise unless retryable
             if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
-              # A 402 is fatal for THIS account only (balance gone): skip to the
-              # next node at once — no retry, no backoff, no breaker bump (an
-              # open primary circuit fails fast WITHOUT rotating).
-              raise unless ProviderErrorClassifier.billing?(e) && node != nodes.last
+              # Fatal for THIS node only (no balance, bad key, unknown model):
+              # skip to the next node at once — no retry, no backoff, no breaker
+              # bump (an open primary circuit fails fast WITHOUT rotating).
+              raise unless ProviderErrorClassifier.node_fatal?(e) && node != nodes.last
 
               record_failure(tenant, selection, nil, e, agent)
               break

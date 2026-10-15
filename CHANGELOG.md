@@ -109,10 +109,19 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
-- A provider account without balance (HTTP 402) no longer kills the turn: the
-  reliability loop moves straight to the next fallback node — no retry on the
-  account that cannot pay, no backoff, and no circuit-breaker count (an open
-  primary circuit fails fast without rotating). On the last node it still raises.
+- An error that is fatal only for one model or account no longer kills the turn:
+  no balance (402), a bad key or missing access (401/403) and a model the provider
+  does not have (404) move straight to the next fallback node — no retry on that
+  node, no backoff, and no circuit-breaker count (an open primary circuit fails
+  fast without rotating). On the last node it still raises; a 400 still never
+  rotates.
+- Studio model fields are pickers, not free text: the agent model, a new agent,
+  the playground pin and Settings' default, fallback (one slot per position) and
+  utility models list only `provider/model` refs of the configured providers
+  (their declared models, plus the chat models of key-only providers). A typed
+  `openai/gpt-x` under provider `openai` used to reach the API as
+  `openai/openai/gpt-x`. A stored value outside the list stays selectable, marked
+  "not configured".
 - Data-tools imported or edited in one worker now reach the others: the tool
   registry checks the config version token (at most every 2 s) and rebuilds when
   it moved, and the tool catalog follows. Before, the other workers kept the
