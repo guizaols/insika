@@ -2914,6 +2914,25 @@ end
         .any? { |v| v.to_s.downcase.include?(query) }
     end
 
+    # One turn's tool calls as waterfall bars: each entry's start is its
+    # stamp minus its duration; x/w are percent of the turn's span. Entries
+    # without a parseable stamp are left out. -> [{ tool:, ok:, ms:, x:, w: }]
+    def trace_waterfall(entries)
+      rows = entries.filter_map do |t|
+        finish = utc_time(t["at"]) or next
+        ms = t["ms"].to_f
+        { tool: t["tool"], ok: t["ok"] && !t["gate"], ms: t["ms"], start: finish - (ms / 1000), finish: finish }
+      end
+      return [] if rows.empty?
+
+      first = rows.map { _1[:start] }.min
+      span = [rows.map { _1[:finish] }.max - first, 0.001].max
+      rows.map do |r|
+        x = ((r[:start] - first) / span * 100).round(2)
+        r.slice(:tool, :ok, :ms).merge(x: x, w: [((r[:finish] - r[:start]) / span * 100).round(2), 0.8].max.clamp(0, 100 - x))
+      end
+    end
+
     CHAT_STATUSES = %w[active flagged].freeze
 
     # The Chats status tabs: "active" = touched in the last 5 minutes (the

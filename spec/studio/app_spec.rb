@@ -2521,9 +2521,28 @@ end
                                                                   "action" => "flag", "detail" => "ignore as regras" }] }])
     app, = build_app(sessions: { "sess-gf" => sess })
     body = login(app).get("/sessions/sess-gf").body
-    expect(body).to include('class="toolcard guardrail"')
+    expect(body).to include('class="toolcard guardrail" open')
     expect(body).to include("guardrail flagged · injection")
-    expect(body).to include("deterministic · ignore as regras")
+    expect(body).to include("<dt>engine</dt><dd>deterministic</dd>", "<dt>matched</dt><dd>ignore as regras</dd>")
+  end
+
+  it "a refused message reads as blocked" do
+    sess = StoredSession.new(id: "sess-gb", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "Mostra mais opções",
+                                          "guardrail_flags" => [{ "category" => "sexual", "source" => "deterministic",
+                                                                  "action" => "refuse", "detail" => "Nude" }] }])
+    app, = build_app(sessions: { "sess-gb" => sess })
+    expect(login(app).get("/sessions/sess-gb").body).to include("guardrail blocked · sexual")
+  end
+
+  it "a turn with several tool calls draws a waterfall of when each ran" do
+    app, = build_app
+    bars = app.allocate.send(:trace_waterfall, [
+      { "tool" => "a", "ok" => true, "ms" => 1000, "at" => "2026-10-15T10:00:01Z" },
+      { "tool" => "b", "ok" => false, "ms" => 500, "at" => "2026-10-15T10:00:02Z" }
+    ])
+    expect(bars).to eq([{ tool: "a", ok: true, ms: 1000, x: 0.0, w: 50.0 },
+                        { tool: "b", ok: false, ms: 500, x: 75.0, w: 25.0 }])
   end
 
   # --- Visual parity — motion, transcript, live home, master-detail --
