@@ -290,6 +290,7 @@ require_relative "insika/commands/revoke_contact"
 # the report destination's Studio mutation — delete one artifact
 # (a bus command, like every Studio mutation).
 require_relative "insika/commands/delete_artifact"
+require_relative "insika/commands/review_guardrail_flag"
 # in-session compaction (RFC-0044) — the summarizer (pure, injected
 # ask) and the boundary math; the trigger lives in the Executor, the
 # persistence in SessionStore, the read path in the Session provider.
