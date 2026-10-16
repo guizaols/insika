@@ -3710,6 +3710,17 @@ end
     expect(body).not_to include('data-session-id="sess-chef"')
   end
 
+  it "live and chats previews highlight channel markup tags, escaped" do
+    sess = StoredSession.new(id: "sess-tag", updated_at: Time.now.utc.iso8601, vars: { "agent" => "bia" },
+                             messages: [{ "role" => "assistant", "content" => "<carrossel/> Achei <script>x</script>" }])
+    app, = build_app(sessions: { "sess-tag" => sess })
+    client = login(app)
+    [client.get("/live").body, client.get("/chats").body].each do |body|
+      expect(body).to include('<span class="tag-token">&lt;carrossel/&gt;</span>')
+      expect(body).not_to include("<script>x")
+    end
+  end
+
   it "live: one card per recent conversation, with presence, flag and the live-floor hooks" do
     fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
                                vars: { "agent" => "bia", "customer" => "c1", "customer_name" => "Maria" },
@@ -3852,6 +3863,12 @@ end
     res = login(app).get("/")
     expect(res.status).to eq(302)
     expect(res.headers["location"]).to include("/studio/home")
+    # bare /studio, mounted as config.ru does: URLMap leaves an empty path
+    require "rack/urlmap"
+    client = Client.new(Rack::URLMap.new("/studio" => app))
+    client.post("/studio/login", params: { "token" => "s3cret", "_csrf" => csrf_from(client.get("/studio/login").body) })
+    bare = client.get("/studio")
+    expect([bare.status, bare.headers["location"]]).to eq([302, "/studio/home"])
   end
 
   it "the nav marks the current section active regardless of the /studio mount prefix" do

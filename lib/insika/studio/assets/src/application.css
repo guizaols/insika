@@ -1308,6 +1308,9 @@ fieldset.subgroup:has(> label.inherit input:checked) > :not(legend, label.inheri
   .markdown-preview ul, .markdown-preview ol { margin:.6rem 0; padding-left:1.4rem; }
   .markdown-preview li { margin:.2rem 0; }
   .markdown-preview code { background:var(--surface-2); padding:.1rem .35rem; border-radius:4px; }
+  /* A channel markup tag in agent text (<carrossel/>): visibly markup, not prose. */
+  .tag-token { font-family:var(--mono); font-size:.85em; color:var(--accent); background:var(--surface-2);
+               border:1px solid var(--line-2); padding:0 .3rem; border-radius:4px; white-space:nowrap; }
   .markdown-preview pre { margin:.6rem 0; }
   .markdown-preview pre code { background:none; padding:0; }
   .markdown-preview blockquote { margin:.6rem 0; padding:.2rem 0 .2rem 1rem; border-left:2px solid var(--accent-bg); color:var(--dim); }

@@ -26,7 +26,7 @@
           <%== render("_identity", locals: { id: customer || s.id, name: presence(session_customer_label(s)) || "anonymous", sub: presence(session_agent(s)) }) %>
           <span class="presence<%== ' present' if session_fresh?(s) %>" title="activity in the last 5 minutes"></span>
         </div>
-        <p class="live-preview"><%= preview ? preview[0, 140] : "No messages yet" %></p>
+        <p class="live-preview"><%== preview ? mark_tags(preview[0, 140]) : "No messages yet" %></p>
         <div class="live-card-foot">
           <span class="pill err live-flag">flagged</span>
           <span class="live-tools"></span>
