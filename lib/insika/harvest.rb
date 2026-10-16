@@ -219,6 +219,10 @@ module Insika
         return nil if ref.nil?
 
         provider, model = split_ref(ref)
+        # A bare "model" ref falls back to the agent's own provider (stamped
+        # by RunHarvest) — RubyLLM refuses a nil provider with
+        # assume_model_exists, so a bare ref used to fail every run.
+        provider ||= Coercion.presence(config && config["provider"])
         factory = ask_factory || ->(m, p) { ruby_llm_ask(m, p, llm: llm) }
         Miner.new(ask: factory.call(model, provider), model: ref)
       end

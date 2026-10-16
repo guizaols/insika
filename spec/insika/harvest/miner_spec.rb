@@ -159,6 +159,16 @@ RSpec.describe Insika::Harvest do
       expect(miner.model).to eq("deepseek-v4-flash")
     end
 
+    it "uses the agent's provider when the ref names none" do
+      seen = []
+      factory = ->(model, provider) { seen << [model, provider]; ->(_p) { "[]" } }
+      described_class::MinerFactory.build({ "miner" => { "model" => "deepseek-v4-flash" }, "provider" => "deepseek" },
+                                          ask_factory: factory)
+      described_class::MinerFactory.build({ "miner" => { "model" => "openai/gpt-x" }, "provider" => "deepseek" },
+                                          ask_factory: factory)
+      expect(seen).to eq([%w[deepseek-v4-flash deepseek], %w[gpt-x openai]])
+    end
+
     it "falls back to the platform utility_model" do
       miner = described_class::MinerFactory.build({ "enabled" => true },
                                                   utility_model: "utility-model",
