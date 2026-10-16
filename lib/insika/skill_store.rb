@@ -86,6 +86,9 @@ module Insika
     # -> [ { "content" =>, "at" => } ] most recent first.
     def versions(name, agent: nil) = record(name, agent)&.fetch("history", []) || []
 
+    # -> iso8601 of the current content's write, nil for an unknown skill.
+    def updated_at(name, agent: nil) = record(name, agent)&.fetch("updated_at", nil)
+
     # Restores version `index` as the current content (a new write). -> Hash.
     def restore(name, index, agent: nil)
       hist = versions(name, agent: agent)

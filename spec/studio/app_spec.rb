@@ -71,6 +71,8 @@ RSpec.describe Studio::App do
     def names(agent: nil) = agent.nil? ? store.keys : (own || {}).keys.select { |a, _| a == agent }.map(&:last)
     def get(name, agent: nil) = agent.nil? ? store[name.to_s] : (own || {})[[agent, name.to_s]]
     def agents = (own || {}).keys.map(&:first).uniq.sort
+    def updated_at(_name, agent: nil) = nil
+    def versions(_name, agent: nil) = []
   end
   ToolCatalogDouble = Struct.new(:tools) do
     def all = tools
@@ -180,7 +182,8 @@ RSpec.describe Studio::App do
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
                  proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
-                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil, model_metrics_store: nil)
+                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil, model_metrics_store: nil,
+                 skill_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -231,7 +234,7 @@ RSpec.describe Studio::App do
       event_stream: event_stream, config: { admin_token: admin_token },
       agent_file_store: AgentFileStoreDouble.new(agent_files, agent_file_meta),
       # own_skills: { [agent, name] => "<SKILL.md>" } — the per-agent specializations.
-      skill_store: SkillStoreDouble.new(stored_skills, own_skills),
+      skill_store: skill_store || SkillStoreDouble.new(stored_skills, own_skills),
       skill_catalog: SkillCatalogDouble.new(
         skills,
         # The catalog resolves the same NAME to the agent's own body: the store position
@@ -735,7 +738,17 @@ end
     expect(client.get("/agents/bia").body).to include("finalize_button")
   end
 
-   it "the agent detail shows the per-day outcome series for that agent only" do
+   it "the History chart also marks changes to the agent's own skills" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes", agent: "bia")
+    skills.write("doces", "---\nname: doces\n---\ndepois", agent: "bia")
+    app, = build_app(skill_store: skills)
+    body = login(app).get("/agents/bia").body
+    expect(body).to include('<span class="muted">skill</span> doces', "- antes", "+ depois",
+                            'href="/studio/agents/bia/skills/doces"')
+  end
+
+  it "the agent detail shows the per-day outcome series for that agent only" do
      app, = build_app(outcomes: [
                         { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
                           at: Time.utc(2026, 8, 12) },
