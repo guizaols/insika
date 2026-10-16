@@ -81,7 +81,7 @@ module Insika
         if probe_cases.any?
           pairwise = @pairwise_factory&.call
           if pairwise.nil?
-            return refusal(skill, "the probe is on but no pairwise judge is configured — " \
+            return refusal(skill, "probe_no_judge: the probe is on but no pairwise judge is configured — " \
                                   "configure the judge panel (Studio → Settings → Evals) or turn " \
                                   "`harvest.probe.enabled` off for '#{agent_id}'")
           end

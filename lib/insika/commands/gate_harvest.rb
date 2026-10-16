@@ -93,7 +93,8 @@ module Insika
         # a candidate failure: it parks the candidate at gated with both
         # reports and the named reason — the page shows the ruler's hole.
         # Only a conversion FAILURE (current worse than baseline) rejects.
-        if refused?(conversion_report)
+        # A probe with no judge is the same kind of hole: the ruler is missing.
+        if refused?(conversion_report) || eval_report.reason.to_s.start_with?("probe_no_judge")
           gated = @harvest_store.attach_gate(candidate.id,
                                              eval_gate: eval_report.to_h,
                                              conversion_gate: conversion_report.to_h,
@@ -132,8 +133,8 @@ module Insika
         sessions = Array(candidate.origin).filter_map { |sid| @session_store.find(sid)&.messages&.to_a }
         cases = Insika::Harvest::Probe.cases(
           sessions, evidence_turns: candidate.evidence_turns,
-          max_cases: (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i,
-          max_turns: (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i
+          max_cases: (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i.clamp(1, 10),
+          max_turns: (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i.clamp(1, 10)
         )
         cases.empty? ? "probe_no_cases" : cases
       end
