@@ -411,7 +411,9 @@ module Deploy
           token: ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"]
         )
       },
-      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) }
+      judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) },
+      # the probe: the same configured judges, asked "which served better?"
+      pairwise_factory: -> { Insika::Evals::JudgePanel.pairwise((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT)&.first }
     )
     # The second ruler: the store's funnel metric against the frozen baseline.
     # nil criterion -> the gate refuses with :no_criterion.
@@ -436,7 +438,7 @@ module Deploy
     BUS.register(:gate_harvest, Insika::Commands::GateHarvest.new(
       harvest_store: GRAPH.harvest_store, gate: HARVEST_GATE,
       conversion_gate: HARVEST_CONVERSION, criterion: HARVEST_CRITERION,
-      event_stream: EVENT_STREAM
+      event_stream: EVENT_STREAM, profiles: PROFILE_SOURCE, session_store: SESSION_STORE
     ))
     BUS.register(:promote_harvest, Insika::Commands::PromoteHarvest.new(
       harvest_store: GRAPH.harvest_store, skill_store: SKILL_STORE, skill_catalog: CATALOG,
