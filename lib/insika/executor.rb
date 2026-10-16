@@ -2980,11 +2980,11 @@ module Insika
       PROMPT
     end
 
-    # Simulator (`sim-<chat>`) and eval (`eval-<id>`) sessions are synthetic
-    # traffic: they must not teach the production agent. A tenant-scoped id
+    # Simulator (`sim-<chat>`), eval (`eval-<id>`) and harvest probe (`probe-<tag>`)
+    # sessions are synthetic traffic: they must not teach the production agent. A tenant-scoped id
     # ("<tenant>:sim-…") is judged by its last segment.
     def simulated_session?(session_id)
-      session_id.to_s.split(":").last.to_s.start_with?("sim-", "eval-")
+      session_id.to_s.split(":").last.to_s.start_with?("sim-", "eval-", "probe-")
     end
 
     # Only what people said, PII-redacted — a `role: tool` message is

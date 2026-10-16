@@ -40,7 +40,8 @@ module Insika
       # (the same one the refinement gate receives).
       def initialize(profiles:, agent_files:, goldens:, baselines:, skill_store:,
                      skill_catalog:, transport_factory:, capabilities_factory: nil,
-                     judge_factory: nil, pairwise_factory: nil, tolerance: DEFAULT_TOLERANCE)
+                     judge_factory: nil, pairwise_factory: nil, session_store: nil,
+                     tolerance: DEFAULT_TOLERANCE)
         @profiles = profiles
         @agent_files = agent_files
         @goldens = goldens
@@ -51,6 +52,7 @@ module Insika
         @capabilities_factory = capabilities_factory
         @judge_factory = judge_factory
         @pairwise_factory = pairwise_factory
+        @session_store = session_store # the probe sessions to delete after
         @tolerance = tolerance
       end
 
@@ -86,7 +88,9 @@ module Insika
         end
 
         clone_id = clone_id_for(agent_id, run_id)
-        tag = run_id.to_s.delete("-")[0, 8]
+        # Fresh per gate call: candidates of one harvest run share run_id, and
+        # the server continues an existing session by conv id.
+        tag = SecureRandom.hex(4)
         begin
           profile = build_clone(agent_id, clone_id)
           before = converse_all(clone_id, probe_cases, tag, "before")
@@ -102,12 +106,15 @@ module Insika
           return report unless report.passed && probe_cases.any?
 
           after = converse_all(clone_id, probe_cases, tag, "after")
-          probe = Probe.verdict(before.zip(after).map { |b, a| pairwise.compare_texts(ours: a, theirs: b) })
+          # A case with an errored turn on either side expresses no preference:
+          # "no answer" against an answer is a timeout, not a win.
+          probe = Probe.verdict(before.zip(after).map { |b, a| b && a ? pairwise.compare_texts(ours: a, theirs: b) : nil })
           report.with(passed: probe["passed"], reason: probe["reason"], probe: probe)
         rescue StandardError => e
           refusal(skill, "gate failed to run: #{e.class}: #{e.message}")
         ensure
           destroy_clone(clone_id)
+          destroy_probe_sessions(tag) if probe_cases.any?
         end
       end
 
@@ -172,9 +179,9 @@ module Insika
         @skill_catalog.reload
       end
 
-      # One conversation per probe case, on a fresh conv id per phase. Stops a
-      # case at its first errored turn — the judge reads what ran. Redacted
-      # before it leaves for the judge, the same masking the miner uses.
+      # One conversation per probe case, on a fresh conv id per phase. A case
+      # that hit an errored turn is nil (no comparison). Redacted before it
+      # leaves for the judge, the same masking the miner uses.
       def converse_all(clone_id, probe_cases, tag, phase)
         return [] if probe_cases.empty?
 
@@ -186,8 +193,23 @@ module Insika
             ran << transport.turn(agent: clone_id, conv: conv, message: message).result
             break if ran.last.error
           end
+          next nil if ran.last&.error
+
           Insika::Safety::Detectors.redact(Insika::Evals::Pairwise.transcript(turns, ran)).first
         end
+      end
+
+      # The probe sessions hold raw customer text under ids no customer var
+      # points at (LGPD forget cannot find them), so they go with the clone.
+      # ponytail: scans every session id; an index by prefix if gating gets hot.
+      def destroy_probe_sessions(tag)
+        return unless @session_store
+
+        prefix = "probe-#{tag}-"
+        @session_store.each_id.select { |id| id.to_s.split(":").last.to_s.start_with?(prefix) }
+                      .each { |id| @session_store.delete(id) }
+      rescue StandardError => e
+        warn "[harvest] could not delete the probe sessions '#{prefix}*': #{e.class}: #{e.message}"
       end
 
       def current_files(agent_id)
@@ -246,6 +268,9 @@ module Insika
           nil # a leftover skill record is clutter, never servable without the profile
         end
         @profiles.delete(clone_id)
+        # the catalog keeps the clone's skills in memory until reloaded — the
+        # next gate's "before" pass must not be served this candidate
+        @skill_catalog.reload
       rescue StandardError => e
         warn "[harvest] could not delete the gate clone '#{clone_id}': #{e.class}: #{e.message}"
       end

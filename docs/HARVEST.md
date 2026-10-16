@@ -96,7 +96,12 @@ A human approves every promotion either way.
 
 Refusals, never passes: probe on with no pairwise judge configured
 (the gate refuses), probe on with no origin turns left (the candidate
-parks at `gated` with `probe_no_cases`). The after pass and its judge
+parks at `gated` with `probe_no_cases`), probe on for a candidate mined
+from a multi-session window (`probe_ambiguous_origin` — the miner does not
+say which session a skill came from; the automatic loop mines one session
+at a time, so its candidates are exact). A case with an errored turn on
+either side counts as no preference. The replay sessions are deleted with
+the clone and never feed knowledge extraction. The after pass and its judge
 calls run only when the golden replay passed. Cost per candidate:
 2 × cases × turns agent turns, plus 2 judge calls per judge per case.
 

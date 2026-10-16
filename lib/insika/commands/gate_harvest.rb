@@ -68,14 +68,14 @@ module Insika
           return parked
         end
 
-        # The probe is on but nothing is left to replay (origin purged by
-        # retention): a missing ruler parks, it never passes.
+        # The probe is on but cannot replay the skill's own conversation: a
+        # missing ruler parks, it never passes.
         probe_cases = probe_cases_for(candidate)
-        if probe_cases == :no_cases
+        if probe_cases.is_a?(String)
           return @harvest_store.attach_gate(
             candidate.id,
-            eval_gate: { "passed" => false, "reason" => "probe_no_cases" },
-            conversion_gate: { "passed" => false, "reason" => "probe_no_cases" },
+            eval_gate: { "passed" => false, "reason" => probe_cases },
+            conversion_gate: { "passed" => false, "reason" => probe_cases },
             criterion_sha: nil
           )
         end
@@ -119,11 +119,15 @@ module Insika
 
       private
 
-      # -> [] (probe off), :no_cases (on, but nothing to replay — parks), or
-      # the customer turns to replay.
+      # -> [] (probe off), the turns to replay, or a park reason (String):
+      # "probe_ambiguous_origin" — a manual run mines a whole window and the
+      # miner does not say which session a skill came from (the engine loop
+      # mines one session at a time, so its origin is exact);
+      # "probe_no_cases" — nothing left to replay (purged by retention).
       def probe_cases_for(candidate)
         config = probe_config(candidate.agent)
         return [] unless config
+        return "probe_ambiguous_origin" if Array(candidate.origin).size > 1
 
         sessions = Array(candidate.origin).filter_map { |sid| @session_store.find(sid)&.messages&.to_a }
         cases = Insika::Harvest::Probe.cases(
@@ -131,7 +135,7 @@ module Insika
           max_cases: (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i,
           max_turns: (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i
         )
-        cases.empty? ? :no_cases : cases
+        cases.empty? ? "probe_no_cases" : cases
       end
 
       def probe_config(agent)
