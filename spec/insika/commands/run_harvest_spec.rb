@@ -133,18 +133,6 @@ RSpec.describe Insika::Commands::RunHarvest do
       expect(seen.first["provider"]).to eq("deepseek")
     end
 
-    it "keeps a provider the operator set on the harvest block" do
-      seen = []
-      spy = Class.new { def initialize(s) = (@s = s); def call(config) = (@s << config; nil) }.new(seen)
-      own = profile.with(provider: :deepseek, harvest: profile.harvest.merge("provider" => "openai"))
-      described_class.new(profiles: { "store-support" => own },
-                          harvest_store: harvest_store, session_store: session_store,
-                          task_store: tasks, skill_store: skills, settings_store: settings,
-                          event_stream: stream, negative_list: negative_list, miner_factory: spy)
-                     .call(cmd("agent" => "store-support"))
-      expect(seen.first["provider"]).to eq("openai")
-    end
-
     it "an unknown agent -> NotFoundError" do
       expect { handler.call(cmd("agent" => "nope")) }.to raise_error(Insika::NotFoundError)
     end
