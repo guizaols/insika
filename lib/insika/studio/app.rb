@@ -2691,22 +2691,31 @@ end
       @change_days = (0...CHANGE_WINDOW_DAYS).map { |i| [first_day + i, 0] }.to_h
       times.each { |t| @change_days[t.to_date] += 1 if @change_days.key?(t.to_date) }
       @change_start = Time.utc(first_day.year, first_day.month, first_day.day)
-      @changes = @prompt_files.flat_map do |pf|
-        # [current, newest older, …]: write i replaced write i + 1, which is
-        # history index i — the version the Restore form puts back.
-        writes = [{ "content" => pf[:content], "at" => pf[:updated_at] }] + pf[:versions]
+      # [current, newest older, …]: write i replaced write i + 1, which is
+      # history index i — the version a prompt's Restore form puts back.
+      changes_of = lambda do |label, kind, writes|
         writes.each_cons(2).each_with_index.filter_map do |(after, before), i|
           at = parse_time(after["at"])
           next unless at && at >= @change_start
 
           old_lines = before["content"].to_s.lines.map(&:chomp).reject { |l| l.strip.empty? }
           new_lines = after["content"].to_s.lines.map(&:chomp).reject { |l| l.strip.empty? }
-          { file: pf[:name], at: at, version: i,
+          { file: label, kind: kind, at: at, version: i,
             removed: old_lines - new_lines, added: new_lines - old_lines,
             before: covered_from && covered_from <= at - week ? times.count { |t| t >= at - week && t < at } : nil,
             after: at + week <= now ? times.count { |t| t >= at && t < at + week } : nil }
         end
-      end.sort_by { |c| c[:at] }.reverse
+      end
+      prompts = @prompt_files.flat_map do |pf|
+        changes_of.call(pf[:name], :prompt, [{ "content" => pf[:content], "at" => pf[:updated_at] }] + pf[:versions])
+      end
+      # this agent's own skill versions (shared skills change for every agent)
+      skills = insika[:skill_store]
+      own = skills ? skills.names(agent: id).flat_map do |name|
+        changes_of.call(name, :skill, [{ "content" => skills.get(name, agent: id), "at" => skills.updated_at(name, agent: id) }] +
+                                      skills.versions(name, agent: id))
+      end : []
+      @changes = (prompts + own).sort_by { |c| c[:at] }.reverse
     end
 
     COLD_AGENT_DAYS = 3

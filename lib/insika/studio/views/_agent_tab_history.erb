@@ -2,7 +2,7 @@
 <section class="section" id="history" data-tabs-target="panel">
   <div class="section-head">
     <h2>What changed, and what it did</h2>
-    <p class="muted"><%= @change_primary ? "Primary outcome · #{@change_primary}" : "All outcomes" %> per day, last <%= @change_days.size %> days. A dashed line marks each prompt-file change.</p>
+    <p class="muted"><%= @change_primary ? "Primary outcome · #{@change_primary}" : "All outcomes" %> per day, last <%= @change_days.size %> days. A dashed line marks each change to a prompt file or to one of this agent's skills.</p>
   </div>
   <div class="card">
     <% max = [@change_days.values.max || 0, 1].max; span = @change_days.size * 86_400.0 %>
@@ -17,19 +17,19 @@
       <% end %>
       <% @changes.each do |ch| %>
         <% x = format('%.1f', (ch[:at] - @change_start) / span * 700.0) %>
-        <line class="change-mark" x1="<%= x %>" y1="0" x2="<%= x %>" y2="160" vector-effect="non-scaling-stroke"><title><%= ch[:file] %> · <%= ch[:at].strftime('%b %-d %H:%M UTC') %></title></line>
+        <line class="change-mark" x1="<%= x %>" y1="0" x2="<%= x %>" y2="160" vector-effect="non-scaling-stroke"><title><%= ch[:kind] == :skill ? "skill " : "" %><%= ch[:file] %> · <%= ch[:at].strftime('%b %-d %H:%M UTC') %></title></line>
       <% end %>
       <line class="barchart-axis-line" x1="0" y1="160" x2="700" y2="160" />
     </svg>
     <div class="barchart-axis"><span><%= @change_days.keys.first.strftime('%b %-d') %></span><span>today</span></div>
   </div>
   <% if @changes.empty? %>
-    <div class="empty">No prompt-file changes in the last <%= @change_days.size %> days.</div>
+    <div class="empty">No prompt or skill changes in the last <%= @change_days.size %> days.</div>
   <% end %>
   <% @changes.each do |ch| %>
     <div class="card">
       <div class="drill-section-head">
-        <h3><%= ch[:file] %></h3>
+        <h3><% if ch[:kind] == :skill %><span class="muted">skill</span> <% end %><%= ch[:file] %></h3>
         <span class="muted mono"><%= ch[:at].strftime('%Y-%m-%d %H:%M UTC') %></span>
       </div>
       <% unless ch[:removed].empty? && ch[:added].empty? %>
@@ -42,12 +42,16 @@
           <span class="muted">Outcomes 7 days after vs 7 days before: not enough data.</span>
         <% end %>
       </p>
-      <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/restore">
-        <%== csrf_tag %>
-        <input type="hidden" name="file" value="<%= ch[:file] %>">
-        <input type="hidden" name="version" value="<%= ch[:version] %>">
-        <button type="submit" class="ghost">Restore the version before</button>
-      </form>
+      <% if ch[:kind] == :skill %>
+        <a href="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/skills/<%= Rack::Utils.escape(ch[:file]) %>" data-turbo-frame="_top">Open the skill</a>
+      <% else %>
+        <form method="post" action="/studio/agents/<%= Rack::Utils.escape(@agent.id) %>/prompts/restore">
+          <%== csrf_tag %>
+          <input type="hidden" name="file" value="<%= ch[:file] %>">
+          <input type="hidden" name="version" value="<%= ch[:version] %>">
+          <button type="submit" class="ghost">Restore the version before</button>
+        </form>
+      <% end %>
     </div>
   <% end %>
 
