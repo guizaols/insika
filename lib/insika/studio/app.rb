@@ -1004,7 +1004,9 @@ module Studio
       # renders the two right zones alone.
       r.on "sessions" do
         r.on String do |sid|
-          sid = utf8(sid)
+          # Roda captures the segment URL-encoded; ids may hold a colon
+          # (tenant:session), which every link escapes as %3A.
+          sid = Rack::Utils.unescape_path(utf8(sid))
           # POST /studio/sessions/:id/guardrail — a person's verdict on one
           # guardrail flag (false positive / resolved / undo).
           r.post "guardrail" do

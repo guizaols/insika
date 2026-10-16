@@ -1422,6 +1422,11 @@ end
       expect(client.get("/sessions/s-1").body).to include("bia · 5511999998888")
     end
 
+    it "a session id with a colon opens from its escaped link" do
+      app, = build_app(sessions: { "t:s-1" => sess("t:s-1", "bia") })
+      expect(login(app).get("/sessions/t%3As-1").status).to eq(200)
+    end
+
     it "chats?status=flagged keeps only conversations a guardrail flagged" do
       flagged = sess("s-1", "bia")
       flagged.messages.first["guardrail_flags"] = [{ "category" => "sexual" }]
