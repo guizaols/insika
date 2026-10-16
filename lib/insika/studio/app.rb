@@ -1006,7 +1006,7 @@ module Studio
         r.on String do |sid|
           # Roda captures the segment URL-encoded; ids may hold a colon
           # (tenant:session), which every link escapes as %3A.
-          sid = Rack::Utils.unescape_path(utf8(sid))
+          sid = utf8(Rack::Utils.unescape_path(sid))
           # POST /studio/sessions/:id/guardrail — a person's verdict on one
           # guardrail flag (false positive / resolved / undo).
           r.post "guardrail" do
@@ -1059,7 +1059,7 @@ module Studio
         r.on String do |raw_scope|
           # Roda captures the segment URL-encoded; a customer cell contains
           # colons (memory:acme:c-1), so decode before parsing.
-          scope = Rack::Utils.unescape_path(utf8(raw_scope))
+          scope = utf8(Rack::Utils.unescape_path(raw_scope))
           cell = Insika::MemoryStore.parse_cell(scope)
 
           r.get { render_customer(scope, cell) }
@@ -1979,8 +1979,10 @@ end
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
-      agent_performance(id, outcomes)
-      agent_changes(id, outcomes)
+      # one read of this agent's outcomes, shared by the performance and History tabs
+      mine = Array(outcomes&.all(agent: id))
+      agent_performance(id, mine)
+      agent_changes(id, mine)
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
       # the per-agent cache-hit series (nil store -> the view's
@@ -2653,7 +2655,7 @@ end
     # The agent page's Performance tab: per fixed period (24h/7d/30d) the
     # conversations and messages it touched (session stats), its outcomes, and
     # the model/turn numbers from ModelMetricsStore#windows (one read).
-    def agent_performance(id, outcomes)
+    def agent_performance(id, records)
       now = Time.now.utc
       @perf = insika[:model_metrics_store]&.windows(agent: id, now: now) || {}
       store = insika[:session_store]
@@ -2662,7 +2664,7 @@ end
               else every_record(store)
               end
       mine = agent_sessions(stats, id)
-      outcome_times = Array(outcomes&.all(agent: id)).map { |r| r.at.to_s }
+      outcome_times = records.map { |r| r.at.to_s }
       @perf_activity = Insika::ModelMetricsStore::PERIODS.to_h do |period, seconds|
         cut = now - seconds
         touched = mine.select { |s| (t = utc_time(s.updated_at)) && t >= cut }
@@ -2679,10 +2681,9 @@ end
     # one marker per prompt-file write in that window, and per write the
     # outcome count 7 days after vs 7 days before. Plain counts; nil = that
     # window isn't whole yet (after) or predates the outcome data (before).
-    def agent_changes(id, outcomes)
+    def agent_changes(id, records)
       now = Time.now.utc
       week = CHANGE_COMPARE_DAYS * 86_400
-      records = Array(outcomes&.all(agent: id))
       covered_from = parse_time(records.last&.at) # all() is newest first
       @change_primary = primary_stage_for(id)
       counted = @change_primary ? records.select { |r| r.outcome == @change_primary } : records
@@ -3120,6 +3121,8 @@ end
     # the tools its turn called as `tools_called`. Nothing is written here — the
     # operator adds the rubric and saves through the same POST as any case.
     def session_case_yaml(sid, reply)
+      return nil if reply.negative?
+
       session = insika[:session_store]&.find(sid) or return nil
       msgs = Array(session.messages).first(reply + 1)
       panel = why_panels(msgs, [], [])[reply] or return nil
@@ -3130,7 +3133,11 @@ end
       YAML.dump({ "id" => "#{agent}-#{sid[0, 8]}-#{reply}", "agent" => agent,
                   "turns" => said.select { _1["role"] == "user" }.map { { "user" => message_content(_1["content"]).to_s } },
                   "reference" => { "source" => "session #{sid}",
-                                   "messages" => said.map { { "role" => _1["role"], "text" => message_content(_1["content"]).to_s } } },
+                                   # origin keeps an operator-typed reply from being judged as the model's
+                                   "messages" => said.map do |m|
+                                     { "role" => m["role"], "text" => message_content(m["content"]).to_s,
+                                       "origin" => Insika::MessageOrigin.origin_of(m) }.compact
+                                   end },
                   "expect" => expect })
     end
 
@@ -3945,7 +3952,8 @@ end
     # -> [{ from:, to:, lost:, of:, biggest: }]
     def funnel_drops(decl, counts)
       rows = decl.stages.each_cons(2).map do |a, b|
-        { from: a, to: b, lost: counts[a].to_i - counts[b].to_i, of: counts[a].to_i, biggest: false }
+        # stages are counted apart, so a later one can outgrow the earlier: no negative loss
+        { from: a, to: b, lost: [counts[a].to_i - counts[b].to_i, 0].max, of: counts[a].to_i, biggest: false }
       end
       top = rows.max_by { |row| row[:lost] }
       top[:biggest] = true if top && top[:lost].positive?
@@ -3967,22 +3975,32 @@ end
       "gone" => "Conversation no longer stored"
     }.freeze
     DROP_LIST_CAP = 10
+    # Each classified session costs two reads (session + tool trace): only the
+    # newest ones are classified; the view says how many were left out.
+    DROP_CLASSIFY_CAP = 200
 
     # The conversations that reached `stage` but not the next one in the
     # period: each session's furthest stage over its outcome records (the
     # fold's own advance_on mapping), kept when it is exactly `stage`.
-    # -> [[reason, [session_id]]] in DROP_REASONS order | nil (no such drop)
+    # -> [[reason, [session_id]]] in DROP_REASONS order, newest first, over at
+    # most DROP_CLASSIFY_CAP sessions (@drop_total = all of them) | nil (no such drop)
     def funnel_drop_sessions(decl, tenant, agent, stage, period)
       index = decl.index_of(stage)
       outcomes = insika[:outcome_store]
       return nil unless index && index < decl.stages.length - 1 && outcomes
 
       furthest = Hash.new(-1)
+      latest = {}
       outcomes.for_pair(tenant: tenant, agent: agent, since_date: (Date.today - period).iso8601).each do |r|
         i = decl.index_of(decl.advance_on[r.outcome].to_s)
-        furthest[r.session_id] = [furthest[r.session_id], i].max if i && !r.session_id.to_s.empty?
+        next unless i && !r.session_id.to_s.empty?
+
+        furthest[r.session_id] = [furthest[r.session_id], i].max
+        latest[r.session_id] = [latest[r.session_id].to_s, r.at.to_s].max
       end
-      furthest.select { |_, i| i == index }.keys.sort
+      stuck = furthest.select { |_, i| i == index }.keys.sort_by { |sid| latest[sid] }.reverse
+      @drop_total = stuck.size
+      stuck.first(DROP_CLASSIFY_CAP)
               .group_by { |sid| drop_reason(sid) }
               .sort_by { |reason, _| DROP_REASONS.keys.index(reason) }
     end

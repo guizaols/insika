@@ -3,7 +3,7 @@
     flag from the stored session); live_floor_controller moves the cards over
     /studio/events: tool chips, "agent is writing…" while a turn runs, guardrail
     flags. Read-only — every card links to the session viewer. %>
-<div data-controller="live-floor" data-live-floor-scoped-value="<%= @agent ? "true" : "false" %>">
+<div data-controller="live-floor" data-live-floor-scoped-value="<%= @agent ? "true" : "false" %>" data-live-floor-max-value="<%= Studio::App::LIVE_CARDS %>">
   <header class="page-head">
     <div>
       <%== crumbs_for("Live") %>
