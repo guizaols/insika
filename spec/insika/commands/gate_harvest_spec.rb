@@ -43,11 +43,11 @@ RSpec.describe Insika::Commands::GateHarvest do
                                                 snapshot_ref: "funnel:platform:store-support:2026-08-16")
   end
 
-  def seed_candidate
+  def seed_candidate(origin: ["acme:sess_1"], evidence_turns: [])
     harvest_store.create_candidate(
       run_id: "run-1", agent: "store-support", name: "pix-recovery",
       description: "d", body: "---\nname: pix-recovery\n---\nbody", rationale: "r",
-      origin: ["acme:sess_1"], proposer: "utility_model"
+      origin: origin, evidence_turns: evidence_turns, proposer: "utility_model"
     )
   end
 
@@ -146,4 +146,63 @@ RSpec.describe Insika::Commands::GateHarvest do
     expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError)
     expect { handler.call(cmd("candidate_id" => "nope")) }.to raise_error(Insika::NotFoundError)
   end
+
+describe "the probe" do
+  let(:session_store) { Insika::SessionStore.new(store: backend) }
+  let(:config_store) { Insika::ConfigStore.new(store: backend) }
+  let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
+  let(:seen) { [] }
+
+  subject(:handler) do
+    described_class.new(harvest_store: harvest_store, gate: gate, conversion_gate: conversion_gate,
+                        criterion: criterion, event_stream: stream,
+                        profiles: profiles, session_store: session_store)
+  end
+
+  def seed_profile(probe:)
+    profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m", provider: :deepseek,
+                                            harvest: { "probe" => probe }))
+  end
+
+  def seed_origin(id = "acme:sess_1")
+    session_store.create(id: id, vars: { "agent" => "store-support" })
+    session_store.append_messages(id, [{ "role" => "user", "content" => "tem pix?" },
+                                       { "role" => "assistant", "content" => "não sei" }])
+  end
+
+  before do
+    allow(gate).to receive(:score) do |agent_id:, skill:, run_id:, probe_cases: []|
+      seen << probe_cases
+      Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: true, reason: nil,
+                                        cases: 1, passed_cases: 1, baseline_cases: 1,
+                                        regressions: [], report: {}, tokens: nil, cached: nil, probe: nil)
+    end
+    allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))
+  end
+
+  it "sends the origin customer turns when the agent turned the probe on" do
+    seed_profile(probe: { "enabled" => true })
+    seed_origin
+    c = seed_candidate(evidence_turns: [1])
+    handler.call(cmd("candidate_id" => c.id))
+    expect(seen).to eq([[["tem pix?"]]])
+  end
+
+  it "sends no probe cases when the probe is off" do
+    seed_profile(probe: { "enabled" => false })
+    seed_origin
+    c = seed_candidate
+    handler.call(cmd("candidate_id" => c.id))
+    expect(seen).to eq([[]])
+  end
+
+  it "parks the candidate when the probe is on but the origin is gone" do
+    seed_profile(probe: { "enabled" => true })
+    c = seed_candidate(origin: ["acme:deleted"])
+    result = handler.call(cmd("candidate_id" => c.id))
+    expect(result.status).to eq("gated")
+    expect(result.eval_gate).to include("passed" => false, "reason" => "probe_no_cases")
+    expect(seen).to be_empty
+  end
+end
 end

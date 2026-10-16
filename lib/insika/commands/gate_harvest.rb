@@ -13,12 +13,17 @@ module Insika
     # candidate is terminal — the same finding must re-surface with new
     # evidence, no silent retry).
     class GateHarvest
-      def initialize(harvest_store:, gate:, conversion_gate:, criterion: nil, event_stream:)
+      # profiles + session_store: the probe inputs (the agent opt-in and the
+      # origin turns). Both nil -> no probe, the gate as before.
+      def initialize(harvest_store:, gate:, conversion_gate:, criterion: nil, event_stream:,
+                     profiles: nil, session_store: nil)
         @harvest_store = harvest_store
         @gate = gate
         @conversion_gate = conversion_gate
         @criterion = criterion
         @event_stream = event_stream
+        @profiles = profiles
+        @session_store = session_store
       end
 
       # payload: { candidate_id: } (tenant from command.meta — WS1)
@@ -63,10 +68,23 @@ module Insika
           return parked
         end
 
+        # The probe is on but nothing is left to replay (origin purged by
+        # retention): a missing ruler parks, it never passes.
+        probe_cases = probe_cases_for(candidate)
+        if probe_cases == :no_cases
+          return @harvest_store.attach_gate(
+            candidate.id,
+            eval_gate: { "passed" => false, "reason" => "probe_no_cases" },
+            conversion_gate: { "passed" => false, "reason" => "probe_no_cases" },
+            criterion_sha: nil
+          )
+        end
+
         skill = { "name" => candidate.name, "description" => candidate.description,
                   "body" => candidate.body, "triggers" => candidate.triggers }
+        probe_kw = probe_cases.empty? ? {} : { probe_cases: probe_cases }
         eval_report = @gate.score(agent_id: candidate.agent, skill: skill,
-                                  run_id: candidate.run_id)
+                                  run_id: candidate.run_id, **probe_kw)
         conversion_report = @conversion_gate.call(tenant: command.meta[:tenant],
                                                   agent: candidate.agent)
         criterion_sha = @criterion ? @criterion.sha : nil
@@ -100,6 +118,28 @@ module Insika
       end
 
       private
+
+      # -> [] (probe off), :no_cases (on, but nothing to replay — parks), or
+      # the customer turns to replay.
+      def probe_cases_for(candidate)
+        config = probe_config(candidate.agent)
+        return [] unless config
+
+        sessions = Array(candidate.origin).filter_map { |sid| @session_store.find(sid)&.messages&.to_a }
+        cases = Insika::Harvest::Probe.cases(
+          sessions, evidence_turns: candidate.evidence_turns,
+          max_cases: (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i,
+          max_turns: (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i
+        )
+        cases.empty? ? :no_cases : cases
+      end
+
+      def probe_config(agent)
+        return nil unless @profiles && @session_store
+
+        config = (Coercion.deep_stringify(@profiles.fetch(agent)&.harvest) || {})["probe"]
+        config.is_a?(Hash) && Coercion.truthy?(config["enabled"]) ? config : nil
+      end
 
       # The D6 refusals: the ruler is MISSING, not moving — the candidate
       # parks. Anything else with passed: false is a real failure.
