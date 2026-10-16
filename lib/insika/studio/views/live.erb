@@ -3,11 +3,14 @@
     flag from the stored session); live_floor_controller moves the cards over
     /studio/events: tool chips, "agent is writing…" while a turn runs, guardrail
     flags. Read-only — every card links to the session viewer. %>
-<div data-controller="live-floor">
+<div data-controller="live-floor" data-live-floor-scoped-value="<%= @agent ? "true" : "false" %>">
   <header class="page-head">
     <div>
       <%== crumbs_for("Live") %>
       <h1>Live<span class="sub">Conversations happening now</span></h1>
+    </div>
+    <div class="head-actions">
+      <%== agent_filter_form("/studio/live", @agent) %>
     </div>
   </header>
 

@@ -3005,8 +3005,18 @@ end
     LIVE_CARDS = 24
 
     # The live floor's baseline: the latest conversations, newest first.
+    # ?agent= narrows the cards to one agent: newest first over the stats (a
+    # few bytes each), then only the shown sessions are read whole.
     def render_live
-      @sessions = recent_sessions(limit: LIVE_CARDS)
+      @agent = presence(request.params["agent"])
+      store = insika[:session_store]
+      @sessions = if @agent && store.respond_to?(:all_stats)
+                    store.all_stats.select { |s| session_agent(s) == @agent }
+                         .sort_by { |s| s.updated_at.to_s }.last(LIVE_CARDS).reverse
+                         .filter_map { |s| store.find(s.id) }
+                  else
+                    agent_sessions(recent_sessions(limit: LIVE_CARDS), @agent)
+                  end
       view("live")
     end
 
