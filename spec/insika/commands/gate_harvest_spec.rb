@@ -207,6 +207,27 @@ RSpec.describe Insika::Commands::GateHarvest do
       expect(seen).to be_empty
     end
 
+    it "survives a nonsense max_turns/max_cases — clamped, never a crash" do
+      seed_profile(probe: { "enabled" => true, "max_turns" => -1, "max_cases" => 0 })
+      seed_origin
+      c = seed_candidate
+      handler.call(cmd("candidate_id" => c.id))
+      expect(seen).to eq([[["tem pix?"]]])
+    end
+
+    it "parks, never rejects, when the gate says the probe has no judge — a config hole" do
+      seed_profile(probe: { "enabled" => true })
+      seed_origin
+      allow(gate).to receive(:score) do |skill:, **|
+        Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: false,
+                                          reason: "probe_no_judge: the probe is on but no pairwise judge is configured",
+                                          cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [],
+                                          report: nil, tokens: nil, cached: nil, probe: nil)
+      end
+      result = handler.call(cmd("candidate_id" => seed_candidate.id))
+      expect(result.status).to eq("gated")
+    end
+
     it "parks the candidate when the probe is on but the origin is gone" do
       seed_profile(probe: { "enabled" => true })
       c = seed_candidate(origin: ["acme:deleted"])

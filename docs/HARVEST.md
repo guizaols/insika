@@ -94,8 +94,8 @@ point of the probe: the origin conversation is a test case nobody had to
 write. With golden cases, the golden veto runs first and the probe second.
 A human approves every promotion either way.
 
-Refusals, never passes: probe on with no pairwise judge configured
-(the gate refuses), probe on with no origin turns left (the candidate
+Refusals park at `gated`, never pass and never reject: probe on with no
+pairwise judge configured (`probe_no_judge`), probe on with no origin turns left (the candidate
 parks at `gated` with `probe_no_cases`), probe on for a candidate mined
 from a multi-session window (`probe_ambiguous_origin` — the miner does not
 say which session a skill came from; the automatic loop mines one session

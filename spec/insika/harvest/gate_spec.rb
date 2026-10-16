@@ -354,7 +354,7 @@ RSpec.describe Insika::Harvest::Gate do
       report = probe_gate(ProbeTransportDouble.new(golden_ok), pairwise_factory: -> { nil })
                .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
       expect(report.passed).to be(false)
-      expect(report.reason).to match(/no pairwise judge/)
+      expect(report.reason).to match(/\Aprobe_no_judge: .*no pairwise judge/)
     end
 
     it "stops a case at an errored after turn and records no preference for it" do
