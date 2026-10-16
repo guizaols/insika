@@ -3440,6 +3440,9 @@ end
       p = request.params["period"].to_i
       @period = p.positive? ? p : 30
       @agent = presence(request.params["agent"])
+      # ?drop=<stage>&tenant=: the "where conversations stop" drill of ONE card
+      @drop = presence(request.params["drop"])
+      @drop_tenant = presence(request.params["tenant"])
       profiles = profiles.select { |p| p.id == @agent } if @agent
       @stores = profiles.filter_map do |p|
         decl = Insika::FunnelDeclaration.parse(p.funnel)
@@ -3800,6 +3803,62 @@ end
       from = (Date.today - period).iso8601
       store.days(tenant: tenant, agent: agent, from: from, to: today)
            .each_with_object(Hash.new(0)) { |(_, counts), acc| counts.each { |s, n| acc[s] += n } }
+    end
+
+    # The loss between each pair of consecutive declared stages, in order; the
+    # biggest positive one is marked (ties: the earliest stage).
+    # -> [{ from:, to:, lost:, of:, biggest: }]
+    def funnel_drops(decl, counts)
+      rows = decl.stages.each_cons(2).map do |a, b|
+        { from: a, to: b, lost: counts[a].to_i - counts[b].to_i, of: counts[a].to_i, biggest: false }
+      end
+      top = rows.max_by { |row| row[:lost] }
+      top[:biggest] = true if top && top[:lost].positive?
+      rows
+    end
+
+    def funnel_drop_path(agent, tenant, stage)
+      query = Rack::Utils.build_query({ agent: agent, period: @period, drop: stage, tenant: tenant }.compact)
+      "/studio/funnel?#{query}"
+    end
+
+    # The last thing that happened in a conversation, most specific first.
+    DROP_REASONS = {
+      "tool_failed" => "Last tool call failed",
+      "flagged" => "A guardrail flagged a message",
+      "waiting" => "Customer waiting on a reply",
+      "quiet" => "Customer went quiet after the agent's reply",
+      "unknown" => "No message to read",
+      "gone" => "Conversation no longer stored"
+    }.freeze
+    DROP_LIST_CAP = 10
+
+    # The conversations that reached `stage` but not the next one in the
+    # period: each session's furthest stage over its outcome records (the
+    # fold's own advance_on mapping), kept when it is exactly `stage`.
+    # -> [[reason, [session_id]]] in DROP_REASONS order | nil (no such drop)
+    def funnel_drop_sessions(decl, tenant, agent, stage, period)
+      index = decl.index_of(stage)
+      outcomes = insika[:outcome_store]
+      return nil unless index && index < decl.stages.length - 1 && outcomes
+
+      furthest = Hash.new(-1)
+      outcomes.for_pair(tenant: tenant, agent: agent, since_date: (Date.today - period).iso8601).each do |r|
+        i = decl.index_of(decl.advance_on[r.outcome].to_s)
+        furthest[r.session_id] = [furthest[r.session_id], i].max if i && !r.session_id.to_s.empty?
+      end
+      furthest.select { |_, i| i == index }.keys.sort
+              .group_by { |sid| drop_reason(sid) }
+              .sort_by { |reason, _| DROP_REASONS.keys.index(reason) }
+    end
+
+    def drop_reason(sid)
+      session = insika[:session_store]&.find(sid)
+      return "gone" unless session
+      return "tool_failed" if Array(insika[:tool_trace_store]&.for_session(sid)).last&.[]("ok") == false
+      return "flagged" if Array(session.messages).any? { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? }
+
+      { "user" => "waiting", "assistant" => "quiet" }.fetch(last_role(session), "unknown")
     end
 
     # BudgetLedger's current counters (D6): "tokens today / this month". nil
