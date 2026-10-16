@@ -113,6 +113,7 @@ RSpec.describe "Integration: SendMessage Command->Response flow" do
     expect(task.executions.last.outcome).to eq("completed")
     expect(checkpoint_store.latest(result[:task_id]).turn).to eq(2)
     expect(session_store.find("s1").messages.map { |m| m["content"] }).to eq(["oi", "resposta final"])
+    expect(session_store.find("s1").messages.map { |m| m["task_id"] }.uniq).to eq([result[:task_id]])
   end
 
   it "responds {task_id:} immediately (before :task_completed)" do

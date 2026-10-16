@@ -83,9 +83,54 @@
           <% end %>
         </div>
 
+        <%# Where conversations stop: the loss between consecutive stages, the
+            biggest one marked. Each row drills (?drop=) into the conversations
+            that reached the stage but not the next, grouped by the last thing
+            that happened in them. %>
+        <% if decl.stages.length > 1 %>
+          <div class="section-head">
+            <h3>Where conversations stop</h3>
+            <span class="muted">lost between stages · last <%= @period %>d</span>
+          </div>
+          <table class="grid">
+            <thead><tr><th>between</th><th class="num">lost</th><th class="num">share</th><th></th></tr></thead>
+            <tbody>
+              <% funnel_drops(decl, counts).each do |d| %>
+                <tr><td><a href="<%= funnel_drop_path(profile.id, tenant, d[:from]) %>"><%= d[:from] %> → <%= d[:to] %></a></td>
+                  <td class="num"><%= d[:lost] %></td>
+                  <td class="num"><%= d[:of].zero? ? "—" : "#{(100.0 * d[:lost] / d[:of]).round}%" %></td>
+                  <td><% if d[:biggest] %><span class="pill warn">biggest drop</span><% end %></td></tr>
+              <% end %>
+            </tbody>
+          </table>
+          <% groups = @agent == profile.id && @drop_tenant == tenant && @drop ? funnel_drop_sessions(decl, tenant, profile.id, @drop, @period) : nil %>
+          <% if groups %>
+            <h4>Reached <%= @drop %>, not <%= decl.stages[decl.index_of(@drop) + 1] %></h4>
+            <% if @drop_total.to_i > Studio::App::DROP_CLASSIFY_CAP %>
+              <p class="muted"><%= @drop_total %> stopped here; the newest <%= Studio::App::DROP_CLASSIFY_CAP %> are grouped below.</p>
+            <% end %>
+            <% if groups.empty? %>
+              <div class="empty">No conversation with an outcome stopped at <%= @drop %> in this window.</div>
+            <% else %>
+              <ul class="kv">
+                <% groups.each do |reason, sids| %>
+                  <li><span class="k"><%= Studio::App::DROP_REASONS[reason] %> · <%= sids.size %></span>
+                    <span class="v">
+                      <% sids.first(Studio::App::DROP_LIST_CAP).each do |sid| %>
+                        <a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(sid) %>" title="<%= sid %>"><%= sid[0, 20] %></a>
+                      <% end %>
+                      <% if sids.size > Studio::App::DROP_LIST_CAP %><span class="muted">+<%= sids.size - Studio::App::DROP_LIST_CAP %> more</span><% end %>
+                    </span></li>
+                <% end %>
+              </ul>
+            <% end %>
+          <% end %>
+        <% end %>
+
         <details class="report-details">
           <summary>How this funnel is counted</summary>
           <p>Counts are folded by the tick and can be recomputed from the outcome store. Conversion is the primary outcome count divided by the first-stage count.</p>
+          <p>Stage losses compare these folded counts. A drill lists conversations instead: each one's furthest stage across its outcomes in the window.</p>
           <p>Attribution window: <%= decl.attribution_window %> (carried, never computed). Token totals use the current budget window.</p>
         </details>
 

@@ -2777,7 +2777,12 @@ module Insika
       # session only when the turn is from a persisted session; one-shot/history
       # do not persist TO THE SESSION (but always checkpoint). `session: false` is
       # the edge-blocked halt (see complete_with_halt).
-      @session_store.append_messages(task.session_id, new_messages, agent: profile.id) if session && task.session_id
+      # task_id on each persisted message ties it to the turn's traces (the
+      # Studio's "why this reply" reads it); history replay ignores the key.
+      if session && task.session_id
+        @session_store.append_messages(task.session_id, new_messages.map { |m| m.merge("task_id" => task.id) },
+                                       agent: profile.id)
+      end
 
       if (shared = @shared_turns[task.id])
         if @pending_action_store && task.session_id

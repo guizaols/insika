@@ -17,13 +17,22 @@
         <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %> · <%= count %></option>
       <% end %>
     </select>
+    <% if @status %><input type="hidden" name="status" value="<%= @status %>"><% end %>
     <input type="search" name="q" value="<%= @query %>" class="filter-input" placeholder="Filter… Enter searches all by id" aria-label="Filter conversations"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
   </form>
+  <%# Status tabs: all / active now / guardrail flagged — counts follow the agent and search filters. %>
+  <nav class="segmented chat-status" aria-label="Status">
+    <% [[nil, "All"], ["active", "Active now"], ["flagged", "Guardrail flagged"]].each do |value, label| %>
+      <a href="<%= chats_path(status: value) %>" data-turbo-frame="_top"<%== ' aria-current="page"' if @status == value %>>
+        <%= label %><% if value %>&nbsp;<span class="count"><%= @status_counts.to_h[value].to_i %></span><% end %>
+      </a>
+    <% end %>
+  </nav>
   <nav class="drill-pane-body drill-list" aria-label="conversations" data-controller="active-link">
     <% active_id = defined?(active_id) ? active_id : nil %>
     <% if @sessions.empty? %>
-      <div class="empty"><% if @query || @agent %>No conversations match. <a href="/studio/chats">Show all</a><% else %>No conversations yet. Start one in the <a href="/studio/playground">playground</a>.<% end %></div>
+      <div class="empty"><% if @query || @agent || @status %>No conversations match. <a href="/studio/chats">Show all</a><% else %>No conversations yet. Start one in the <a href="/studio/playground">playground</a>.<% end %></div>
     <% else %>
       <% @sessions.each do |s| %>
         <% customer = presence(session_customer(s)) %>
@@ -38,6 +47,7 @@
            data-active-link-target="item" data-action="click->active-link#select">
           <div class="drill-item-top">
             <%== render("_identity", locals: { id: customer || s.id, name: label || "anonymous", sub: presence([agent, phone].compact.join(" · ")) }) %>
+            <% if session_flagged?(s) %><span class="pill err plain" title="A guardrail flagged a message in this conversation">flagged</span><% end %>
             <span class="presence<%== ' present' if session_fresh?(s) %>" title="<%= session_fresh?(s) ? "Activity in the last 5 minutes" : "No activity in the last 5 minutes" %>"></span>
           </div>
           <div class="drill-item-sub"><%= Array(s.messages).size %> messages · <%= time_ago(s.updated_at) %></div>

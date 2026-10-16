@@ -41,7 +41,8 @@
             session. %>
         <section class="session-transcript" aria-label="transcript"
                  data-controller="live-transcript"
-                 data-live-transcript-session-value="<%= @session.id %>">
+                 data-live-transcript-session-value="<%= @session.id %>"
+                 data-live-transcript-why-value="/studio/sessions/<%= Rack::Utils.escape(@session.id) %>">
           <%# Session markers in the margin: start, agent,
               shape — ghost pills, right-aligned, from data the view already
               has. %>
@@ -95,7 +96,9 @@
               <% end %>
               <%# `prev` is what makes a STEERED message visible: a customer message that lands
                   right after a tool result arrived mid-run. See _message.erb. %>
-              <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil }) %>
+              <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil,
+                                                review: { path: "/studio/sessions/#{Rack::Utils.escape_path(@session.id)}/guardrail", message: i } }) %>
+              <% if (w = @why && @why[i]) %><%== render("_why", locals: { w: w, sid: @session.id, index: i }) %><% end %>
             <% end %>
           </div>
           <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@session.messages).empty? %>>This session has no messages.</div>
@@ -107,6 +110,18 @@
              data-action="pointerdown->col-resize#start keydown->col-resize#key dblclick->col-resize#reset"></div>
         <aside class="session-margin" id="session-details" popover aria-label="session metadata">
           <button type="button" class="btn btn-sm details-close" popovertarget="session-details" popovertargetaction="hide">Close</button>
+          <%# Who this conversation is with — the vars the caller sent, plus how
+              many conversations share the customer key (a link to them). %>
+          <% customer = presence(session_customer(@session)) %>
+          <% if customer %>
+            <div class="card">
+              <div class="trace-head"><h2>Customer</h2></div>
+              <div class="kv"><span>key</span><div class="mono"><%= customer %></div></div>
+              <% if (name = presence(session_customer_label(@session))) && name != customer %><div class="kv"><span>name</span><div><%= name %></div></div><% end %>
+              <% if (phone = session_customer_phone(@session)) %><div class="kv"><span>phone</span><div><%= phone %></div></div><% end %>
+              <div class="kv"><span>chats</span><div><a href="/studio/chats?q=<%= Rack::Utils.escape(customer) %>" data-turbo-frame="_top"><%= customer_chat_count(customer) %> conversation(s)</a></div></div>
+            </div>
+          <% end %>
           <% briefing = @session.respond_to?(:briefing) ? (@session.briefing || {}) : {} %>
           <% fields = briefing["fields"] || {} %>
           <% next_step = briefing["next_step"] %>
@@ -210,16 +225,26 @@
             </details>
           <% end %>
 
-          <% traces = @tool_traces || {} %>
+          <% traces = @tool_traces || [] %>
           <% unless traces.empty? %>
-            <% errors = traces.values.flatten.count { |trace| !trace["ok"] || trace["gate"] } %>
+            <% errors = traces.flatten.count { |trace| !trace["ok"] || trace["gate"] } %>
             <details class="card tooltrace operation-diagnostics">
-              <summary>Tool calls <span class="muted">· <%= traces.values.sum(&:size) %></span><% if errors.positive? %> <span class="status err"><%= errors %> failed or blocked</span><% end %></summary>
+              <summary>Tool calls <span class="muted">· <%= traces.sum(&:size) %></span><% if errors.positive? %> <span class="status err"><%= errors %> failed or blocked</span><% end %></summary>
               <p class="muted">Arguments and responses are masked.</p>
-              <% traces.keys.sort.each do |turn| %>
+              <% traces.each do |group| %>
                 <div class="trace-turn">
-                  <div class="turn-label">turn <%= turn %></div>
-                  <% traces[turn].each do |t| %>
+                  <div class="turn-label">turn <%= group.first["turn"] %></div>
+                  <%# Waterfall: when each call ran inside the turn (SVG geometry, CSP-safe). %>
+                  <% bars = trace_waterfall(group) %>
+                  <% if bars.size > 1 %>
+                    <svg class="waterfall" viewBox="0 0 100 <%= bars.size * 6 %>" preserveAspectRatio="none" role="img"
+                         aria-label="<%= bars.map { |b| "#{b[:tool]} #{b[:ms]}ms" }.join(", ") %>">
+                      <% bars.each_with_index do |b, i| %>
+                        <rect class="<%= b[:ok] ? "ok" : "err" %>" x="<%= b[:x] %>" y="<%= i * 6 + 1 %>" width="<%= b[:w] %>" height="4" rx="0.6"><title><%= b[:tool] %> · <%= b[:ms] %>ms</title></rect>
+                      <% end %>
+                    </svg>
+                  <% end %>
+                  <% group.each do |t| %>
                     <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
                       <summary>
                         <span class="badge"><%= t["gate"] ? "blocked: #{t["gate"]}" : (t["ok"] ? "ok" : "error") %></span>

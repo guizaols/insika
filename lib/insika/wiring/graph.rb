@@ -590,6 +590,11 @@ module Insika
         bus.register(:delete_artifact,
                      Insika::Commands::DeleteArtifact.new(artifact_store: spine.artifact_store,
                                                           event_stream: spine.event_stream))
+        # a person's verdict on a guardrail flag (false positive / resolved)
+        # — the Session viewer's button and the Review inbox.
+        bus.register(:review_guardrail_flag,
+                     Insika::Commands::ReviewGuardrailFlag.new(session_store: spine.session_store,
+                                                               event_stream: spine.event_stream))
         bus.register(:revoke_contact,
                      Insika::Commands::RevokeContact.new(contact_store: spine.contact_store,
                                                          followup_store: spine.followup_store,

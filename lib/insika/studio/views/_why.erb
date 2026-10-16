@@ -1,0 +1,53 @@
+<%# "Why did it say that?" under a reply: what the turn read (context tokens
+    by category), the skills it injected and why, what it called, the checks on
+    the customer's message. Locals: w = a why_panels entry, sid, index (the
+    reply's message index). Bars are SVG geometry — CSP-safe, no style="". %>
+<% ctx = w[:context] %>
+<details class="toolcard why-card">
+  <summary><strong>why this reply</strong></summary>
+  <div class="why">
+    <h3>What it read</h3>
+    <% if ctx %>
+      <% scale = [ctx["cap"].to_i, ctx["used"].to_i, 1].max %>
+      <p class="muted"><%= ctx["used"] %> / <%= ctx["cap"] %> tokens<% if (hit = ctx.dig("cache", "hit_pct")) %> · <%= hit %>% cached<% end %></p>
+      <dl class="why-bars">
+        <% (ctx["categories"] || {}).sort_by { |_k, v| -(v["tokens"] || 0) }.each do |name, cat| %>
+          <dt><%= name %></dt>
+          <dd><svg viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="track" width="100" height="4"/><rect width="<%= (cat["tokens"].to_f / scale * 100).round(2).clamp(0, 100) %>" height="4"/></svg><span><%= cat["tokens"] %></span></dd>
+        <% end %>
+      </dl>
+      <% skills = Array((ctx["categories"] || {}).dig("skilltrigger", "labels")).uniq %>
+      <% unless skills.empty? %>
+        <h3>Skills injected</h3>
+        <ul><% skills.each do |l| %><li class="mono"><%= skill_label(l) %></li><% end %></ul>
+      <% end %>
+    <% else %>
+      <p class="muted">No context trace for this turn.</p>
+    <% end %>
+
+    <h3>What it called</h3>
+    <% if w[:tools].any? %>
+      <ul>
+        <% w[:tools].each do |t| %>
+          <li><span class="status <%= t["ok"] && !t["gate"] ? "ok" : "err" %>"><%= t["gate"] ? "blocked: #{t["gate"]}" : (t["ok"] ? "ok" : "error") %></span> <span class="mono"><%= t["tool"] %></span> <span class="muted"><%= t["ms"] %>ms</span></li>
+        <% end %>
+      </ul>
+    <% elsif w[:calls].any? %>
+      <p class="mono"><%= w[:calls].join(", ") %> <span class="muted">· no trace recorded</span></p>
+    <% else %>
+      <p class="muted">No tool calls.</p>
+    <% end %>
+
+    <h3>Checks</h3>
+    <% if w[:flags].any? %>
+      <ul><% w[:flags].each do |f| %><li><span class="status err"><%= f["action"] == "refuse" ? "blocked" : "flagged" %></span> <%= f["category"] || "?" %></li><% end %></ul>
+    <% else %>
+      <p class="muted">No guardrail flags on the customer's message.</p>
+    <% end %>
+
+    <div class="actions">
+      <a class="btn btn-sm" href="/studio/playground?session_id=<%= Rack::Utils.escape(sid) %>" data-turbo-frame="_top">Replay in Playground</a>
+      <a class="btn btn-sm" href="/studio/evals?<%= Rack::Utils.build_query("session" => sid, "reply" => index) %>" data-turbo-frame="_top">Save as eval case</a>
+    </div>
+  </div>
+</details>

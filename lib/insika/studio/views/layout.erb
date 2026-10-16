@@ -38,17 +38,21 @@
     <% end %>
   </template>
   <% if authenticated? %>
-    <div class="app-shell">
+    <div class="app-shell" data-controller="palette">
       <aside class="sidebar">
         <a class="brand" href="/studio/home"><span class="dot"></span>Insika <small>Studio</small></a>
+        <button type="button" class="palette-open" data-action="palette#open">
+          <%== nav_icon(:search) %><span>Search</span><kbd>⌘K</kbd>
+        </button>
 
         <% nav_sections.each do |group, items| %>
           <div class="nav-group">
             <% unless group.empty? %><div class="nav-label"><%= group %></div><% end %>
             <nav class="nav" aria-label="<%= group %>">
-              <% items.each do |label, href, icon| %>
+              <% items.each do |label, href, icon, count| %>
                 <a href="<%= href %>"<%== ' aria-current="page"' if nav_active?(href) %>>
                   <%== nav_icon(icon) %><span class="lbl"><%= label %></span>
+                  <% if count.to_i.positive? %><span class="nav-badge" aria-label="<%= count %> pending"><%= count %></span><% end %>
                 </a>
               <% end %>
             </nav>
@@ -76,17 +80,15 @@
               <button type="submit" class="ghost">Sign out</button>
             </form>
           </div>
-          <div class="env-chip" title="runtime environment">
-            <span class="env-mark" aria-hidden="true"><%= env_label[0, 1].upcase %></span>
-            <div class="env-text">
-              <b><%= env_label %></b>
-              <small>environment</small>
-            </div>
-          </div>
         </div>
       </aside>
 
       <div class="app-main">
+        <% if (env = env_banner) %>
+          <div class="env-banner <%= env[:kind] %>" role="status">
+            <b><%= env[:label] %></b><span>Not production — changes here never reach customers.</span>
+          </div>
+        <% end %>
         <% if flash["error"] %>
           <div class="flash err" role="alert"><%= flash["error"] %></div>
         <% end %>
@@ -98,6 +100,22 @@
           <%== yield %>
         </main>
       </div>
+
+      <%# ⌘K palette: every page and agent, filtered client-side (list-filter). %>
+      <dialog class="palette" data-palette-target="dialog" data-controller="list-filter" aria-label="Jump to">
+        <input type="text" class="palette-query" autocomplete="off" placeholder="Jump to a page or agent…" aria-label="Jump to"
+               data-palette-target="query" data-list-filter-target="query"
+               data-action="input->list-filter#filter input->palette#reset keydown->palette#key">
+        <div class="palette-list" role="listbox">
+          <% palette_entries.each do |group, label, href| %>
+            <a href="<%= href %>" role="option" data-palette-target="item" data-list-filter-target="item"
+               data-filter-text="<%= group %> <%= label %>" data-action="click->palette#close">
+              <span><%= label %></span><small><%= group %></small>
+            </a>
+          <% end %>
+          <div class="palette-empty" data-list-filter-target="empty" hidden>No match.</div>
+        </div>
+      </dialog>
     </div>
   <% else %>
     <% if flash["error"] %>

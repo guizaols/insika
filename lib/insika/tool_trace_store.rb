@@ -58,6 +58,7 @@ module Insika
         "args" => clip(mask(e["args"])), "result" => clip(mask(e["result"])),
         "ms" => e["ms"], "at" => e["at"].to_s
       }.tap do |trace|
+        trace["task_id"] = e["task_id"].to_s if e["task_id"]
         trace["gate"] = e["gate"].to_s if e["gate"]
         # Timing breakdown a data-tool reports (see DataDefinedTool#record_timing).
         %w[pre_ms http_ms server_ms].each { |k| trace[k] = e[k] if e[k].is_a?(Integer) }

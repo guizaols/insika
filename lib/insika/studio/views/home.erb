@@ -45,6 +45,20 @@
 
   <p class="report-note">Every number follows the agent filter. Conversations and messages compare today with yesterday; cost, outcomes and turns cover the last 24 hours. <a href="/studio/models<%= "?agent=#{Rack::Utils.escape(@agent)}" if @agent %>">Models</a> has the detail.</p>
 
+  <%# What a person should act on now: review queues, stalled customers,
+      failing tools. Only non-zero items show. %>
+  <% attention = attention_items(turns) %>
+  <section class="attention" aria-label="Needs attention">
+    <h2>Needs attention</h2>
+    <% if attention.empty? %>
+      <span class="muted">Nothing waiting on you.</span>
+    <% else %>
+      <% attention.each do |text, href, tone| %>
+        <a class="attention-item <%= tone %>" href="<%= href %>" data-turbo-frame="_top"><%= text %></a>
+      <% end %>
+    <% end %>
+  </section>
+
   <div class="home-grid">
     <section class="card home-activity">
       <div class="section-head">
