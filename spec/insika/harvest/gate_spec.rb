@@ -47,8 +47,11 @@ RSpec.describe Insika::Harvest::Gate do
   class ProbeTransportDouble < GateTransportDouble
     attr_reader :messages_seen
 
-    def initialize(script, before: "não sei", after: "aceitamos pix", error_after: false)
+    def initialize(script, before: "não sei", after: "aceitamos pix", error_after: false, error_before: false,
+                   sessions: nil)
       super(script)
+      @error_before = error_before
+      @sessions = sessions
       @before = before
       @after = after
       @error_after = error_after
@@ -60,7 +63,9 @@ RSpec.describe Insika::Harvest::Gate do
       return super unless conv.start_with?("probe-")
 
       @agents_seen << agent
-      error = @error_after && conv.end_with?("-after") ? "boom" : nil
+      # what the server does: the conv id becomes a (tenant-scoped) session
+      @sessions.create(id: "acme:#{conv}") if @sessions && @sessions.find("acme:#{conv}").nil?
+      error = (@error_after && conv.end_with?("-after")) || (@error_before && conv.end_with?("-before")) ? "boom" : nil
       text = conv.end_with?("-before") ? @before : @after
       Insika::Evals::TurnOutcome.new(
         result: Insika::Evals::TurnResult.new(output_text: text, tool_calls: [], error: error),
@@ -190,11 +195,17 @@ RSpec.describe Insika::Harvest::Gate do
 
     it "replays against the CLONE — the clone's catalog serves the skill (the model can load_skill it)" do
       g, transport = gate
+      served = nil
+      allow(transport).to receive(:turn).and_wrap_original do |orig, **kw|
+        served ||= skill_catalog.find("pix-recovery", agent: kw[:agent])
+        orig.call(**kw)
+      end
       g.score(agent_id: "support", skill: candidate, run_id: "abc-def-99")
       expect(transport.agents_seen.uniq).to eq(["support-harvest-abcdef99"])
-      served = skill_catalog.find("pix-recovery", agent: "support-harvest-abcdef99")
       expect(served).to_not be_nil
       expect(served.body).to include("## Steps")
+      # ... and gone once the clone is destroyed
+      expect(skill_catalog.find("pix-recovery", agent: "support-harvest-abcdef99")).to be_nil
     end
 
     it "leaves the live agent's files, profile and skills untouched" do
@@ -286,11 +297,13 @@ RSpec.describe Insika::Harvest::Gate do
       Insika::Evals::Pairwise.new(asks: [ask])
     end
 
+    let(:session_store) { Insika::SessionStore.new(store: backend) }
+
     def probe_gate(transport, pairwise_factory:)
       described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
                           baselines: baselines, skill_store: skill_store,
                           skill_catalog: skill_catalog, transport_factory: -> { transport },
-                          pairwise_factory: pairwise_factory)
+                          pairwise_factory: pairwise_factory, session_store: session_store)
     end
 
     before do
@@ -344,11 +357,13 @@ RSpec.describe Insika::Harvest::Gate do
       expect(report.reason).to match(/no pairwise judge/)
     end
 
-    it "still judges when an after turn errors, on the turns that ran" do
+    it "stops a case at an errored after turn and records no preference for it" do
       transport = ProbeTransportDouble.new(golden_ok, error_after: true)
       report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
                .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?", "e boleto?"]])
-      expect(report.probe).not_to be_nil
+      expect(report.probe).to include("cases" => 1, "better" => 0)
+      expect(report.passed).to be(false)
+      expect(asked).to be_empty
       expect(transport.messages_seen.count { |c, _| c.end_with?("-after") }).to eq(1)
     end
 
@@ -378,6 +393,40 @@ RSpec.describe Insika::Harvest::Gate do
                .score(agent_id: "support", skill: candidate, run_id: "r1")
       expect(report.passed).to be(false)
       expect(report.reason).to match(/no golden cases/)
+    end
+
+    it "gives every gate run its own probe conversations, even within one harvest run" do
+      transport = ProbeTransportDouble.new(golden_ok)
+      g = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+      g.score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      first = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }
+      transport.messages_seen.clear
+      g.score(agent_id: "support", skill: candidate(name: "other"), run_id: "r1", probe_cases: [["tem pix?"]])
+      second = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }
+      expect(first & second).to be_empty
+    end
+
+    it "drops the clone skill from the catalog once the gate is done" do
+      probe_gate(ProbeTransportDouble.new(golden_ok), pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      expect(skill_catalog.effective(nil, agent: "support-harvest-r1").map(&:name)).not_to include("pix-recovery")
+    end
+
+    it "records no preference for a case whose before turn errored — a timeout is not a win" do
+      transport = ProbeTransportDouble.new(golden_ok, error_before: true)
+      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      expect(report.passed).to be(false)
+      expect(report.reason).to match(/probe_no_gain/)
+      expect(asked).to be_empty
+    end
+
+    it "deletes the probe sessions it created — they hold raw customer text" do
+      transport = ProbeTransportDouble.new(golden_ok, sessions: session_store)
+      session_store.create(id: "acme:real-chat")
+      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      expect(session_store.each_id.to_a).to eq(["acme:real-chat"])
     end
 
     it "leaves the report unchanged when no probe cases are given" do

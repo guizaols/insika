@@ -413,7 +413,8 @@ module Deploy
       },
       judge_factory: -> { Insika::Evals::JudgePanel.judge((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT) },
       # the probe: the same configured judges, asked "which served better?"
-      pairwise_factory: -> { Insika::Evals::JudgePanel.pairwise((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT)&.first }
+      pairwise_factory: -> { Insika::Evals::JudgePanel.pairwise((SETTINGS_STORE.get || {})["evals"], llm: LLM_CONTEXT)&.first },
+      session_store: SESSION_STORE # the probe deletes its replay sessions
     )
     # The second ruler: the store's funnel metric against the frozen baseline.
     # nil criterion -> the gate refuses with :no_criterion.
