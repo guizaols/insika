@@ -90,7 +90,7 @@
       <summary><%== chip_icon(:call) %><strong><%= tc["name"] %></strong><span class="chip-sub"><%= preview[0, 60] %><%== "…" if preview.size > 60 %></span></summary>
       <pre><%= message_content(tc["arguments"]) %></pre>
       <% if (loaded = loaded_skill_name({ "tool" => tc["name"], "args" => tc["arguments"] })) %>
-        <p class="skill-link"><a class="mono" href="/studio/skills/<%= Rack::Utils.escape(loaded) %>">open skill <%= loaded %></a></p>
+        <p class="skill-link"><a class="mono" href="/studio/skills/<%= Rack::Utils.escape(loaded) %>" data-turbo-frame="_top">open skill <%= loaded %></a></p>
       <% end %>
     </details>
   <% end %>

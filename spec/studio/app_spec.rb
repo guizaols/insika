@@ -2606,7 +2606,7 @@ end
                                                              "arguments" => '{"name":"recommendation-formatting"}' }] }])
     app, = build_app(sessions: { "sess-ls" => sess })
     body = login(app).get("/sessions/sess-ls").body
-    expect(body).to include('href="/studio/skills/recommendation-formatting">open skill recommendation-formatting</a>')
+    expect(body).to include('href="/studio/skills/recommendation-formatting" data-turbo-frame="_top">open skill recommendation-formatting</a>')
   end
 
   it "session viewer renders a guardrail flag stored on the customer message" do
