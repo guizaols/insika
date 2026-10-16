@@ -32,7 +32,7 @@ RSpec.describe Insika::Commands::GateHarvest do
       Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: true, reason: nil,
                                         cases: 7, passed_cases: 7, baseline_cases: 7,
                                         regressions: [], report: { "total" => 7 }, tokens: 1200,
-                                        cached: 900)
+                                        cached: 900, probe: nil)
     end
   end
 
@@ -92,7 +92,7 @@ RSpec.describe Insika::Commands::GateHarvest do
         reason: "1 regression(s): quotes-freight (pass→fail)", cases: 7, passed_cases: 6,
         baseline_cases: 7,
         regressions: [{ "id" => "quotes-freight", "kind" => "pass→fail", "detail" => nil }],
-        report: { "total" => 7 }, tokens: 1200, cached: 900
+        report: { "total" => 7 }, tokens: 1200, cached: 900, probe: nil
       )
     end
     allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))

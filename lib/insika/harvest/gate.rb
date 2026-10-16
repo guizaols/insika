@@ -23,12 +23,12 @@ module Insika
       # The verdict for one candidate. `passed` is the only field the caller
       # acts on; the rest is what an operator reads.
       Report = Data.define(:candidate_id, :passed, :reason, :cases, :passed_cases,
-                           :baseline_cases, :regressions, :report, :tokens, :cached) do
+                           :baseline_cases, :regressions, :report, :tokens, :cached, :probe) do
         def to_h
           { "candidate_id" => candidate_id, "passed" => passed, "reason" => reason,
             "cases" => cases, "passed_cases" => passed_cases, "baseline_cases" => baseline_cases,
             "regressions" => regressions, "report" => report, "tokens" => tokens,
-            "cached" => cached }
+            "cached" => cached, "probe" => probe }
         end
       end
 
@@ -40,7 +40,7 @@ module Insika
       # (the same one the refinement gate receives).
       def initialize(profiles:, agent_files:, goldens:, baselines:, skill_store:,
                      skill_catalog:, transport_factory:, capabilities_factory: nil,
-                     judge_factory: nil, tolerance: DEFAULT_TOLERANCE)
+                     judge_factory: nil, pairwise_factory: nil, tolerance: DEFAULT_TOLERANCE)
         @profiles = profiles
         @agent_files = agent_files
         @goldens = goldens
@@ -50,43 +50,60 @@ module Insika
         @transport_factory = transport_factory
         @capabilities_factory = capabilities_factory
         @judge_factory = judge_factory
+        @pairwise_factory = pairwise_factory
         @tolerance = tolerance
       end
 
       # skill: the candidate's { name:, description:, body:, triggers: }.
       # -> Report. Never raises for an ordinary refusal (no cases, no
       # baseline, a replay that blew up).
-      def score(agent_id:, skill:, run_id:)
+      # probe_cases: the origin conversation's customer turns ([[String]]),
+      # empty unless the agent turned the probe on. With no golden cases the
+      # probe is the whole gate (nothing to veto); with golden cases it runs
+      # after the golden replay passed.
+      def score(agent_id:, skill:, run_id:, probe_cases: [])
         cases = @goldens.for_agent(agent_id)
-        return refusal(skill, "the agent has no golden cases — nothing to gate against") if cases.empty?
-
-        baseline = @baselines.get(agent_id)
-        if baseline.nil?
-          return refusal(skill, "no recorded baseline for '#{agent_id}' — " \
-                                "run `insika evals:baseline import` or record one before gating")
+        if cases.empty? && probe_cases.empty?
+          return refusal(skill, "the agent has no golden cases — nothing to gate against")
         end
 
-        if passing_cases(baseline).zero?
-          return refusal(skill, "the recorded baseline for '#{agent_id}' has no PASSING case " \
-                                "(#{baseline_size(baseline)} recorded, all failing) — nothing could " \
-                                "regress, so every candidate would pass. Fix the agent or the cases, " \
-                                "then re-record the baseline from a green run")
+        baseline = judge = nil
+        if cases.any?
+          baseline = @baselines.get(agent_id)
+          judge = @judge_factory&.call
+          refused = golden_refusal(agent_id, skill, baseline, judge)
+          return refused if refused
         end
 
-        judge = @judge_factory&.call
-        if judge.nil? && judged?(baseline)
-          return refusal(skill, "the recorded baseline for '#{agent_id}' carries judge scores but no " \
-                                "judge is configured — a rubric'd case with no verdict counts as a " \
-                                "PASS, so every candidate would beat it. Configure the judge panel " \
-                                "(Studio → Settings → Evals, or `settings[\"evals\"][\"judges\"]`) or " \
-                                "re-record the baseline without one")
+        pairwise = nil
+        if probe_cases.any?
+          pairwise = @pairwise_factory&.call
+          if pairwise.nil?
+            return refusal(skill, "the probe is on but no pairwise judge is configured — " \
+                                  "configure the judge panel (Studio → Settings → Evals) or turn " \
+                                  "`harvest.probe.enabled` off for '#{agent_id}'")
+          end
         end
 
         clone_id = clone_id_for(agent_id, run_id)
+        tag = run_id.to_s.delete("-")[0, 8]
         begin
-          build_clone(agent_id, clone_id, skill)
-          ran = replay(cases, clone_id, judge)
-          verdict(skill, ran, baseline, @tolerance)
+          profile = build_clone(agent_id, clone_id)
+          before = converse_all(clone_id, probe_cases, tag, "before")
+          install_skill(profile, clone_id, skill)
+          # No golden cases: nothing to veto, the probe below decides alone.
+          report = if cases.any?
+                     verdict(skill, replay(cases, clone_id, judge), baseline, @tolerance)
+                   else
+                     Report.new(candidate_id: skill["name"], passed: true, reason: nil, cases: 0,
+                                passed_cases: 0, baseline_cases: 0, regressions: [], report: nil,
+                                tokens: nil, cached: nil, probe: nil)
+                   end
+          return report unless report.passed && probe_cases.any?
+
+          after = converse_all(clone_id, probe_cases, tag, "after")
+          probe = Probe.verdict(before.zip(after).map { |b, a| pairwise.compare_texts(ours: a, theirs: b) })
+          report.with(passed: probe["passed"], reason: probe["reason"], probe: probe)
         rescue StandardError => e
           refusal(skill, "gate failed to run: #{e.class}: #{e.message}")
         ensure
@@ -108,26 +125,69 @@ module Insika
 
       def baseline_size(baseline) = (baseline["cases"] || {}).size
 
+      # The P18 refusals — only meaningful when there ARE golden cases.
+      # -> Report | nil
+      def golden_refusal(agent_id, skill, baseline, judge)
+        if baseline.nil?
+          return refusal(skill, "no recorded baseline for '#{agent_id}' — " \
+                                "run `insika evals:baseline import` or record one before gating")
+        end
+        if passing_cases(baseline).zero?
+          return refusal(skill, "the recorded baseline for '#{agent_id}' has no PASSING case " \
+                                "(#{baseline_size(baseline)} recorded, all failing) — nothing could " \
+                                "regress, so every candidate would pass. Fix the agent or the cases, " \
+                                "then re-record the baseline from a green run")
+        end
+        return nil unless judge.nil? && judged?(baseline)
+
+        refusal(skill, "the recorded baseline for '#{agent_id}' carries judge scores but no " \
+                       "judge is configured — a rubric'd case with no verdict counts as a " \
+                       "PASS, so every candidate would beat it. Configure the judge panel " \
+                       "(Studio → Settings → Evals, or `settings[\"evals\"][\"judges\"]`) or " \
+                       "re-record the baseline without one")
+      end
+
       # Same profile, same tools, same guardrails — only the id and the skill
       # differ. Copying the profile rather than editing the real one is what
       # makes this safe to run against production: the live agent is never
       # touched, not even for a moment.
-      def build_clone(agent_id, clone_id, skill)
+      def build_clone(agent_id, clone_id)
         profile = @profiles.fetch(agent_id) ||
                   (raise Insika::NotFoundError, "agent '#{agent_id}' not configured")
 
         @profiles.put(profile.with(id: clone_id))
         current_files(agent_id).each { |name, body| @agent_files.write(clone_id, name, body) }
+        profile
+      end
 
-        # D7: the skill lands into the clone's AGENT-scoped SkillStore (the
-        # store position IS the identity), and the clone's profile `skills`
-        # gains the name — so the clone's catalog serves it and the model can
-        # load_skill it.
+      # D7: the skill lands into the clone's AGENT-scoped SkillStore (the
+      # store position IS the identity), and the clone's profile `skills`
+      # gains the name — so the clone's catalog serves it and the model can
+      # load_skill it.
+      def install_skill(profile, clone_id, skill)
         name = skill["name"].to_s
         @skill_store.write(name, skill["body"].to_s, agent: clone_id)
         enabled = profile.skills.nil? ? nil : (Array(profile.skills).map(&:to_s) | [name])
         @profiles.put(profile.with(id: clone_id, skills: enabled))
         @skill_catalog.reload
+      end
+
+      # One conversation per probe case, on a fresh conv id per phase. Stops a
+      # case at its first errored turn — the judge reads what ran. Redacted
+      # before it leaves for the judge, the same masking the miner uses.
+      def converse_all(clone_id, probe_cases, tag, phase)
+        return [] if probe_cases.empty?
+
+        transport = @transport_factory.call
+        probe_cases.each_with_index.map do |turns, i|
+          conv = "probe-#{tag}-#{i}-#{phase}"
+          ran = []
+          turns.each do |message|
+            ran << transport.turn(agent: clone_id, conv: conv, message: message).result
+            break if ran.last.error
+          end
+          Insika::Safety::Detectors.redact(Insika::Evals::Pairwise.transcript(turns, ran)).first
+        end
       end
 
       def current_files(agent_id)
@@ -159,7 +219,7 @@ module Insika
           regressions: regressions.map { |r| { "id" => r.id, "kind" => r.kind, "detail" => r.detail } },
           report: Insika::Evals::Report.to_h(results, at: Time.now.utc.iso8601),
           tokens: spent.empty? ? nil : spent.sum,
-          cached: cached.empty? ? nil : cached.sum
+          cached: cached.empty? ? nil : cached.sum, probe: nil
         )
       end
 
@@ -171,7 +231,7 @@ module Insika
       def refusal(skill, reason)
         Report.new(candidate_id: skill["name"], passed: false, reason: reason,
                    cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [], report: nil,
-                   tokens: nil, cached: nil)
+                   tokens: nil, cached: nil, probe: nil)
       end
 
       # Both halves tolerant of a missing one; runs in an `ensure` after a

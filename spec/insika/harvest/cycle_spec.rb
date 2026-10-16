@@ -104,7 +104,7 @@ end
         Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: true, reason: nil,
                                           cases: 1, passed_cases: 1, baseline_cases: 1,
                                           regressions: [], report: { "total" => 1 }, tokens: 100,
-                                          cached: 50)
+                                          cached: 50, probe: nil)
       end
     end
   end
