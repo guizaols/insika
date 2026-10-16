@@ -94,6 +94,7 @@ module Insika
         begin
           profile = build_clone(agent_id, clone_id)
           before = converse_all(clone_id, probe_cases, tag, "before")
+          again = converse_all(clone_id, probe_cases, tag, "again") # the noise floor
           install_skill(profile, clone_id, skill)
           # No golden cases: nothing to veto, the probe below decides alone.
           report = if cases.any?
@@ -108,7 +109,7 @@ module Insika
           after = converse_all(clone_id, probe_cases, tag, "after")
           # A case with an errored turn on either side expresses no preference:
           # "no answer" against an answer is a timeout, not a win.
-          probe = Probe.verdict(before.zip(after).map { |b, a| b && a ? pairwise.compare_texts(ours: a, theirs: b) : nil })
+          probe = Probe.verdict(before.zip(again, after).map { |b, g, a| case_verdict(pairwise, b, g, a) })
           report.with(passed: probe["passed"], reason: probe["reason"], probe: probe)
         rescue StandardError => e
           refusal(skill, "gate failed to run: #{e.class}: #{e.message}")
@@ -177,6 +178,27 @@ module Insika
         enabled = profile.skills.nil? ? nil : (Array(profile.skills).map(&:to_s) | [name])
         @profiles.put(profile.with(id: clone_id, skills: enabled))
         @skill_catalog.reload
+      end
+
+      # A case's verdict: after vs before. A win only counts when the skill
+      # ALSO beats a second, independent run without it (again): two runs of
+      # the same agent differ, and the judge credits that variance to the skill
+      # (a never-loaded skill "won" 2 of 3 cases in scripts/probe_control.rb).
+      # Beating both is near-certain for a real gain and needs two lucky draws
+      # for noise. nil when either side errored.
+      def case_verdict(pairwise, before, again, after)
+        return nil unless before && after
+
+        verdict = pairwise.compare_texts(ours: after, theirs: before)
+        return verdict unless verdict&.outcome == Insika::Evals::Pairwise::BETTER
+
+        second = again && pairwise.compare_texts(ours: after, theirs: again)
+        return verdict if second&.outcome == Insika::Evals::Pairwise::BETTER
+
+        verdict.class.new(outcome: Insika::Evals::Pairwise::COMPARABLE, vs: verdict.vs, judges: verdict.judges,
+                          order_dependent: verdict.order_dependent,
+                          reason: "noise: won against one run without the skill but not the second " \
+                                  "(#{second ? second.outcome : 'no second run'})")
       end
 
       # One conversation per probe case, on a fresh conv id per phase. A case

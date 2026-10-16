@@ -47,12 +47,15 @@ RSpec.describe Insika::Harvest::Gate do
   class ProbeTransportDouble < GateTransportDouble
     attr_reader :messages_seen
 
-    def initialize(script, before: "não sei", after: "aceitamos pix", error_after: false, error_before: false,
-                   sessions: nil)
+    # again: the second no-skill run (the noise check); same as before unless
+    # a test makes the agent disagree with itself.
+    def initialize(script, before: "não sei", after: "aceitamos pix", again: nil, error_after: false,
+                   error_before: false, sessions: nil)
       super(script)
       @error_before = error_before
       @sessions = sessions
       @before = before
+      @again = again || before
       @after = after
       @error_after = error_after
       @messages_seen = []
@@ -66,7 +69,7 @@ RSpec.describe Insika::Harvest::Gate do
       # what the server does: the conv id becomes a (tenant-scoped) session
       @sessions.create(id: "acme:#{conv}") if @sessions && @sessions.find("acme:#{conv}").nil?
       error = (@error_after && conv.end_with?("-after")) || (@error_before && conv.end_with?("-before")) ? "boom" : nil
-      text = conv.end_with?("-before") ? @before : @after
+      text = { "-before" => @before, "-again" => @again }.find { |sfx, _| conv.end_with?(sfx) }&.last || @after
       Insika::Evals::TurnOutcome.new(
         result: Insika::Evals::TurnResult.new(output_text: text, tool_calls: [], error: error),
         ttfb: 1.0, total: 2.0, usage: nil
@@ -427,6 +430,23 @@ RSpec.describe Insika::Harvest::Gate do
       probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
         .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
       expect(session_store.each_id.to_a).to eq(["acme:real-chat"])
+    end
+
+    it "discounts a win when the agent without the skill already disagrees with itself — noise, not the skill" do
+      transport = ProbeTransportDouble.new(golden_ok, again: "aceitamos pix também")
+      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      expect(report.passed).to be(false)
+      expect(report.probe).to include("better" => 0, "comparable" => 1)
+      expect(report.probe["verdicts"].first["reason"]).to match(/noise/)
+    end
+
+    it "runs the second no-skill pass before the skill is installed" do
+      transport = ProbeTransportDouble.new(golden_ok)
+      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
+        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
+      phases = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }.map { |c| c.split("-").last }
+      expect(phases).to eq(%w[before again after])
     end
 
     it "leaves the report unchanged when no probe cases are given" do
