@@ -41,7 +41,8 @@
             session. %>
         <section class="session-transcript" aria-label="transcript"
                  data-controller="live-transcript"
-                 data-live-transcript-session-value="<%= @session.id %>">
+                 data-live-transcript-session-value="<%= @session.id %>"
+                 data-live-transcript-why-value="/studio/sessions/<%= Rack::Utils.escape(@session.id) %>">
           <%# Session markers in the margin: start, agent,
               shape — ghost pills, right-aligned, from data the view already
               has. %>

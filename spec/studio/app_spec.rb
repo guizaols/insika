@@ -2657,6 +2657,7 @@ end
     expect(why[5][:context]["used"]).to eq(222)
     expect(why[5][:tools].map { _1["ms"] }).to eq([42])
     expect(why[5][:flags].map { _1["category"] }).to eq(["spam"])
+    expect(login(app).get("/sessions/sess-why").body).to include('data-live-transcript-why-value="/studio/sessions/sess-why"')
     body = login(app).get("/sessions/sess-why").body
     expect(body).to include("why this reply", "doces · trigger:trufa", "No tool calls.", "42ms",
                             'href="/studio/evals?session=sess-why&amp;reply=5"')
