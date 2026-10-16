@@ -102,8 +102,25 @@ say which session a skill came from; the automatic loop mines one session
 at a time, so its candidates are exact). A case with an errored turn on
 either side counts as no preference. The replay sessions are deleted with
 the clone and never feed knowledge extraction. The after pass and its judge
-calls run only when the golden replay passed. Cost per candidate:
-2 × cases × turns agent turns, plus 2 judge calls per judge per case.
+calls run only when the golden replay passed.
+
+**Noise.** Two runs of the same agent differ, and the judge credits that
+variance to the skill: a never-loaded skill "won" 2 of 3 cases. So the probe
+runs the agent without the skill twice, and a case counts as `better` only
+when the skill beats both runs. `ruby scripts/probe_control.rb` checks this
+with real models on a tool-free store agent (a helpful skill must pass, a
+harmful and a useless one must fail; it exits 1 on a miss). With 3 cases it
+separates large effects reliably; a useless skill can still draw one
+`better`, which is why a human approves every promotion. Raise `max_cases`
+for more power.
+
+**Store tools.** Tools that need a backend chat (achei-b2b's
+`require_chat!`: product search, FAQ, cart) answer 404 on probe replays, so
+both sides fail alike and every case comes out `comparable`. The probe
+cannot judge a skill that depends on those tools yet.
+
+Cost per candidate: 3 × cases × turns agent turns, plus 2–4 judge calls per
+judge per case.
 
 Idea from Harness² (Google Research, arXiv:2610.14224), "Probe" step.
 
