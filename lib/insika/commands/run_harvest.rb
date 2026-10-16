@@ -63,7 +63,7 @@ module Insika
         grounding = Grounding.parse(profile.grounding)
         return skip("no_grounding_matcher") if grounding.nil? || !grounding.matcher.sku?
 
-        miner = @miner_factory.call(config)
+        miner = @miner_factory.call(config.merge("provider" => profile.provider.to_s))
         return skip("no_model") if miner.nil?
 
         run = @harvest_store.create_run(agent_id: agent, window: window_record(p),
