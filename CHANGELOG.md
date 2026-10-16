@@ -10,6 +10,7 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- Harvest gate probe (opt-in, `harvest.probe.enabled`): a candidate skill must also win a pairwise comparison on its origin conversation, replayed on the gate clone without and with the skill. With no golden cases the probe gates alone ([Harvest](docs/HARVEST.md)).
 - Studio screens for watching conversations and what waits on a person (see
   [Studio](docs/STUDIO.md)):
   - **Live** (`/studio/live`): one card per recent conversation, moved by the
@@ -146,6 +147,7 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- Harvest: a bare `miner.model` ref (no `provider/`) now uses the agent's provider; it used to fail every run with `Provider must be specified`.
 - Studio: `/studio` without a trailing slash answered 404; it now opens the
   Overview.
 - Studio: the agent History chart and arm conversions counted outcome kinds
