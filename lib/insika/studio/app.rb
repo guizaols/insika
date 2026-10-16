@@ -524,6 +524,7 @@ module Studio
                   @selected = name
                   @scope_agent = id
                   @skill_content = skill_source(name, agent: id)
+                  @skill_versions = skill_versions(name, agent: id)
                   view("skills")
                 end
                 # Saving the specialization: same command, `agent:` set.
@@ -534,6 +535,12 @@ module Studio
                   end
                   r.redirect("#{agent_path(id)}/skills/#{Rack::Utils.escape(name)}")
                 end
+              end
+
+              r.post "restore" do
+                check_csrf!
+                with_flash("Version restored.") { restore_skill_version(name, r.params["version"], agent: id) }
+                r.redirect("#{agent_path(id)}/skills/#{Rack::Utils.escape(name)}")
               end
 
               # Un-specialize: the shared skill stays, and the agent falls back to it.
@@ -610,8 +617,14 @@ module Studio
               load_skills_master
               @selected = name
               @skill_content = skill_source(name)
+              @skill_versions = skill_versions(name)
               view("skills")
             end
+          end
+          r.post "restore" do
+            check_csrf!
+            with_flash("Version restored.") { restore_skill_version(name, r.params["version"]) }
+            r.redirect("/studio/skills/#{Rack::Utils.escape(name)}")
           end
           # Enables/disables the skill on N agents at once, and marks it always-on for
           # the ones that checked `eager`. Both are per-agent decisions about the same
@@ -2343,6 +2356,31 @@ end
     # Raw content for the editor: prefer the store (real SKILL.md), otherwise
     # reconstruct from what the catalog parsed (editing a disk skill
     # creates an override in the store — Store wins).
+    # -> [ { "content" =>, "from" =>, "to" => } ] most recent first, the current
+    # one included (to: nil). Each version was in use from its write until the
+    # next one, so a turn's time picks the version it ran. Disk-only skill: [].
+    def skill_versions(name, agent: nil)
+      store = insika[:skill_store]
+      current = store&.get(name, agent: agent)
+      return [] unless current
+
+      all = [{ "content" => current, "at" => store.updated_at(name, agent: agent) }] + store.versions(name, agent: agent)
+      all.each_with_index.map do |v, i|
+        { "content" => v["content"], "from" => v["at"], "to" => i.zero? ? nil : all[i - 1]["at"] }
+      end
+    end
+
+    # Restoring is writing an old text again: the same command as a save, so the
+    # catalog reloads and the old version stays in the history. `version` indexes
+    # SkillStore#versions (0 = the one before the current).
+    def restore_skill_version(name, version, agent: nil)
+      i = Integer(version.to_s, exception: false)
+      old = i&.>=(0) ? insika[:skill_store]&.versions(name, agent: agent)&.[](i) : nil
+      raise Insika::ValidationError, "version #{version} does not exist" unless old
+
+      dispatch(:write_skill, { name: name, agent: agent, content: old["content"] })
+    end
+
     def skill_source(name, agent: nil)
       raw = insika[:skill_store]&.get(name, agent: agent)
       return raw if raw
