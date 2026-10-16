@@ -53,9 +53,11 @@ RSpec.describe Studio::App do
   # body/triggers/companions: real catalog skills expose them (the drill editor and
   # skill_source's frontmatter reconstruction read them).
   SkillEntry = Struct.new(:name, :description, :body, :triggers, :companions, keyword_init: true)
-  AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
+  AgentFileStoreDouble = Struct.new(:files, :meta) do # files: { [agent, name] => content }
+    # meta: { [agent, name] => { "updated_at" =>, "history" => [...] } } — the store's entry shape
     def read(agent, name) = files[[agent, name.to_s]]
-    def versions(_agent, _name) = []
+    def versions(agent, name) = (meta || {}).dig([agent, name.to_s], "history") || []
+    def updated_at(agent, name) = (meta || {}).dig([agent, name.to_s], "updated_at")
   end
   # agent: — a skill resolves per agent (an override wins for its holder). The
   # doubles carry the agent scope as { [agent, name] => … }, mirroring the store's
@@ -171,7 +173,7 @@ RSpec.describe Studio::App do
   end
 
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
-                agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
+                agent_files: {}, agent_file_meta: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, session_store: nil, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
@@ -227,7 +229,7 @@ RSpec.describe Studio::App do
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: event_stream, config: { admin_token: admin_token },
-      agent_file_store: AgentFileStoreDouble.new(agent_files),
+      agent_file_store: AgentFileStoreDouble.new(agent_files, agent_file_meta),
       # own_skills: { [agent, name] => "<SKILL.md>" } — the per-agent specializations.
       skill_store: SkillStoreDouble.new(stored_skills, own_skills),
       skill_catalog: SkillCatalogDouble.new(
@@ -750,6 +752,42 @@ end
      expect(body).to include("R$ 100.00")
      expect(body).not_to include("escalation")
    end
+
+  # History tab: outcomes per day with a marker per prompt-file change, and per
+  # change a short diff plus outcomes 7 days after vs 7 days before.
+  describe "what changed, and what it did" do
+    def days_ago(n) = Time.now.utc - n * 86_400
+
+    def changed_app(changed_days_ago, outcomes, funnel: nil)
+      build_app(agents: [profile("bia", prompt_files: ["IDENTITY.md"], funnel: funnel)],
+                agent_files: { ["bia", "IDENTITY.md"] => "You are Bia.\nBe brief." },
+                agent_file_meta: { ["bia", "IDENTITY.md"] => {
+                  "updated_at" => days_ago(changed_days_ago).iso8601,
+                  "history" => [{ "content" => "You are Bia.\nBe chatty.", "at" => days_ago(40).iso8601 }]
+                } },
+                outcomes: outcomes.map { |n, kind| { tenant: "platform", agent: "bia", outcome: kind, at: days_ago(n) } })
+    end
+
+    it "marks the change, shows its diff and compares the two weeks around it" do
+      app, = changed_app(10, [[20, "paid"], [12, "paid"], [11, "lead"], [9, "paid"], [6, "paid"], [5, "lead"]])
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("All outcomes per day, last 30 days")
+      expect(body).to include('class="change-mark"')
+      expect(body).to include('<span class="del">- Be chatty.</span>')
+      expect(body).to include('<span class="ins">+ Be brief.</span>')
+      expect(body).not_to include("- You are Bia.")
+      expect(body).to include('<strong class="tnum">3</strong> in the 7 days after vs <strong class="tnum">2</strong> in the 7 days before')
+      expect(body).to include('name="version" value="0"')
+    end
+
+    it "counts the funnel's primary outcome and says when a window is incomplete" do
+      app, = changed_app(2, [[20, "paid"], [5, "paid"], [1, "lead"]], funnel: FUNNEL_DECL)
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("Primary outcome · paid per day")
+      expect(body).to include("<title>#{days_ago(1).strftime('%b %-d')} · 0 outcomes</title>") # the lead is not counted
+      expect(body).to include("7 days before: not enough data")
+    end
+  end
 
    it "404 on the detail of a nonexistent agent" do
     app, = build_app
