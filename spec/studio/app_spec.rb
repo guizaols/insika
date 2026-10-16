@@ -748,6 +748,33 @@ end
                             'href="/studio/agents/bia/skills/doces"')
   end
 
+  it "the skill page lists each version with when it was in use" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes")
+    skills.write("doces", "---\nname: doces\n---\ndepois")
+    app, = build_app(skill_store: skills)
+    body = login(app).get("/skills/doces").body
+    old_at = skills.versions("doces").first["at"]
+    expect(body).to include("Versions", "#{old_at} → #{skills.updated_at("doces")}", "#{skills.updated_at("doces")} → now", "antes")
+  end
+
+  it "restoring a skill version saves that old text again, shared or per agent" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes")
+    skills.write("doces", "---\nname: doces\n---\ndepois")
+    skills.write("doces", "---\nname: doces\n---\nbia antes", agent: "bia")
+    skills.write("doces", "---\nname: doces\n---\nbia depois", agent: "bia")
+    app, bus = build_app(skill_store: skills)
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/doces").body)
+    client.post("/skills/doces/restore", params: { "version" => "0", "_csrf" => csrf })
+    expect(bus.last(:write_skill).payload).to include(name: "doces", agent: nil, content: "---\nname: doces\n---\nantes")
+    client.post("/agents/bia/skills/doces/restore", params: { "version" => "0", "_csrf" => csrf })
+    expect(bus.last(:write_skill).payload).to include(name: "doces", agent: "bia", content: "---\nname: doces\n---\nbia antes")
+    res = client.post("/skills/doces/restore", params: { "version" => "-1", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+  end
+
   it "the agent detail shows the per-day outcome series for that agent only" do
      app, = build_app(outcomes: [
                         { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
