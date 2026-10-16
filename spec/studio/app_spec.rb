@@ -5228,6 +5228,50 @@ end
     expect(body).to include("conversion")
   end
 
+  it "marks the biggest drop between consecutive stages and links each drop" do
+    cells = [funnel_cell(1, counts: { "greeted" => 10, "qualified" => 8, "cart" => 2, "paid" => 1 })]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel").body
+    expect(body).to include("Where conversations stop")
+    expect(body).to match(%r{qualified → cart</a></td>\s*<td class="num">6</td>\s*<td class="num">75%</td>\s*<td><span class="pill warn">biggest drop</span>})
+    expect(body.scan("biggest drop").size).to eq(1)
+    expect(body).to include("/studio/funnel?agent=funnel-store&amp;period=30&amp;drop=greeted")
+  end
+
+  it "the drop drill groups the sessions stuck at the stage by their last event" do
+    today = Date.today
+    at = Time.utc(today.year, today.month, today.day, 9)
+    outcomes = %w[s-quiet s-wait s-tool s-flag s-gone s-paid].map do |sid|
+      { tenant: nil, agent: "funnel-store", session_id: sid, outcome: "qualified", at: at }
+    end
+    outcomes << { tenant: nil, agent: "funnel-store", session_id: "s-paid", outcome: "pix_paid", at: at }
+    sessions = {
+      "s-quiet" => StoredSession.new(id: "s-quiet", updated_at: "t", messages: [{ "role" => "assistant", "content" => "a" }]),
+      "s-wait" => StoredSession.new(id: "s-wait", updated_at: "t", messages: [{ "role" => "user", "content" => "u" }]),
+      "s-tool" => StoredSession.new(id: "s-tool", updated_at: "t", messages: [{ "role" => "assistant", "content" => "a" }]),
+      "s-flag" => StoredSession.new(id: "s-flag", updated_at: "t",
+                                    messages: [{ "role" => "user", "content" => "u", "guardrail_flags" => [{ "category" => "x" }] }]),
+      "s-paid" => StoredSession.new(id: "s-paid", updated_at: "t", messages: [{ "role" => "user", "content" => "u" }])
+    }
+    app, = build_app(agents: [profile("funnel-store", funnel: FUNNEL_DECL)], outcomes: outcomes, sessions: sessions,
+                     funnel_cells: [funnel_cell(0, counts: { "greeted" => 6, "qualified" => 6, "paid" => 1 })],
+                     tool_traces: { "s-tool" => [{ "turn" => 1, "tool" => "menu", "result" => { "error" => "boom" } }] })
+    body = login(app).get("/funnel?agent=funnel-store&drop=qualified").body
+    expect(body).to include("Reached qualified, not cart")
+    { "Last tool call failed · 1" => "s-tool", "A guardrail flagged a message · 1" => "s-flag",
+      "Customer waiting on a reply · 1" => "s-wait", "Customer went quiet after the agent&#39;s reply · 1" => "s-quiet",
+      "Conversation no longer stored · 1" => "s-gone" }.each do |label, sid|
+      expect(body).to match(%r{#{Regexp.escape(label)}</span>\s*<span class="v">\s*<a class="mono" href="/studio/sessions/#{sid}"})
+    end
+    expect(body).not_to include("/studio/sessions/s-paid") # reached paid: not stuck at qualified
+  end
+
+  it "a drop on the last stage or an unknown stage renders no drill" do
+    app, = funnel_app(funnel_cells: [funnel_cell(1, counts: { "greeted" => 1 })])
+    expect(login(app).get("/funnel?agent=funnel-store&drop=paid").body).not_to include("Reached paid")
+    expect(login(app).get("/funnel?agent=funnel-store&drop=nope").body).not_to include("Reached nope")
+  end
+
   it "the funnel nav row is present" do
     app, = build_app
     body = login(app).get("/home").body
