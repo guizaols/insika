@@ -3585,6 +3585,33 @@ end
     expect(stale_row).not_to include('class="presence present"')
   end
 
+  it "live: one card per recent conversation, with presence, flag and the live-floor hooks" do
+    fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
+                               vars: { "agent" => "bia", "customer" => "c1", "customer_name" => "Maria" },
+                               messages: [{ "role" => "user", "content" => "oi", "guardrail_flags" => [{ "category" => "pii" }] },
+                                          { "role" => "assistant", "content" => "Olá, Maria" }])
+    stale = StoredSession.new(id: "sess-stale", updated_at: "2020-01-01T00:00:00Z",
+                               vars: { "agent" => "chef" }, messages: [{ "role" => "user", "content" => "bom dia" }])
+    app, = build_app(sessions: { "sess-fresh" => fresh, "sess-stale" => stale })
+    body = login(app).get("/live").body
+
+    expect(body).to include('href="/studio/live"') # the nav item
+    expect(body).to include('data-controller="live-floor"')
+    expect(body).to include('data-live-floor-target="ticker"')
+    fresh_card = body[body.index('data-session-id="sess-fresh"')..body.index('data-session-id="sess-stale"')]
+    stale_card = body[body.index('data-session-id="sess-stale"')..]
+    expect(body).to include('<a class="card live-card flagged" href="/studio/sessions/sess-fresh"')
+    expect(fresh_card).to include('<span class="name">Maria</span>', "Olá, Maria", 'class="presence present"')
+    expect(stale_card).to include("bom dia")
+    expect(stale_card).not_to include('class="presence present"')
+    expect(body).to include('<a class="card live-card" href="/studio/sessions/sess-stale"')
+  end
+
+  it "live: an empty store renders the empty state" do
+    app, = build_app
+    expect(login(app).get("/live").body).to include('data-live-floor-target="placeholder"')
+  end
+
   it "chats: customer_name labels the row and the viewer; the customer key stays searchable" do
     sess = StoredSession.new(id: "sess-named", updated_at: "t",
                               vars: { "agent" => "bia", "customer" => "5511999", "customer_name" => "Maria Souza" },
