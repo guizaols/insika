@@ -19,7 +19,7 @@
       <% skills = Array((ctx["categories"] || {}).dig("skilltrigger", "labels")).uniq %>
       <% unless skills.empty? %>
         <h3>Skills injected</h3>
-        <ul><% skills.each do |l| %><li class="mono"><% name = l.is_a?(Hash) ? l["name"].to_s : l.to_s %><a href="/studio/skills/<%= Rack::Utils.escape(name) %>"><%= skill_label(l) %></a></li><% end %></ul>
+        <ul><% skills.each do |l| %><li class="mono"><% name = l.is_a?(Hash) ? l["name"].to_s : l.to_s %><a href="/studio/skills/<%= Rack::Utils.escape(name) %>" data-turbo-frame="_top"><%= skill_label(l) %></a></li><% end %></ul>
       <% end %>
     <% else %>
       <p class="muted">No context trace for this turn.</p>

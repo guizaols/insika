@@ -253,7 +253,7 @@
                         <span class="at"><%= t["at"] %></span>
                       </summary>
                       <% if (loaded = loaded_skill_name(t)) %>
-                        <div class="kv"><span>skill</span><a class="mono" href="/studio/skills/<%= Rack::Utils.escape(loaded) %>"><%= loaded %></a></div>
+                        <div class="kv"><span>skill</span><a class="mono" href="/studio/skills/<%= Rack::Utils.escape(loaded) %>" data-turbo-frame="_top"><%= loaded %></a></div>
                       <% end %>
                       <div class="kv"><span>args</span>
                         <div class="copywrap" data-controller="clipboard">
