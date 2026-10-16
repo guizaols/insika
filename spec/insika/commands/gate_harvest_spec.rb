@@ -228,6 +228,20 @@ RSpec.describe Insika::Commands::GateHarvest do
       expect(result.status).to eq("gated")
     end
 
+    it "adds the operator's extra probe conversations after the origin, whole, up to max_cases" do
+      seed_profile(probe: { "enabled" => true, "max_cases" => 2 })
+      seed_origin("acme:sess_1")
+      session_store.create(id: "acme:similar", vars: { "agent" => "store-support" })
+      session_store.append_messages("acme:similar", [{ "role" => "user", "content" => "vende sapato?" },
+                                                     { "role" => "assistant", "content" => "não" },
+                                                     { "role" => "user", "content" => "e bolsa?" }])
+      session_store.create(id: "acme:third", vars: { "agent" => "store-support" })
+      session_store.append_messages("acme:third", { "role" => "user", "content" => "tem tênis?" })
+      c = seed_candidate(evidence_turns: [1])
+      handler.call(cmd("candidate_id" => c.id, "probe_sessions" => ["acme:similar", "acme:third", "acme:gone"]))
+      expect(seen).to eq([[["tem pix?"], ["vende sapato?", "e bolsa?"]]])
+    end
+
     it "re-gates a parked candidate once the hole is fixed — parking is not a dead end" do
       seed_profile(probe: { "enabled" => true })
       seed_origin

@@ -1291,6 +1291,8 @@ end
           check_csrf!
           agent = presence(r.params["agent"])
           payload = { candidate_id: presence(r.params["candidate_id"]) }
+          extra = r.params["probe_sessions"].to_s.split(/[\s,]+/).reject(&:empty?)
+          payload[:probe_sessions] = extra unless extra.empty?
           control_action(:gate_harvest, payload, ok: "Gated — see the verdicts below.")
           r.redirect("/studio/harvest?agent=#{Rack::Utils.escape(agent.to_s)}")
         end

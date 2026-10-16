@@ -73,7 +73,7 @@ module Insika
 
         # The probe is on but cannot replay the skill's own conversation: a
         # missing ruler parks, it never passes.
-        probe_cases = probe_cases_for(candidate)
+        probe_cases = probe_cases_for(candidate, Array(p[:probe_sessions]).map(&:to_s))
         if probe_cases.is_a?(String)
           return @harvest_store.attach_gate(
             candidate.id,
@@ -128,17 +128,21 @@ module Insika
       # miner does not say which session a skill came from (the engine loop
       # mines one session at a time, so its origin is exact);
       # "probe_no_cases" — nothing left to replay (purged by retention).
-      def probe_cases_for(candidate)
+      def probe_cases_for(candidate, extra_ids = [])
         config = probe_config(candidate.agent)
         return [] unless config
         return "probe_ambiguous_origin" if Array(candidate.origin).size > 1
 
-        sessions = Array(candidate.origin).filter_map { |sid| @session_store.find(sid)&.messages&.to_a }
-        cases = Insika::Harvest::Probe.cases(
-          sessions, evidence_turns: candidate.evidence_turns,
-          max_cases: (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i.clamp(1, 10),
-          max_turns: (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i.clamp(1, 10)
-        )
+        max_cases = (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i.clamp(1, 10)
+        max_turns = (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i.clamp(1, 10)
+        messages_of = ->(ids) { ids.filter_map { |sid| @session_store.find(sid)&.messages&.to_a } }
+        cases = Insika::Harvest::Probe.cases(messages_of.(Array(candidate.origin)), evidence_turns: candidate.evidence_turns,
+                                                                                 max_cases: max_cases, max_turns: max_turns)
+        # Operator-picked conversations like the origin: one case per origin
+        # session is weak evidence, so extras widen it (whole, no evidence cut).
+        cases += Insika::Harvest::Probe.cases(messages_of.(extra_ids), evidence_turns: [],
+                                                                     max_cases: max_cases, max_turns: max_turns)
+        cases = cases.first(max_cases)
         cases.empty? ? "probe_no_cases" : cases
       end
 
