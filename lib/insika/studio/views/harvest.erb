@@ -110,6 +110,13 @@
           <li>
             <span class="status <%= status_class('blocked') %>">blocked</span>
             <span class="mono"><%= cand.name %></span>
+            <% ev = cand.eval_gate || {} %>
+            <% if (pr = ev["probe"]) %>
+              <span class="preview">probe <%= pr["passed"] ? "passed" : "failed" %>: <%= pr["better"] %> better · <%= pr["comparable"] %> comparable · <%= pr["worse"] %> worse</span>
+            <% end %>
+            <% if ev["passed"] == false && ev["reason"] && (cand.conversion_gate || {})["reason"] %>
+              <span class="preview muted"><%= ev["reason"] %> ·</span>
+            <% end %>
             <span class="preview muted">
               <% reason = (cand.conversion_gate || {})["reason"] %>
               <% if reason == "no_frozen_baseline" %>
