@@ -5973,6 +5973,13 @@ end
       res = client.post("/harvest/gate", params: { "candidate_id" => "anything", "_csrf" => csrf })
       expect(res.headers["location"]).to include("/studio/harvest")
       expect(bus.last(:gate_harvest).payload).to include(candidate_id: "anything")
+      expect(bus.last(:gate_harvest).payload).not_to have_key(:probe_sessions)
+
+      client.post("/harvest/gate", params: { "candidate_id" => "x", "_csrf" => csrf,
+                                             "probe_sessions" => "acme:a, acme:b\nacme:c" })
+      expect(bus.last(:gate_harvest).payload[:probe_sessions]).to eq(%w[acme:a acme:b acme:c])
+      blocked, = harvest_app(candidates: [{ name: "parked", description: "d", status: "blocked" }])
+      expect(login(blocked).get("/harvest?agent=store-support").body).to include('name="probe_sessions"')
     end
 
     it "the promote POST dispatches :promote_harvest with operator 'studio' and the note" do
