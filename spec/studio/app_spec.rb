@@ -3721,6 +3721,14 @@ end
     end
   end
 
+  it "a user message highlights its markup tags, attributes included, and keeps its lines" do
+    sess = StoredSession.new(id: "sess-vit", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "<vitrine_enviada formato=\"lista\">\n1 · Perfume\n</vitrine_enviada>" }])
+    app, = build_app(sessions: { "sess-vit" => sess })
+    body = login(app).get("/sessions/sess-vit").body
+    expect(body).to include('<span class="tag-token">&lt;vitrine_enviada formato=&quot;lista&quot;&gt;</span>' "\n1 · Perfume\n" '<span class="tag-token">&lt;/vitrine_enviada&gt;</span>')
+  end
+
   it "a preview cut never splits a tag" do
     app, = build_app
     html = app.allocate.send(:mark_tags, "#{'a' * 86}\n<ver_mais/>", 90)

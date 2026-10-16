@@ -2901,13 +2901,17 @@ end
       "#{hrs / 24}d"
     end
 
-    # A one-line preview, escaped, with its markup tags (<carrossel/>) wrapped
-    # like markdown.js markTags does. Cut at `limit` without splitting a tag: a
-    # half tag ("<ve") would read as plain text.
+    # Same pattern as markdown.js TAG_TOKEN, on escaped text.
+    TAG_TOKEN = %r{&lt;/?[a-z][\w-]*(?:\s+[\w-]+(?:=(?:&quot;.*?&quot;|&#39;.*?&#39;|[\w-]+))?)*\s*/?&gt;}i
+
+    # Escaped text with its markup tags (<carrossel/>, <vitrine formato="x">)
+    # wrapped like markdown.js markTags does, for text not rendered as Markdown.
+    # With `limit`: a one-line preview, cut without splitting a tag (a half tag
+    # "<ve" would read as plain text).
     def mark_tags(text, limit = nil)
-      s = text.to_s.gsub(/\s+/, " ").strip
-      s = s[0, limit].sub(/<[^>]*\z/, "").rstrip if limit
-      Rack::Utils.escape_html(s).gsub(%r{&lt;/?[a-z][\w-]*\s*/?&gt;}i) { %(<span class="tag-token">#{_1}</span>) }
+      s = text.to_s
+      s = s.gsub(/\s+/, " ").strip[0, limit].sub(/<[^>]*\z/, "").rstrip if limit
+      Rack::Utils.escape_html(s).gsub(TAG_TOKEN) { %(<span class="tag-token">#{_1}</span>) }
     end
 
     def session_preview(session)
