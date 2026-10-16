@@ -34,6 +34,14 @@ module Insika
         value
       end
 
+      # Assigning an existing Hash key keeps its position (the write order).
+      def amend(scope, key, value)
+        return set(scope, key, value) unless @data[scope].key?(key)
+
+        @data[scope][key] = serialize(value)
+        value
+      end
+
       def delete(scope, key)
         !@data[scope].delete(key).nil?
       end

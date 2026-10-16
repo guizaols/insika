@@ -434,6 +434,16 @@ RSpec.describe Insika::SessionStore do
       expect(sessions.all_stats.map(&:message_count)).to eq([1])
     end
 
+    it "backfill_stats rewrites stats older than the current version (the flagged count)" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "x", "guardrail_flags" => [{ "category" => "pii" }] }])
+      backend.set(described_class::STATS_SCOPE, "session:a", { "updated_at" => "2026-01-01T00:00:00Z", "message_count" => 1 })
+
+      expect(sessions.backfill_stats).to eq(1)
+      expect(sessions.all_stats.first.flagged).to eq(1)
+      expect(sessions.backfill_stats).to eq(0)
+    end
+
     it "backfill_stats removes stats whose session is gone" do
       sessions.create(id: "a")
       backend.set(described_class::STATS_SCOPE, "session:ghost", { "updated_at" => "2026-01-01T00:00:00Z", "message_count" => 9 })

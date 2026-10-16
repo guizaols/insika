@@ -190,6 +190,16 @@ module Insika
         value
       end
 
+      # An UPDATE keeps the row's rowid, the write order #recent reads.
+      def amend(scope, key, value)
+        serialized = serialize(value)
+        updated = group_write(scope, serialized.bytesize) do
+          @db.execute("UPDATE kv SET value = ? WHERE scope = ? AND key = ?", [serialized, scope, key])
+          @db.changes.positive?
+        end
+        updated ? value : set(scope, key, value)
+      end
+
       def delete(scope, key)
         group_write(scope, 0) do
           @db.execute("DELETE FROM kv WHERE scope = ? AND key = ?", [scope, key])
