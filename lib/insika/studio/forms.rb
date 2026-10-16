@@ -297,7 +297,21 @@ module Studio
       out["negative_list"] = negative unless negative.nil?
       miner = harvest_miner_patch(r)
       out["miner"] = miner unless miner.empty?
+      probe = harvest_probe_patch(r)
+      out["probe"] = probe unless probe.empty?
       out
+    end
+
+    # Omitted when unchecked and blank — absent means off (see GateHarvest).
+    def harvest_probe_patch(r)
+      probe = {}
+      probe["enabled"] = true if r.params["harvest_probe_enabled"] == "1"
+      %w[max_cases max_turns].each do |key|
+        v = edge_int(r.params["harvest_probe_#{key}"], "harvest_probe_#{key}")
+        probe[key] = v unless v.nil?
+      end
+      probe["enabled"] ||= false unless probe.empty?
+      probe
     end
 
     def harvest_miner_patch(r)

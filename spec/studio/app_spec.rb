@@ -1275,6 +1275,23 @@ end
       )
     end
 
+    it "harvest: the probe switch and its limits survive a save" do
+      app, bus = build_app
+      client = login(app)
+      config_post(client, "model" => "x", "harvest_enabled" => "1", "harvest_probe_enabled" => "1",
+                          "harvest_probe_max_cases" => "2", "harvest_probe_max_turns" => "3")
+      expect(bus.last(:update_agent).payload[:harvest]["probe"])
+        .to eq("enabled" => true, "max_cases" => 2, "max_turns" => 3)
+    end
+
+    it "harvest: the config tab shows a probe that is on, so a save keeps it" do
+      bia = profile("bia").with(harvest: { "enabled" => true, "probe" => { "enabled" => true, "max_turns" => 2 } })
+      app, = build_app(agents: [bia])
+      body = login(app).get("/agents/bia").body
+      expect(body).to include('name="harvest_probe_enabled" value="1" checked')
+      expect(body).to include('name="harvest_probe_max_turns" value="2"')
+    end
+
     it "refinement: mode, window, findings cap, files, proposers and budget" do
       app, bus = build_app
       client = login(app)
