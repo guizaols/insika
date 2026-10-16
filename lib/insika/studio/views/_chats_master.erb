@@ -51,7 +51,7 @@
             <span class="presence<%== ' present' if session_fresh?(s) %>" title="<%= session_fresh?(s) ? "Activity in the last 5 minutes" : "No activity in the last 5 minutes" %>"></span>
           </div>
           <div class="drill-item-sub"><%= Array(s.messages).size %> messages · <%= time_ago(s.updated_at) %></div>
-          <% if preview %><div class="drill-item-sub"><%== mark_tags(preview[0, 90]) %></div><% end %>
+          <% if preview %><div class="drill-item-sub"><%== mark_tags(preview, 90) %></div><% end %>
         </a>
       <% end %>
       <div class="empty" data-list-filter-target="empty" hidden>No conversations match your filter.</div>
