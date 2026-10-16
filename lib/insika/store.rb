@@ -25,7 +25,9 @@ module Insika
   #
   # Backends `include Store` and override the six methods; any forgotten
   # method raises NotImplementedError (fail-fast, better than a distant
-  # NoMethodError).
+  # NoMethodError). #entries, #recent and #amend have defaults; a backend that
+  # knows its write order overrides #recent and #amend together (the contract
+  # suite checks that an amended key keeps its place in #recent).
   module Store
     # -> Object | nil (deserialized)
     def get(scope, key)
