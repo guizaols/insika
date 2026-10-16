@@ -171,6 +171,14 @@ RSpec.describe Insika::Commands::RunHarvest do
       expect(event.data.to_s).to_not include("SKU0001") # counts and ids only, never content
     end
 
+    it "a manual window never mines synthetic traffic either" do
+      seed_session(id: "acme:sim-abc")
+      handler.call(cmd("agent" => "store-support", "session_ids" => ["acme:sim-abc", "acme:sess_1"]))
+      prompt = fake_miner.calls.first[:prompt]
+      expect(prompt).to include("acme:sess_1")
+      expect(prompt).not_to include("acme:sim-abc")
+    end
+
     it "tells the miner the candidates still open, so it does not re-propose an idea under a new name" do
       open = harvest_store.create_candidate(run_id: "r0", agent: "store-support", name: "out_of_catalog_redirect",
                                             description: "redirect a shoe request to beauty", body: "b",

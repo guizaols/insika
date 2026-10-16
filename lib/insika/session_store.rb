@@ -25,6 +25,15 @@ module Insika
     # (shown and searched there; no effect on memory scope).
     CUSTOMER_LABELS = %w[customer_name customer_phone].freeze
     KEY_PREFIX = "session:"
+    # Simulator (`sim-<chat>`), eval (`eval-<id>`) and harvest probe
+    # (`probe-<tag>`) sessions are synthetic traffic: nothing learns from them
+    # (knowledge extraction, harvest). A tenant-scoped id ("<tenant>:sim-…")
+    # is judged by its last segment.
+    SYNTHETIC_PREFIXES = %w[sim- eval- probe-].freeze
+
+    def self.synthetic?(session_id)
+      session_id.to_s.split(":").last.to_s.start_with?(*SYNTHETIC_PREFIXES)
+    end
 
     Session = Data.define(:id, :messages, :vars, :memory_refs,
                           :created_at, :updated_at, :briefing, :evidence, :compaction) do
