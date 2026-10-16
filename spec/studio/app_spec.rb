@@ -5865,8 +5865,9 @@ end
                                     criterion_sha: "sha256:abc")
           store.mark_awaiting(cand.id)
         when "blocked"
-          store.attach_gate(cand.id, eval_gate: { "passed" => true },
-                                    conversion_gate: { "passed" => false, "reason" => "no_frozen_baseline" },
+          store.attach_gate(cand.id, eval_gate: c[:eval_gate] || { "passed" => true },
+                                    conversion_gate: { "passed" => false,
+                                                       "reason" => c[:conversion_reason] || "no_frozen_baseline" },
                                     criterion_sha: "sha256:abc")
         when "pending"
           nil # stays pending
@@ -5938,6 +5939,22 @@ end
       expect(body).to include("Check &lt;script&gt;order&lt;/script&gt;", "Avoid duplicate charges")
       expect(body.index("Proposed skill")).to be < body.index('action="/studio/harvest/promote"')
       expect(body).not_to include("<script>order</script>")
+    end
+
+    it "a blocked candidate shows its probe verdict next to the conversion hole" do
+      won = { "passed" => true, "cases" => 0,
+              "probe" => { "passed" => true, "better" => 1, "comparable" => 1, "worse" => 0, "cases" => 2 } }
+      lost = { "passed" => false, "reason" => "probe_no_gain: no case improved over the agent without the skill",
+               "probe" => { "passed" => false, "better" => 0, "comparable" => 2, "worse" => 0, "cases" => 2 } }
+      app, = harvest_app(candidates: [
+                           { name: "won", description: "d", status: "blocked", eval_gate: won, conversion_reason: "no_criterion" },
+                           { name: "lost", description: "d", status: "blocked", eval_gate: lost, conversion_reason: "no_criterion" }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("probe passed: 1 better · 1 comparable · 0 worse")
+      expect(body).to include("probe failed: 0 better · 2 comparable · 0 worse")
+      expect(body).to include("probe_no_gain")
+      expect(body).to include("no_criterion")
     end
 
     it "a conversion-blocked candidate renders the ruler's hole with a link to the Funnel page" do
