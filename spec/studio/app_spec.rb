@@ -2612,6 +2612,56 @@ end
                         { tool: "b", ok: false, ms: 500, x: 75.0, w: 25.0 }])
   end
 
+  it "each reply explains its own turn: context, skills, calls, checks" do
+    sess = StoredSession.new(id: "sess-why", updated_at: "t", vars: { "agent" => "bia" },
+                             messages: [
+                               { "role" => "user", "content" => "oi", "at" => "2026-10-15T10:00:00Z" },
+                               { "role" => "assistant", "content" => "Olá!", "at" => "2026-10-15T10:00:00Z" },
+                               { "role" => "user", "content" => "tem trufa?", "at" => "2026-10-15T10:01:00Z",
+                                 "guardrail_flags" => [{ "category" => "spam", "action" => "flag" }] },
+                               { "role" => "assistant", "content" => "", "at" => "2026-10-15T10:01:00Z",
+                                 "tool_calls" => [{ "id" => "c1", "name" => "search_products", "arguments" => {} }] },
+                               { "role" => "tool", "content" => "found", "at" => "2026-10-15T10:01:00Z" },
+                               { "role" => "assistant", "content" => "Achei!", "at" => "2026-10-15T10:01:00Z" }
+                             ])
+    ctx = ->(at, tokens) { { "task_id" => "t-#{at}", "turn" => 1, "at" => at, "cap" => 1000, "used" => tokens,
+                             "categories" => { "persona" => { "tokens" => tokens, "labels" => [] },
+                                               "skilltrigger" => { "tokens" => 10, "labels" => [{ "name" => "doces", "reason" => "trigger:trufa" }] } } } }
+    app, = build_app(sessions: { "sess-why" => sess },
+                     context_traces: { "sess-why" => [ctx.("2026-10-15T09:59:59Z", 111), ctx.("2026-10-15T10:00:59Z", 222)] },
+                     tool_traces: { "sess-why" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
+                                                     "result" => {}, "ms" => 42, "at" => "2026-10-15T10:00:59Z" }] })
+    why = app.allocate.send(:why_panels, sess.messages, app.insika[:context_trace_store].for_session("sess-why"),
+                            app.insika[:tool_trace_store].for_session("sess-why"))
+    expect(why.keys).to eq([1, 5])
+    expect(why[1]).to include(tools: [], flags: [])
+    expect(why[1][:context]["used"]).to eq(111)
+    expect(why[5][:context]["used"]).to eq(222)
+    expect(why[5][:tools].map { _1["ms"] }).to eq([42])
+    expect(why[5][:flags].map { _1["category"] }).to eq(["spam"])
+    body = login(app).get("/sessions/sess-why").body
+    expect(body).to include("why this reply", "doces · trigger:trufa", "No tool calls.", "42ms",
+                            'href="/studio/evals?session=sess-why&amp;reply=5"')
+  end
+
+  it "Save as eval case opens the Evals editor prefilled from the reply" do
+    sess = StoredSession.new(id: "sess-case", updated_at: "t", vars: { "agent" => "bia" },
+                             messages: [
+                               { "role" => "user", "content" => "tem trufa?" },
+                               { "role" => "assistant", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "search_products" }] },
+                               { "role" => "tool", "content" => "found" },
+                               { "role" => "assistant", "content" => "Achei!" }
+                             ])
+    app, = build_app(sessions: { "sess-case" => sess })
+    yaml = app.allocate.send(:session_case_yaml, "sess-case", 3)
+    golden = Insika::Evals::GoldenLoader.build(YAML.safe_load(yaml), source: "spec")
+    expect(golden.agent).to eq("bia")
+    expect(golden.user_turns).to eq(["tem trufa?"])
+    expect(golden.expect["tools_called"]).to eq(["search_products"])
+    expect(golden.reference_messages.map { _1["text"] }).to eq(["tem trufa?", "Achei!"])
+    expect(login(app).get("/evals?session=sess-case&reply=3").body).to include("sess-case")
+  end
+
   # --- Visual parity — motion, transcript, live home, master-detail --
 
   it "the layout declares the view-transition meta and the chip-icon sprite" do

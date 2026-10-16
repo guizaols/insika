@@ -1028,6 +1028,8 @@ module Studio
                            .group_by { |t| t["turn"] }
             # Context breakdown per turn: chronological entries.
             @context_traces = insika[:context_trace_store]&.for_session(sid) || []
+            # Per-reply "why did it say that?" panels, drawn under each reply.
+            @why = why_panels(Array(@session.messages), @context_traces, @tool_traces.values.flatten)
             # the stage history — the session's outcomes folded
             # into the agent's declared stages (unmapped kinds render raw).
             @stage_history = stage_history_for(sid)
@@ -3059,6 +3061,51 @@ end
       end
     end
 
+    # "Why did it say that?" — one entry per reply, keyed by the index of the
+    # turn's LAST assistant message with text. A turn opens on a user message
+    # that is not steered (a steered one joins the running turn). Messages carry
+    # no task id and the trace `turn` restarts at 1 every task, so the traces are
+    # matched like the skill cards in the thread: the context entry by time (it is
+    # written before the turn's messages are persisted), tool traces by call id
+    # (the persisted tool_calls carry it). -> { index => { context:, tools:, calls:, flags: } }
+    def why_panels(messages, context_traces, tool_traces)
+      by_call = tool_traces.to_h { [_1["call_id"].to_s, _1] }
+      pending = context_traces.sort_by { _1["at"].to_s }
+      turns = messages.each_index.slice_before do |i|
+        messages[i]["role"].to_s == "user" && !(i.positive? && messages[i - 1]["role"].to_s == "tool")
+      end
+      turns.each_with_object({}) do |idx, acc|
+        msgs = messages.values_at(*idx)
+        at = msgs.first["at"].to_s
+        context = nil
+        context = pending.shift while !at.empty? && pending.first && pending.first["at"].to_s <= at
+        reply = idx.reverse.find { |i| messages[i]["role"].to_s == "assistant" && !messages[i]["content"].to_s.empty? } or next
+        calls = msgs.flat_map { |m| Array(m["tool_calls"]) }
+        acc[reply] = { context: context, tools: by_call.values_at(*calls.map { _1["id"].to_s }).compact,
+                       calls: calls.map { _1["name"].to_s }.uniq,
+                       flags: msgs.select { _1["role"].to_s == "user" }.flat_map { Array(_1["guardrail_flags"]) } }
+      end
+    end
+
+    # A case prefilled from one reply (/studio/evals?session=&reply=): the
+    # customer's messages up to it as `turns`, the transcript as the `reference`,
+    # the tools its turn called as `tools_called`. Nothing is written here — the
+    # operator adds the rubric and saves through the same POST as any case.
+    def session_case_yaml(sid, reply)
+      session = insika[:session_store]&.find(sid) or return nil
+      msgs = Array(session.messages).first(reply + 1)
+      panel = why_panels(msgs, [], [])[reply] or return nil
+      agent = presence(session_agent(session)) || "my-agent"
+      said = msgs.select { %w[user assistant].include?(_1["role"].to_s) && !_1["content"].to_s.empty? }
+      expect = { "tools_called" => panel[:calls], "must_not" => %w[pii_leak tool_error], "rubric" => "" }
+      expect.delete("tools_called") if panel[:calls].empty?
+      YAML.dump({ "id" => "#{agent}-#{sid[0, 8]}-#{reply}", "agent" => agent,
+                  "turns" => said.select { _1["role"] == "user" }.map { { "user" => message_content(_1["content"]).to_s } },
+                  "reference" => { "source" => "session #{sid}",
+                                   "messages" => said.map { { "role" => _1["role"], "text" => message_content(_1["content"]).to_s } } },
+                  "expect" => expect })
+    end
+
     CHAT_STATUSES = %w[active flagged].freeze
 
     # The Chats status tabs: "active" = touched in the last 5 minutes (the
@@ -3299,6 +3346,8 @@ def render_evals
   wanted = presence(request.params["id"])
   @case = wanted && @cases.find { |g| g.id == wanted }
   @case_yaml = @case ? golden_yaml(@case) : nil
+  from = presence(request.params["session"])
+  @case_yaml ||= session_case_yaml(utf8(from), request.params["reply"].to_i) if from
   view("evals")
 end
 
