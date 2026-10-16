@@ -26,6 +26,19 @@
       <input type="text" name="harvest_miner_budget_tokens" value="<%= hvm.dig("budget", "tokens") %>" placeholder="20000" inputmode="numeric">
     </label>
   </div>
+  <% hvp = hv["probe"] || {} %>
+  <label class="check">
+    <input type="checkbox" name="harvest_probe_enabled" value="1"<%== " checked" if Insika::Coercion.truthy?(hvp["enabled"]) %>>
+    probe — the gate replays the skill's own conversation without and with it; the judge must say it got better (gates alone when there are no golden cases)
+  </label>
+  <div class="grid-3">
+    <label>probe cases <span class="muted">(blank = 3)</span>
+      <input type="text" name="harvest_probe_max_cases" value="<%= hvp["max_cases"] %>" placeholder="3" inputmode="numeric">
+    </label>
+    <label>probe turns per case <span class="muted">(blank = 4)</span>
+      <input type="text" name="harvest_probe_max_turns" value="<%= hvp["max_turns"] %>" placeholder="4" inputmode="numeric">
+    </label>
+  </div>
   <label>negative list <span class="muted">— JSON: <code>[{ "rule": "…", "pattern": "…" }]</code> (blank = the deployment seed)</span>
     <textarea name="harvest_negative_list" rows="3" spellcheck="false" class="mono" placeholder='[ { "rule": "no-competitor-prices", "pattern": "concorrente" } ]'><%= agent_json(hv["negative_list"]) %></textarea>
   </label>
