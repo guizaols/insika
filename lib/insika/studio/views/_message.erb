@@ -45,7 +45,7 @@
     </div>
     <% if show_bubble %>
       <div class="bubble">
-        <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><%= message_content(m["content"]) %></div>
+        <div class="content<%== ' md' if role == 'assistant' %>"<%== ' data-controller="markdown"' if role == 'assistant' %>><% if role == "user" %><%== mark_tags(message_content(m["content"])) %><% else %><%= message_content(m["content"]) %><% end %></div>
       </div>
     <% end %>
   </div>
