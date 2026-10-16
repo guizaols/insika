@@ -287,7 +287,9 @@ module Studio
                 Insika::Server::SSEBody.new(subscription: subscription)])
       end
 
-      # `/studio` and `/studio/` → overview home.
+      # `/studio/` → overview home. A bare `/studio` reaches here with an empty
+      # path (Rack::URLMap strips the mount), which r.root does not match.
+      r.redirect("/studio/home") if r.remaining_path.empty?
       r.root { r.redirect("/studio/home") }
 
       # --- Overview: at-a-glance dashboard ---------------------
@@ -2897,6 +2899,12 @@ end
       return "#{hrs}h" if hrs < 24
 
       "#{hrs / 24}d"
+    end
+
+    # Escaped text with its markup tags (<carrossel/>) wrapped like markdown.js
+    # markTags does, for previews that are not rendered as Markdown.
+    def mark_tags(text)
+      Rack::Utils.escape_html(text.to_s).gsub(%r{&lt;/?[a-z][\w-]*\s*/?&gt;}i) { %(<span class="tag-token">#{_1}</span>) }
     end
 
     def session_preview(session)
