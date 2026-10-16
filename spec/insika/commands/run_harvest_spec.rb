@@ -171,6 +171,21 @@ RSpec.describe Insika::Commands::RunHarvest do
       expect(event.data.to_s).to_not include("SKU0001") # counts and ids only, never content
     end
 
+    it "tells the miner the candidates still open, so it does not re-propose an idea under a new name" do
+      open = harvest_store.create_candidate(run_id: "r0", agent: "store-support", name: "out_of_catalog_redirect",
+                                            description: "redirect a shoe request to beauty", body: "b",
+                                            rationale: "r", origin: ["acme:old"], proposer: "m")
+      gone = harvest_store.create_candidate(run_id: "r0", agent: "store-support", name: "rejected_idea",
+                                            description: "was rejected", body: "b", rationale: "r",
+                                            origin: ["acme:old"], proposer: "m")
+      harvest_store.mark_rejected(gone.id, operator: "studio", note: "no")
+      handler.call(cmd("agent" => "store-support"))
+      prompt = fake_miner.calls.first[:prompt]
+      expect(prompt).to include("out_of_catalog_redirect — redirect a shoe request to beauty")
+      expect(prompt).not_to include("rejected_idea")
+      expect(open.status).to eq("pending")
+    end
+
     it "the mined sessions are byte-identical after the pass (E1 — the fork wrote nothing)" do
       before_1 = session_store.find("acme:sess_1").to_h
       before_2 = session_store.find("acme:sess_2").to_h
