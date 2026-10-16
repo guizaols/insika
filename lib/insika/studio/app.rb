@@ -3132,6 +3132,17 @@ end
     # One turn's tool calls as waterfall bars: each entry's start is its
     # stamp minus its duration; x/w are percent of the turn's span. Entries
     # without a parseable stamp are left out. -> [{ tool:, ok:, ms:, x:, w: }]
+    # The skill a load_skill trace entry loaded, for the link to its page; nil for
+    # any other tool. Args arrive as a Hash or as the JSON text the model sent.
+    def loaded_skill_name(entry)
+      return nil unless entry["tool"].to_s == "load_skill"
+
+      args = entry["args"]
+      args = JSON.parse(args.to_s) rescue nil unless args.is_a?(Hash)
+      name = args.is_a?(Hash) ? args["name"].to_s : ""
+      name.empty? ? nil : name
+    end
+
     def trace_waterfall(entries)
       rows = entries.filter_map do |t|
         finish = utc_time(t["at"]) or next
