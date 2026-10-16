@@ -3721,6 +3721,13 @@ end
     end
   end
 
+  it "a preview cut never splits a tag" do
+    app, = build_app
+    html = app.allocate.send(:mark_tags, "#{'a' * 86}\n<ver_mais/>", 90)
+    expect(html).to eq("a" * 86)
+    expect(app.allocate.send(:mark_tags, "oi\n\n<carrinho/> ok", 90)).to eq('oi <span class="tag-token">&lt;carrinho/&gt;</span> ok')
+  end
+
   it "live: one card per recent conversation, with presence, flag and the live-floor hooks" do
     fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
                                vars: { "agent" => "bia", "customer" => "c1", "customer_name" => "Maria" },
