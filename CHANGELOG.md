@@ -10,6 +10,38 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Added
 
+- Studio screens for watching conversations and what waits on a person (see
+  [Studio](docs/STUDIO.md)):
+  - **Live** (`/studio/live`): one card per recent conversation, moved by the
+    event stream (tools in the running turn, "agent is writing…", guardrail
+    flags), with an event ticker. `?agent=` shows one agent's conversations.
+  - **Why this reply**: under each agent reply, its turn's context by category,
+    skills injected and why, tool calls with timing and guardrail flags, plus
+    Replay in Playground and Save as eval case.
+  - **Inbox** (`/studio/inbox`): approvals, fact proposals, mined skills,
+    refinement runs and guardrail false-positive reports in one list, oldest
+    first, with tabs per type.
+  - **Guardrail false positives**: a flag can be marked as a false positive,
+    then resolved or undone (`:review_guardrail_flag`). The verdict lives on the
+    flag inside the session.
+  - **Agent History**: outcomes per day over 30 days with a marker per change
+    to a prompt file or to the agent's own skills, and per change a short diff
+    and the outcomes 7 days after vs 7 days before.
+  - **Funnel drops**: the biggest loss between stages, and per loss the
+    conversations that stopped there, grouped by the last thing that happened.
+  - Chats tabs (All / Active now / Guardrail flagged), a customer card on the
+    session, a tool-call waterfall per turn, an Overview "Needs attention" row,
+    a `⌘K` palette, and a sidebar grouped as Operate / Review / Build /
+    Insights / Platform with a count badge on each Review page.
+  - Markup tags in message text (`<carrossel/>`, `<vitrine formato="lista">`)
+    show as highlighted tokens, escaped and never rendered.
+- `Store#amend(scope, key, value)`: overwrites a key without moving it in
+  `#recent`. The default is `#set`; a backend whose `#recent` follows its own
+  write order overrides both (the contract suite checks it). Memory, SQLite and
+  Postgres implement it.
+- Persisted turn messages and tool-call traces carry `task_id`, so the Studio
+  ties each message to its own turn.
+
 - `scripts/migrate_openclaw.rb seed`: carries recent OpenClaw conversations into
   Insika sessions (`POST /v1/conversations/:id/seed`) so a returning customer
   keeps the context. Reads root and per-process SQLite transcripts, follows the
@@ -41,6 +73,11 @@ it is released. Entries land with the pull request that makes the change.
   long it waited for the lock versus how long its commit took.
 
 ### Changed
+- Session stats are versioned (`"v" => 2`, adds the guardrail flagged and
+  reported counts). `scripts/backfill_session_stats.rb` now also rewrites stats
+  older than the current version, not only missing ones.
+- Reviewing a guardrail flag no longer moves the session to the top of the
+  recent lists.
 - **MCP tools are named after their instance**: `<instance>__<tool>` (e.g.
   `shop_staging__list_products`). Two instances offering the same tool used to share
   one name, and every call went to whichever instance came first. Agents that allowed
@@ -109,6 +146,13 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- Studio: `/studio` without a trailing slash answered 404; it now opens the
+  Overview.
+- Studio: the agent History chart and arm conversions counted outcome kinds
+  against the primary stage name, so they read 0 whenever the kind and stage
+  names differ; they now map kinds through `advance_on`.
+- Studio: a negative message or flag index on a guardrail review counted from
+  the end and reviewed the wrong flag; it is now not found.
 - An error that is fatal only for one model or account no longer kills the turn:
   no balance (402), a bad key or missing access (401/403) and a model the provider
   does not have (404) move straight to the next fallback node — no retry on that

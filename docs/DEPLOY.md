@@ -117,6 +117,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_TICK_STALE_AFTER` | `900` | seconds a `:queued`/`:running` task must sit untouched before the tick sweeps it. Must exceed the largest `turn_timeout` of the deployment |
 | `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
+| `INSIKA_ENV` | `RACK_ENV`, else `local` | environment name on the Studio banner; `production`/`prod` hides the banner |
 | `DEEPSEEK_API_KEY` | — | provider key. **Without it the engine still boots** (`/up` green), but turns fail until it is configured (env or Studio → LLM providers) — cloud resilience |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | model |
 | `CONSUMER_INTERNAL_URL` | — | base URL for data-tools calling back a consumer's internal API (see below) |
