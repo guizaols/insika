@@ -2649,6 +2649,18 @@ end
                             'href="/studio/evals?session=sess-why&amp;reply=5"')
   end
 
+  it "a reply carrying task_id gets its own turn's context even within the same second" do
+    at = "2026-10-15T10:00:00Z"
+    msgs = [{ "role" => "user", "content" => "a", "at" => at, "task_id" => "t1" },
+            { "role" => "assistant", "content" => "A", "at" => at, "task_id" => "t1" },
+            { "role" => "user", "content" => "b", "at" => at, "task_id" => "t2" },
+            { "role" => "assistant", "content" => "B", "at" => at, "task_id" => "t2" }]
+    traces = [{ "task_id" => "t1", "at" => at, "used" => 1 }, { "task_id" => "t2", "at" => at, "used" => 2 }]
+    app, = build_app
+    why = app.allocate.send(:why_panels, msgs, traces, [])
+    expect([why[1][:context]["used"], why[3][:context]["used"]]).to eq([1, 2])
+  end
+
   it "Save as eval case opens the Evals editor prefilled from the reply" do
     sess = StoredSession.new(id: "sess-case", updated_at: "t", vars: { "agent" => "bia" },
                              messages: [
