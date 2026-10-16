@@ -106,6 +106,9 @@
           <% groups = @agent == profile.id && @drop_tenant == tenant && @drop ? funnel_drop_sessions(decl, tenant, profile.id, @drop, @period) : nil %>
           <% if groups %>
             <h4>Reached <%= @drop %>, not <%= decl.stages[decl.index_of(@drop) + 1] %></h4>
+            <% if @drop_total.to_i > Studio::App::DROP_CLASSIFY_CAP %>
+              <p class="muted"><%= @drop_total %> stopped here; the newest <%= Studio::App::DROP_CLASSIFY_CAP %> are grouped below.</p>
+            <% end %>
             <% if groups.empty? %>
               <div class="empty">No conversation with an outcome stopped at <%= @drop %> in this window.</div>
             <% else %>

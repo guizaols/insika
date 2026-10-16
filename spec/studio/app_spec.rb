@@ -2674,6 +2674,17 @@ end
     expect([why[1][:context]["used"], why[3][:context]["used"]]).to eq([1, 2])
   end
 
+  it "review fixes: no negative funnel loss, no 500 on a negative reply, live grid capped" do
+    app, = build_app
+    decl = Struct.new(:stages).new(%w[a b c])
+    rows = app.allocate.send(:funnel_drops, decl, { "a" => 5, "b" => 9, "c" => 1 })
+    expect(rows.map { _1[:lost] }).to eq([0, 8])
+    expect(rows.last[:biggest]).to be(true)
+    client = login(app)
+    expect(client.get("/evals?session=x&reply=-5").status).to eq(200)
+    expect(client.get("/live").body).to include('data-live-floor-max-value="24"')
+  end
+
   it "Save as eval case opens the Evals editor prefilled from the reply" do
     sess = StoredSession.new(id: "sess-case", updated_at: "t", vars: { "agent" => "bia" },
                              messages: [
