@@ -77,6 +77,31 @@ dipped below its frozen baseline since gating parks the promotion with the
 current numbers, and a criterion file that changed since boot is a criterion
 nobody froze.
 
+### The probe (opt-in)
+
+The golden replay proves a candidate breaks nothing. It does not prove the
+candidate fixes the conversation it was mined from. With
+`harvest: { probe: { enabled: true } }` on the agent, the gate also replays
+the origin session's customer turns (up to the last evidence turn, at most
+`max_turns: 4` per case and `max_cases: 3` cases) on the clone twice: once
+before the skill is installed and once after. The pairwise judge
+(anonymous, both orders, see [Evals](EVALS.md)) compares the two. The
+candidate passes only if at least one case got `better` and none got
+`worse`. Transcripts are redacted before the judge reads them.
+
+An agent with no golden cases is gated by the probe alone. That is the
+point of the probe: the origin conversation is a test case nobody had to
+write. With golden cases, the golden veto runs first and the probe second.
+A human approves every promotion either way.
+
+Refusals, never passes: probe on with no pairwise judge configured
+(the gate refuses), probe on with no origin turns left (the candidate
+parks at `gated` with `probe_no_cases`). The after pass and its judge
+calls run only when the golden replay passed. Cost per candidate:
+2 × cases × turns agent turns, plus 2 judge calls per judge per case.
+
+Idea from Harness² (Google Research, arXiv:2610.14224), "Probe" step.
+
 ## Rollback
 
 One click, deterministic: the snapshot is restored — `WriteSkill` with the
@@ -87,8 +112,13 @@ back, re-promoted is three readable rows.
 
 ## The honest limits
 
-- **A store with no golden cases cannot gate, and cannot promote.** The gate's
-  strength is entirely the golden set.
+- **A store with no golden cases cannot gate, and cannot promote** — unless the
+  probe is on, which then gates alone on the origin conversations.
+- **The probe replays real customer turns against live tools.** The clone
+  has the agent's tools, as in the golden replay. A customer turn that
+  leads to a write tool calls it. `max_turns` caps the exposure; keep the
+  probe off for agents whose write tools touch external systems without a
+  confirmation step.
 - **Grounding first.** A store without a matcher does not mine — the product
   loop is blocked until the evidence ledger is live (by refusal, not by
   warning).
