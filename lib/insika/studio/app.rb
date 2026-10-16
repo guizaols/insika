@@ -984,6 +984,13 @@ module Studio
         end
       end
 
+      # --- Live floor: the latest conversations as cards ------------
+      # Read-only. live_floor_controller keeps the cards and the event
+      # ticker moving over /studio/events; the server only renders the baseline.
+      r.on "live" do
+        r.is { r.get { render_live } }
+      end
+
       # --- Chats: conversations index ------------------------------
       # Read-only: lists sessions and links to the existing viewer (/sessions/:id).
       r.on "chats" do
@@ -1575,6 +1582,7 @@ end
           ["Home", "/studio/home", :home]
         ]],
         ["operate", [
+          ["Live", "/studio/live", :live],
           ["Chats", "/studio/chats", :chats],
           ["Customers", "/studio/customers", :chats],
           ["Playground", "/studio/playground", :playground]
@@ -2987,6 +2995,16 @@ end
     end
 
     CHATS_PAGE = 100
+
+    # --- Live floor ---------------------------------------------
+
+    LIVE_CARDS = 24
+
+    # The live floor's baseline: the latest conversations, newest first.
+    def render_live
+      @sessions = recent_sessions(limit: LIVE_CARDS)
+      view("live")
+    end
 
     # The Chats master list, shared by the index and the session viewer. Agent
     # and id/customer search run over EVERY session's stats (a few bytes each), newest

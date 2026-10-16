@@ -1,0 +1,42 @@
+<%# Live floor — the latest conversations as cards, plus a ticker of the
+    events as they arrive. The server renders the baseline (presence and
+    flag from the stored session); live_floor_controller moves the cards over
+    /studio/events: tool chips, "agent is writing…" while a turn runs, guardrail
+    flags. Read-only — every card links to the session viewer. %>
+<div data-controller="live-floor">
+  <header class="page-head">
+    <div>
+      <%== crumbs_for("Live") %>
+      <h1>Live<span class="sub">Conversations happening now</span></h1>
+    </div>
+  </header>
+
+  <div class="live-grid" data-live-floor-target="grid">
+    <% if @sessions.empty? %>
+      <div class="empty" data-live-floor-target="placeholder">No conversations yet. Start one in the <a href="/studio/playground">playground</a>.</div>
+    <% end %>
+    <% @sessions.each do |s| %>
+      <% customer = presence(session_customer(s)) %>
+      <% preview = session_preview(s) %>
+      <a class="card live-card<%== ' flagged' if session_flagged?(s) %>" href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>" data-session-id="<%= s.id %>">
+        <div class="live-card-top">
+          <%== render("_identity", locals: { id: customer || s.id, name: presence(session_customer_label(s)) || "anonymous", sub: presence(session_agent(s)) }) %>
+          <span class="presence<%== ' present' if session_fresh?(s) %>" title="activity in the last 5 minutes"></span>
+        </div>
+        <p class="live-preview"><%= preview ? preview[0, 140] : "No messages yet" %></p>
+        <div class="live-card-foot">
+          <span class="pill err live-flag">flagged</span>
+          <span class="live-tools"></span>
+          <span class="live-writing">agent is writing…</span>
+        </div>
+      </a>
+    <% end %>
+  </div>
+
+  <section class="card">
+    <div class="section-head"><h2>Events</h2><span class="muted">latest first · this page only</span></div>
+    <ol class="live-ticker" data-live-floor-target="ticker">
+      <li data-live-floor-target="waiting">Waiting for events…</li>
+    </ol>
+  </section>
+</div>
