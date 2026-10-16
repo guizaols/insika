@@ -3856,7 +3856,7 @@ end
       session = insika[:session_store]&.find(sid)
       return "gone" unless session
       return "tool_failed" if Array(insika[:tool_trace_store]&.for_session(sid)).last&.[]("ok") == false
-      return "flagged" if Array(session.messages).any? { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? }
+      return "flagged" if session_flagged?(session)
 
       { "user" => "waiting", "assistant" => "quiet" }.fetch(last_role(session), "unknown")
     end
