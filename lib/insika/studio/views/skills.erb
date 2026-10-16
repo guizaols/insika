@@ -88,6 +88,29 @@
           </div>
         </form>
 
+        <%# A version was in use from its save until the next one: match a turn's
+            time against these to see the text that turn ran. %>
+        <% if Array(@skill_versions).size > 1 %>
+          <details class="drill-section versions">
+            <summary>Versions <span class="count"><%= @skill_versions.size %></span></summary>
+            <% restore_action = scope ? "/studio/agents/#{Rack::Utils.escape(scope)}/skills/#{Rack::Utils.escape(@selected.to_s)}/restore" : "/studio/skills/#{Rack::Utils.escape(@selected.to_s)}/restore" %>
+            <% @skill_versions.each_with_index do |v, k| %>
+              <details class="versions">
+                <summary class="mono"><%= v["from"] || "?" %> → <%= v["to"] || "now" %></summary>
+                <pre><%= v["content"] %></pre>
+                <% unless k.zero? %>
+                  <%# k - 1: the list leads with the current text, the store's history does not %>
+                  <form method="post" action="<%= restore_action %>">
+                    <%== csrf_tag %>
+                    <input type="hidden" name="version" value="<%= k - 1 %>">
+                    <button type="submit" class="ghost" data-turbo-confirm="Restore this version? The current text stays in the history.">Restore</button>
+                  </form>
+                <% end %>
+              </details>
+            <% end %>
+          </details>
+        <% end %>
+
         <% if !new && !scope %>
           <div class="drill-section">
             <div class="drill-section-head">

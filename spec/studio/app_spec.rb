@@ -748,6 +748,33 @@ end
                             'href="/studio/agents/bia/skills/doces"')
   end
 
+  it "the skill page lists each version with when it was in use" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes")
+    skills.write("doces", "---\nname: doces\n---\ndepois")
+    app, = build_app(skill_store: skills)
+    body = login(app).get("/skills/doces").body
+    old_at = skills.versions("doces").first["at"]
+    expect(body).to include("Versions", "#{old_at} → #{skills.updated_at("doces")}", "#{skills.updated_at("doces")} → now", "antes")
+  end
+
+  it "restoring a skill version saves that old text again, shared or per agent" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes")
+    skills.write("doces", "---\nname: doces\n---\ndepois")
+    skills.write("doces", "---\nname: doces\n---\nbia antes", agent: "bia")
+    skills.write("doces", "---\nname: doces\n---\nbia depois", agent: "bia")
+    app, bus = build_app(skill_store: skills)
+    client = login(app)
+    csrf = csrf_from(client.get("/skills/doces").body)
+    client.post("/skills/doces/restore", params: { "version" => "0", "_csrf" => csrf })
+    expect(bus.last(:write_skill).payload).to include(name: "doces", agent: nil, content: "---\nname: doces\n---\nantes")
+    client.post("/agents/bia/skills/doces/restore", params: { "version" => "0", "_csrf" => csrf })
+    expect(bus.last(:write_skill).payload).to include(name: "doces", agent: "bia", content: "---\nname: doces\n---\nbia antes")
+    res = client.post("/skills/doces/restore", params: { "version" => "-1", "_csrf" => csrf })
+    expect(res.status).to eq(302)
+  end
+
   it "the agent detail shows the per-day outcome series for that agent only" do
      app, = build_app(outcomes: [
                         { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
@@ -2572,6 +2599,16 @@ end
     expect(body).to include("trufa")
   end
 
+  it "session viewer links a load_skill call in the chat to the skill page" do
+    sess = StoredSession.new(id: "sess-ls", updated_at: "t",
+                             messages: [{ "role" => "assistant", "content" => "",
+                                          "tool_calls" => [{ "id" => "c1", "name" => "load_skill",
+                                                             "arguments" => '{"name":"recommendation-formatting"}' }] }])
+    app, = build_app(sessions: { "sess-ls" => sess })
+    body = login(app).get("/sessions/sess-ls").body
+    expect(body).to include('href="/studio/skills/recommendation-formatting" data-turbo-frame="_top">open skill recommendation-formatting</a>')
+  end
+
   it "session viewer renders a guardrail flag stored on the customer message" do
     sess = StoredSession.new(id: "sess-gf", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "oi",
@@ -2620,6 +2657,15 @@ end
     expect(only).to include("refund_order needs approval")
     expect(only).not_to include("Guardrail false positive")
     expect(login(build_app.first).get("/inbox").body).to include("Nothing waiting on you.")
+  end
+
+  it "a load_skill trace entry names the skill it loaded, for the link to its page" do
+    app, = build_app
+    name = ->(e) { app.allocate.send(:loaded_skill_name, e) }
+    expect(name.({ "tool" => "load_skill", "args" => { "name" => "lentes" } })).to eq("lentes")
+    expect(name.({ "tool" => "load_skill", "args" => '{"name":"lentes"}' })).to eq("lentes")
+    expect(name.({ "tool" => "load_skill", "args" => "not json" })).to be_nil
+    expect(name.({ "tool" => "search_products", "args" => { "name" => "x" } })).to be_nil
   end
 
   it "a turn with several tool calls draws a waterfall of when each ran" do
