@@ -2599,6 +2599,16 @@ end
     expect(body).to include("trufa")
   end
 
+  it "session viewer links a load_skill call in the chat to the skill page" do
+    sess = StoredSession.new(id: "sess-ls", updated_at: "t",
+                             messages: [{ "role" => "assistant", "content" => "",
+                                          "tool_calls" => [{ "id" => "c1", "name" => "load_skill",
+                                                             "arguments" => '{"name":"recommendation-formatting"}' }] }])
+    app, = build_app(sessions: { "sess-ls" => sess })
+    body = login(app).get("/sessions/sess-ls").body
+    expect(body).to include('href="/studio/skills/recommendation-formatting">open skill recommendation-formatting</a>')
+  end
+
   it "session viewer renders a guardrail flag stored on the customer message" do
     sess = StoredSession.new(id: "sess-gf", updated_at: "t",
                              messages: [{ "role" => "user", "content" => "oi",
