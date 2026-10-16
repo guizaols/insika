@@ -31,6 +31,12 @@
     </div>
   </div>
 
+  <% if @idle_reason == :off %>
+    <div class="empty">Harvest is off for this agent — turn it on in <a href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?cfg=harvest">Agents › Config › harvest</a>.</div>
+  <% elsif @idle_reason == :no_matcher %>
+    <div class="empty">Not mining: harvest is on but there is <strong>no grounding matcher</strong>, so the automatic loop skips every conversation. Set a matcher SKU (and uncheck "use the platform default") in <a href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?cfg=grounding">Agents › Config › grounding</a>.</div>
+  <% end %>
+
   <% if @candidates.empty? && @blocked.empty? && @pending_gates.empty? %>
     <div class="empty">No skills awaiting review. Mine finished conversations to find candidates.</div>
   <% end %>

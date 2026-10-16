@@ -5896,6 +5896,23 @@ end
       Insika::Harvest::Criterion.new(rule: rule, path: "deployment/CRITERION.md", sha: "sha256:abc")
     end
 
+    it "says why the automatic loop skips an agent — harvest off, or on with no grounding matcher" do
+      off = profile("store-support")
+      app, = harvest_app(agents: [off])
+      expect(login(app).get("/harvest?agent=store-support").body).to include("Harvest is off for this agent")
+
+      no_matcher = profile("store-support").with(harvest: { "enabled" => true })
+      app, = harvest_app(agents: [no_matcher])
+      expect(login(app).get("/harvest?agent=store-support").body).to include("no grounding matcher")
+
+      ready = profile("store-support").with(harvest: { "enabled" => true },
+                                            grounding: { "mode" => "flag", "matcher" => { "sku" => "\\A\\d+\\z" } })
+      app, = harvest_app(agents: [ready])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).not_to include("no grounding matcher")
+      expect(body).not_to include("Harvest is off for this agent")
+    end
+
     it "lists awaiting candidates with their evidence excerpt, read from the session at request time" do
       sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
                                                     messages: [
