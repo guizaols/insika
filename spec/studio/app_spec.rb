@@ -2649,6 +2649,15 @@ end
     expect(login(build_app.first).get("/inbox").body).to include("Nothing waiting on you.")
   end
 
+  it "a load_skill trace entry names the skill it loaded, for the link to its page" do
+    app, = build_app
+    name = ->(e) { app.allocate.send(:loaded_skill_name, e) }
+    expect(name.({ "tool" => "load_skill", "args" => { "name" => "lentes" } })).to eq("lentes")
+    expect(name.({ "tool" => "load_skill", "args" => '{"name":"lentes"}' })).to eq("lentes")
+    expect(name.({ "tool" => "load_skill", "args" => "not json" })).to be_nil
+    expect(name.({ "tool" => "search_products", "args" => { "name" => "x" } })).to be_nil
+  end
+
   it "a turn with several tool calls draws a waterfall of when each ran" do
     app, = build_app
     bars = app.allocate.send(:trace_waterfall, [
