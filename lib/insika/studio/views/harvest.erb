@@ -128,6 +128,13 @@
                 <%= (cand.eval_gate || {})["reason"] %>
               <% end %>
             </span>
+            <form method="post" action="/studio/harvest/gate" class="actions inline">
+              <%== csrf_tag %>
+              <input type="hidden" name="agent" value="<%= cand.agent %>">
+              <input type="hidden" name="candidate_id" value="<%= cand.id %>">
+              <button type="submit" data-turbo-submits-with="Checking…" title="Re-run once the missing piece is fixed">Run checks again</button>
+              <button type="submit" class="danger" formaction="/studio/harvest/reject">Reject</button>
+            </form>
           </li>
         <% end %>
       </ul>

@@ -228,6 +228,19 @@ RSpec.describe Insika::Commands::GateHarvest do
       expect(result.status).to eq("gated")
     end
 
+    it "re-gates a parked candidate once the hole is fixed — parking is not a dead end" do
+      seed_profile(probe: { "enabled" => true })
+      seed_origin
+      c = seed_candidate
+      parked = harvest_store.attach_gate(c.id, eval_gate: { "passed" => false, "reason" => "probe_no_judge: x" },
+                                               conversion_gate: { "passed" => false, "reason" => "no_criterion" },
+                                               criterion_sha: nil)
+      expect(parked.status).to eq("gated")
+      result = handler.call(cmd("candidate_id" => c.id))
+      expect(seen).to eq([[["tem pix?"]]])
+      expect(result.status).to eq("awaiting_approval")
+    end
+
     it "parks the candidate when the probe is on but the origin is gone" do
       seed_profile(probe: { "enabled" => true })
       c = seed_candidate(origin: ["acme:deleted"])

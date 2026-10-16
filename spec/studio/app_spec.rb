@@ -5955,6 +5955,8 @@ end
       expect(body).to include("probe failed: 0 better · 2 comparable · 0 worse")
       expect(body).to include("probe_no_gain")
       expect(body).to include("no_criterion")
+      blocked = body[body.index("Blocked")..]
+      expect(blocked).to include('action="/studio/harvest/gate"') # re-run once the hole is fixed
     end
 
     it "a conversion-blocked candidate renders the ruler's hole with a link to the Funnel page" do
