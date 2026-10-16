@@ -1944,6 +1944,7 @@ end
         {
           name: name.to_s,
           content: store&.read(id, name).to_s,
+          updated_at: store&.updated_at(id, name),
           versions: store ? store.versions(id, name) : []
         }
       end
@@ -1967,6 +1968,7 @@ end
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
       agent_performance(id, outcomes)
+      agent_changes(id, outcomes)
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
       # the per-agent cache-hit series (nil store -> the view's
@@ -2655,6 +2657,44 @@ end
         [period, { conversations: touched.size, messages: touched.sum { |s| message_count(s) },
                    outcomes: outcome_times.count { |at| at >= cut.iso8601 } }]
       end
+    end
+
+    CHANGE_WINDOW_DAYS = 30
+    CHANGE_COMPARE_DAYS = 7
+
+    # The History tab's "what changed, and what it did": outcomes per day over
+    # the last 30 days (the funnel's primary outcome when declared, else all),
+    # one marker per prompt-file write in that window, and per write the
+    # outcome count 7 days after vs 7 days before. Plain counts; nil = that
+    # window isn't whole yet (after) or predates the outcome data (before).
+    def agent_changes(id, outcomes)
+      now = Time.now.utc
+      week = CHANGE_COMPARE_DAYS * 86_400
+      records = Array(outcomes&.all(agent: id))
+      covered_from = parse_time(records.last&.at) # all() is newest first
+      @change_primary = primary_stage_for(id)
+      counted = @change_primary ? records.select { |r| r.outcome == @change_primary } : records
+      times = counted.filter_map { |r| parse_time(r.at) }
+      first_day = now.to_date - (CHANGE_WINDOW_DAYS - 1)
+      @change_days = (0...CHANGE_WINDOW_DAYS).map { |i| [first_day + i, 0] }.to_h
+      times.each { |t| @change_days[t.to_date] += 1 if @change_days.key?(t.to_date) }
+      @change_start = Time.utc(first_day.year, first_day.month, first_day.day)
+      @changes = @prompt_files.flat_map do |pf|
+        # [current, newest older, …]: write i replaced write i + 1, which is
+        # history index i — the version the Restore form puts back.
+        writes = [{ "content" => pf[:content], "at" => pf[:updated_at] }] + pf[:versions]
+        writes.each_cons(2).each_with_index.filter_map do |(after, before), i|
+          at = parse_time(after["at"])
+          next unless at && at >= @change_start
+
+          old_lines = before["content"].to_s.lines.map(&:chomp).reject { |l| l.strip.empty? }
+          new_lines = after["content"].to_s.lines.map(&:chomp).reject { |l| l.strip.empty? }
+          { file: pf[:name], at: at, version: i,
+            removed: old_lines - new_lines, added: new_lines - old_lines,
+            before: covered_from && covered_from <= at - week ? times.count { |t| t >= at - week && t < at } : nil,
+            after: at + week <= now ? times.count { |t| t >= at && t < at + week } : nil }
+        end
+      end.sort_by { |c| c[:at] }.reverse
     end
 
     COLD_AGENT_DAYS = 3

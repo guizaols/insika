@@ -629,6 +629,8 @@
   .barchart-axis-line { stroke:var(--line-1); stroke-width:1; }
   .barchart-axis { display:flex; justify-content:space-between; margin-top:.35rem; font-family:var(--mono); font-size:.625rem; color:var(--faint); }
   .barchart-axis .peak { color:var(--dim); }
+  /* agent History: one dashed line per prompt-file change over the bars */
+  .barchart .change-mark { stroke:var(--fg); stroke-width:1.5; stroke-dasharray:4 3; }
 
   /* recent conversations rail — hairline rows with hover, no boxed chips */
   .convo-rail { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
