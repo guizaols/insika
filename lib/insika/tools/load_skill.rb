@@ -86,7 +86,7 @@ module Insika
 
         @trace_recorder.record(
           session_id: @state.task.session_id,
-          entry: { "turn" => @state.turn, "tool" => "load_skill", "call_id" => "",
+          entry: { "task_id" => @state.task.id.to_s, "turn" => @state.turn, "tool" => "load_skill", "call_id" => "",
                    "args" => { "name" => name.to_s }, "result" => result,
                    "ms" => ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
                    "at" => Time.now.utc.iso8601 }

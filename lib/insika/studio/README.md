@@ -92,7 +92,7 @@ studio/
 
 ## Design system
 
-Warm neutral surfaces and the amber accent share semantic tokens in both themes.
+Cool neutral surfaces, a dark sidebar and one blue accent share semantic tokens in both themes; amber is kept for warnings and the staging strip.
 Buttons and inputs use 36px minimum heights and 8px corners; tabs use 32px and 6px.
 Controls have a visible 2px focus outline. Primary actions use the foreground color;
 destructive actions use the danger color. These rules apply across the existing

@@ -95,6 +95,11 @@ module Insika
       entry(agent_id, filename.to_s)&.fetch("history", []) || []
     end
 
+    # -> String | nil: when the current content was written (iso8601).
+    def updated_at(agent_id, filename)
+      entry(agent_id, filename.to_s)&.fetch("updated_at", nil)
+    end
+
     # Restores version `index` from history as the current content (a new write:
     # the current one goes to the top of history). -> Hash (entry) | raises if index
     # invalid / file nonexistent.

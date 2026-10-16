@@ -177,6 +177,14 @@ RSpec.shared_examples "an Insika store" do
       expect(store.recent("s", nil, 10, 5)).to eq([])
     end
 
+    it "an amended key keeps its place; an absent one is written" do
+      store.set("s", "a", { "n" => 1 })
+      store.set("s", "b", { "n" => 2 })
+      store.amend("s", "a", { "n" => 3 })
+      store.amend("s", "c", { "n" => 4 })
+      expect(store.recent("s", nil, 3)).to eq([["c", { "n" => 4 }], ["b", { "n" => 2 }], ["a", { "n" => 3 }]])
+    end
+
     it "keeps to the scope and the prefix" do
       store.set("s", "x:1", 1)
       store.set("other", "x:2", 2)

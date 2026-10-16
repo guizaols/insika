@@ -53,9 +53,11 @@ RSpec.describe Studio::App do
   # body/triggers/companions: real catalog skills expose them (the drill editor and
   # skill_source's frontmatter reconstruction read them).
   SkillEntry = Struct.new(:name, :description, :body, :triggers, :companions, keyword_init: true)
-  AgentFileStoreDouble = Struct.new(:files) do # files: { [agent, name] => content }
+  AgentFileStoreDouble = Struct.new(:files, :meta) do # files: { [agent, name] => content }
+    # meta: { [agent, name] => { "updated_at" =>, "history" => [...] } } — the store's entry shape
     def read(agent, name) = files[[agent, name.to_s]]
-    def versions(_agent, _name) = []
+    def versions(agent, name) = (meta || {}).dig([agent, name.to_s], "history") || []
+    def updated_at(agent, name) = (meta || {}).dig([agent, name.to_s], "updated_at")
   end
   # agent: — a skill resolves per agent (an override wins for its holder). The
   # doubles carry the agent scope as { [agent, name] => … }, mirroring the store's
@@ -69,6 +71,8 @@ RSpec.describe Studio::App do
     def names(agent: nil) = agent.nil? ? store.keys : (own || {}).keys.select { |a, _| a == agent }.map(&:last)
     def get(name, agent: nil) = agent.nil? ? store[name.to_s] : (own || {})[[agent, name.to_s]]
     def agents = (own || {}).keys.map(&:first).uniq.sort
+    def updated_at(_name, agent: nil) = nil
+    def versions(_name, agent: nil) = []
   end
   ToolCatalogDouble = Struct.new(:tools) do
     def all = tools
@@ -171,14 +175,15 @@ RSpec.describe Studio::App do
   end
 
   def build_app(admin_token: "s3cret", agents: [profile("bia"), profile("chef")],
-                agent_files: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
+                agent_files: {}, agent_file_meta: {}, skills: [SkillEntry.new(name: "pedido", description: "faz pedido")],
                 stored_skills: {}, own_skills: {}, tools: [SkillEntry.new(name: "menu", description: "cardápio")],
                 data_tools: [], raw_data_tools: {}, memory: {}, sessions: {}, session_store: nil, settings: nil, llm_providers: [],
                 mcp_instances: [], system_files: {}, tool_traces: {}, context_traces: {},
                  tasks: {}, pendings: [], checkpoints: {}, refinement_runs: [], goldens: [], event_stream: nil,
                  outcomes: [], cache_series: {}, funnel_cells: nil, budget: nil, followup_seed: nil,
                  proposal_store: nil, harvest_store: nil, harvest_criterion: nil,
-                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil, model_metrics_store: nil)
+                 negative_list: nil, knowledge_store: nil, llm_trace_store: nil, model_metrics_store: nil,
+                 skill_store: nil)
     bus = BusDouble.new([])
     app = Class.new(Studio::App)
     # config stores: REAL over an in-memory ConfigStore (the Studio reads
@@ -227,9 +232,9 @@ RSpec.describe Studio::App do
     app.configure(
       command_bus: bus, profile_source: ProfileSourceDouble.new(agents),
       event_stream: event_stream, config: { admin_token: admin_token },
-      agent_file_store: AgentFileStoreDouble.new(agent_files),
+      agent_file_store: AgentFileStoreDouble.new(agent_files, agent_file_meta),
       # own_skills: { [agent, name] => "<SKILL.md>" } — the per-agent specializations.
-      skill_store: SkillStoreDouble.new(stored_skills, own_skills),
+      skill_store: skill_store || SkillStoreDouble.new(stored_skills, own_skills),
       skill_catalog: SkillCatalogDouble.new(
         skills,
         # The catalog resolves the same NAME to the agent's own body: the store position
@@ -733,7 +738,17 @@ end
     expect(client.get("/agents/bia").body).to include("finalize_button")
   end
 
-   it "the agent detail shows the per-day outcome series for that agent only" do
+   it "the History chart also marks changes to the agent's own skills" do
+    skills = Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::Memory.new))
+    skills.write("doces", "---\nname: doces\n---\nantes", agent: "bia")
+    skills.write("doces", "---\nname: doces\n---\ndepois", agent: "bia")
+    app, = build_app(skill_store: skills)
+    body = login(app).get("/agents/bia").body
+    expect(body).to include('<span class="muted">skill</span> doces', "- antes", "+ depois",
+                            'href="/studio/agents/bia/skills/doces"')
+  end
+
+  it "the agent detail shows the per-day outcome series for that agent only" do
      app, = build_app(outcomes: [
                         { tenant: "platform", agent: "bia", outcome: "conversion", value: 100,
                           at: Time.utc(2026, 8, 12) },
@@ -750,6 +765,44 @@ end
      expect(body).to include("R$ 100.00")
      expect(body).not_to include("escalation")
    end
+
+  # History tab: outcomes per day with a marker per prompt-file change, and per
+  # change a short diff plus outcomes 7 days after vs 7 days before.
+  describe "what changed, and what it did" do
+    def days_ago(n) = Time.now.utc - n * 86_400
+
+    def changed_app(changed_days_ago, outcomes, funnel: nil)
+      build_app(agents: [profile("bia", prompt_files: ["IDENTITY.md"], funnel: funnel)],
+                agent_files: { ["bia", "IDENTITY.md"] => "You are Bia.\nBe brief." },
+                agent_file_meta: { ["bia", "IDENTITY.md"] => {
+                  "updated_at" => days_ago(changed_days_ago).iso8601,
+                  "history" => [{ "content" => "You are Bia.\nBe chatty.", "at" => days_ago(40).iso8601 }]
+                } },
+                outcomes: outcomes.map { |n, kind| { tenant: "platform", agent: "bia", outcome: kind, at: days_ago(n) } })
+    end
+
+    it "marks the change, shows its diff and compares the two weeks around it" do
+      app, = changed_app(10, [[20, "paid"], [12, "paid"], [11, "lead"], [9, "paid"], [6, "paid"], [5, "lead"]])
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("All outcomes per day, last 30 days")
+      expect(body).to include('class="change-mark"')
+      expect(body).to include('<span class="del">- Be chatty.</span>')
+      expect(body).to include('<span class="ins">+ Be brief.</span>')
+      expect(body).not_to include("- You are Bia.")
+      expect(body).to include('<strong class="tnum">3</strong> in the 7 days after vs <strong class="tnum">2</strong> in the 7 days before')
+      expect(body).to include('name="version" value="0"')
+    end
+
+    it "counts the funnel's primary outcome and says when a window is incomplete" do
+      # outcome kinds map to the primary stage through advance_on (pix_paid -> paid)
+      app, = changed_app(2, [[20, "pix_paid"], [5, "pix_paid"], [1, "lead"]], funnel: FUNNEL_DECL)
+      body = login(app).get("/agents/bia").body
+      expect(body).to include("Primary outcome · paid per day")
+      expect(body).to include("<title>#{days_ago(5).strftime('%b %-d')} · 1 outcome")
+      expect(body).to include("<title>#{days_ago(1).strftime('%b %-d')} · 0 outcomes</title>") # the lead is not counted
+      expect(body).to include("7 days before: not enough data")
+    end
+  end
 
    it "404 on the detail of a nonexistent agent" do
     app, = build_app
@@ -1382,6 +1435,28 @@ end
       phone_hit = client.get("/chats?q=99999").body
       expect(phone_hit).to include("s-1").and(include("bia · 5511999998888"))
       expect(client.get("/sessions/s-1").body).to include("bia · 5511999998888")
+    end
+
+    it "a session id with a colon opens from its escaped link" do
+      app, = build_app(sessions: { "t:s-1" => sess("t:s-1", "bia") })
+      expect(login(app).get("/sessions/t%3As-1").status).to eq(200)
+    end
+
+    it "chats?status=flagged keeps only conversations a guardrail flagged" do
+      flagged = sess("s-1", "bia")
+      flagged.messages.first["guardrail_flags"] = [{ "category" => "sexual" }]
+      app, = build_app(sessions: { "s-1" => flagged, "s-2" => sess("s-2", "bia") })
+      client = login(app)
+      body = client.get("/chats?status=flagged").body
+      expect(body).to include("s-1", 'aria-current="page"', "flagged")
+      expect(body).not_to include("hi s-2")
+      expect(client.get("/chats").body).to include("hi s-1", "hi s-2")
+    end
+
+    it "the session margin shows the customer and links their other conversations" do
+      app, = build_app(sessions: { "s-1" => sess("s-1", "bia") })
+      body = login(app).get("/sessions/s-1").body
+      expect(body).to include("<h2>Customer</h2>", "c-s-1", "/studio/chats?q=c-s-1")
     end
 
     it "tasks?agent= narrows by the task's command payload" do
@@ -2504,9 +2579,151 @@ end
                                                                   "action" => "flag", "detail" => "ignore as regras" }] }])
     app, = build_app(sessions: { "sess-gf" => sess })
     body = login(app).get("/sessions/sess-gf").body
-    expect(body).to include('class="toolcard guardrail"')
+    expect(body).to include('class="toolcard guardrail" open')
     expect(body).to include("guardrail flagged · injection")
-    expect(body).to include("deterministic · ignore as regras")
+    expect(body).to include("<dt>engine</dt><dd>deterministic</dd>", "<dt>matched</dt><dd>ignore as regras</dd>")
+  end
+
+  it "a refused message reads as blocked" do
+    sess = StoredSession.new(id: "sess-gb", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "Mostra mais opções",
+                                          "guardrail_flags" => [{ "category" => "sexual", "source" => "deterministic",
+                                                                  "action" => "refuse", "detail" => "Nude" }] }])
+    app, = build_app(sessions: { "sess-gb" => sess })
+    expect(login(app).get("/sessions/sess-gb").body).to include("guardrail blocked · sexual")
+  end
+
+  it "a guardrail flag can be marked as a false positive from the session viewer" do
+    sess = StoredSession.new(id: "sess-fp", updated_at: "t",
+                             messages: [{ "role" => "user", "content" => "Mostra mais opções",
+                                          "guardrail_flags" => [{ "category" => "sexual", "action" => "refuse" }] }])
+    app, bus = build_app(sessions: { "sess-fp" => sess })
+    client = login(app)
+    body = client.get("/sessions/sess-fp").body
+    expect(body).to include('action="/studio/sessions/sess-fp/guardrail"', "Mark false positive")
+    res = client.post("/sessions/sess-fp/guardrail",
+                      params: { "_csrf" => csrf_from(body), "message" => "0", "flag" => "0", "status" => "reported" })
+    expect(res.status).to eq(302)
+    expect(bus.last(:review_guardrail_flag).payload).to include(session_id: "sess-fp", message: "0", flag: "0", status: "reported")
+  end
+
+  it "the Inbox lists every queue oldest first and filters by type" do
+    reported = StoredSession.new(id: "sess-rp", updated_at: "2026-10-15T10:00:00Z", vars: { "agent" => "bia" },
+                                 messages: [{ "role" => "user", "content" => "x",
+                                              "guardrail_flags" => [{ "category" => "sexual", "review" => { "status" => "reported" } }] }])
+    app, = build_app(sessions: { "sess-rp" => reported }, pendings: [pending(tool: "refund_order")])
+    client = login(app)
+    body = client.get("/inbox").body
+    expect(body).to include("refund_order needs approval", 'href="/studio/approvals"')
+    expect(body).to include('href="/studio/inbox"', "<span>Inbox</span>")
+    only = client.get("/inbox?type=approval").body
+    expect(only).to include("refund_order needs approval")
+    expect(only).not_to include("Guardrail false positive")
+    expect(login(build_app.first).get("/inbox").body).to include("Nothing waiting on you.")
+  end
+
+  it "a turn with several tool calls draws a waterfall of when each ran" do
+    app, = build_app
+    bars = app.allocate.send(:trace_waterfall, [
+      { "tool" => "a", "ok" => true, "ms" => 1000, "at" => "2026-10-15T10:00:01Z" },
+      { "tool" => "b", "ok" => false, "ms" => 500, "at" => "2026-10-15T10:00:02Z" }
+    ])
+    expect(bars).to eq([{ tool: "a", ok: true, ms: 1000, x: 0.0, w: 50.0 },
+                        { tool: "b", ok: false, ms: 500, x: 75.0, w: 25.0 }])
+  end
+
+  it "each reply explains its own turn: context, skills, calls, checks" do
+    sess = StoredSession.new(id: "sess-why", updated_at: "t", vars: { "agent" => "bia" },
+                             messages: [
+                               { "role" => "user", "content" => "oi", "at" => "2026-10-15T10:00:00Z" },
+                               { "role" => "assistant", "content" => "Olá!", "at" => "2026-10-15T10:00:00Z" },
+                               { "role" => "user", "content" => "tem trufa?", "at" => "2026-10-15T10:01:00Z",
+                                 "guardrail_flags" => [{ "category" => "spam", "action" => "flag" }] },
+                               { "role" => "assistant", "content" => "", "at" => "2026-10-15T10:01:00Z",
+                                 "tool_calls" => [{ "id" => "c1", "name" => "search_products", "arguments" => {} }] },
+                               { "role" => "tool", "content" => "found", "at" => "2026-10-15T10:01:00Z" },
+                               { "role" => "assistant", "content" => "Achei!", "at" => "2026-10-15T10:01:00Z" }
+                             ])
+    ctx = ->(at, tokens) { { "task_id" => "t-#{at}", "turn" => 1, "at" => at, "cap" => 1000, "used" => tokens,
+                             "categories" => { "persona" => { "tokens" => tokens, "labels" => [] },
+                                               "skilltrigger" => { "tokens" => 10, "labels" => [{ "name" => "doces", "reason" => "trigger:trufa" }] } } } }
+    app, = build_app(sessions: { "sess-why" => sess },
+                     context_traces: { "sess-why" => [ctx.("2026-10-15T09:59:59Z", 111), ctx.("2026-10-15T10:00:59Z", 222)] },
+                     tool_traces: { "sess-why" => [{ "turn" => 1, "tool" => "search_products", "call_id" => "c1",
+                                                     "result" => {}, "ms" => 42, "at" => "2026-10-15T10:00:59Z" }] })
+    why = app.allocate.send(:why_panels, sess.messages, app.insika[:context_trace_store].for_session("sess-why"),
+                            app.insika[:tool_trace_store].for_session("sess-why"))
+    expect(why.keys).to eq([1, 5])
+    expect(why[1]).to include(tools: [], flags: [])
+    expect(why[1][:context]["used"]).to eq(111)
+    expect(why[5][:context]["used"]).to eq(222)
+    expect(why[5][:tools].map { _1["ms"] }).to eq([42])
+    expect(why[5][:flags].map { _1["category"] }).to eq(["spam"])
+    expect(login(app).get("/sessions/sess-why").body).to include('data-live-transcript-why-value="/studio/sessions/sess-why"')
+    body = login(app).get("/sessions/sess-why").body
+    expect(body).to include("why this reply", "doces · trigger:trufa", "No tool calls.", "42ms",
+                            'href="/studio/evals?session=sess-why&amp;reply=5"')
+  end
+
+  it "a reply carrying task_id gets its own turn's context even within the same second" do
+    at = "2026-10-15T10:00:00Z"
+    msgs = [{ "role" => "user", "content" => "a", "at" => at, "task_id" => "t1" },
+            { "role" => "assistant", "content" => "A", "at" => at, "task_id" => "t1" },
+            { "role" => "user", "content" => "b", "at" => at, "task_id" => "t2" },
+            { "role" => "assistant", "content" => "B", "at" => at, "task_id" => "t2" }]
+    traces = [{ "task_id" => "t1", "at" => at, "used" => 1 }, { "task_id" => "t2", "at" => at, "used" => 2 }]
+    app, = build_app
+    why = app.allocate.send(:why_panels, msgs, traces, [])
+    expect([why[1][:context]["used"], why[3][:context]["used"]]).to eq([1, 2])
+  end
+
+  it "turns split where task_id changes, even when a turn ends on a tool result" do
+    msgs = [{ "role" => "user", "content" => "a", "task_id" => "t1" },
+            { "role" => "assistant", "content" => "A", "task_id" => "t1" },
+            { "role" => "tool", "content" => "r", "task_id" => "t1" },
+            { "role" => "user", "content" => "b", "task_id" => "t2" },
+            { "role" => "assistant", "content" => "B", "task_id" => "t2" }]
+    app, = build_app
+    expect(app.allocate.send(:why_panels, msgs, [], []).keys).to eq([1, 4])
+  end
+
+  it "the tool waterfall draws one group per task's turn, not one per turn number" do
+    app, = build_app(tool_traces: { "sess-why" => [
+                       { "task_id" => "t1", "turn" => 1, "tool" => "a", "call_id" => "c1", "result" => {}, "ms" => 5, "at" => "2026-10-15T10:00:00Z" },
+                       { "task_id" => "t2", "turn" => 1, "tool" => "b", "call_id" => "c2", "result" => {}, "ms" => 5, "at" => "2026-10-15T12:00:00Z" }
+                     ] },
+                     sessions: { "sess-why" => StoredSession.new(id: "sess-why", updated_at: "t", messages: []) })
+    body = login(app).get("/sessions/sess-why").body
+    expect(body.scan('<div class="turn-label">turn 1</div>').size).to eq(2)
+  end
+
+  it "review fixes: no negative funnel loss, no 500 on a negative reply, live grid capped" do
+    app, = build_app
+    decl = Struct.new(:stages).new(%w[a b c])
+    rows = app.allocate.send(:funnel_drops, decl, { "a" => 5, "b" => 9, "c" => 1 })
+    expect(rows.map { _1[:lost] }).to eq([0, 8])
+    expect(rows.last[:biggest]).to be(true)
+    client = login(app)
+    expect(client.get("/evals?session=x&reply=-5").status).to eq(200)
+    expect(client.get("/live").body).to include('data-live-floor-max-value="24"')
+  end
+
+  it "Save as eval case opens the Evals editor prefilled from the reply" do
+    sess = StoredSession.new(id: "sess-case", updated_at: "t", vars: { "agent" => "bia" },
+                             messages: [
+                               { "role" => "user", "content" => "tem trufa?" },
+                               { "role" => "assistant", "content" => "", "tool_calls" => [{ "id" => "c1", "name" => "search_products" }] },
+                               { "role" => "tool", "content" => "found" },
+                               { "role" => "assistant", "content" => "Achei!" }
+                             ])
+    app, = build_app(sessions: { "sess-case" => sess })
+    yaml = app.allocate.send(:session_case_yaml, "sess-case", 3)
+    golden = Insika::Evals::GoldenLoader.build(YAML.safe_load(yaml), source: "spec")
+    expect(golden.agent).to eq("bia")
+    expect(golden.user_turns).to eq(["tem trufa?"])
+    expect(golden.expect["tools_called"]).to eq(["search_products"])
+    expect(golden.reference_messages.map { _1["text"] }).to eq(["tem trufa?", "Achei!"])
+    expect(login(app).get("/evals?session=sess-case&reply=3").body).to include("sess-case")
   end
 
   # --- Visual parity — motion, transcript, live home, master-detail --
@@ -3482,6 +3699,44 @@ end
     expect(stale_row).not_to include('class="presence present"')
   end
 
+  it "live?agent= keeps only that agent's cards and scopes the stream to them" do
+    bia = StoredSession.new(id: "sess-bia", updated_at: Time.now.utc.iso8601, vars: { "agent" => "bia" },
+                            messages: [{ "role" => "user", "content" => "oi" }])
+    chef = StoredSession.new(id: "sess-chef", updated_at: Time.now.utc.iso8601, vars: { "agent" => "chef" },
+                             messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-bia" => bia, "sess-chef" => chef })
+    body = login(app).get("/live?agent=bia").body
+    expect(body).to include('data-session-id="sess-bia"', 'data-live-floor-scoped-value="true"')
+    expect(body).not_to include('data-session-id="sess-chef"')
+  end
+
+  it "live: one card per recent conversation, with presence, flag and the live-floor hooks" do
+    fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
+                               vars: { "agent" => "bia", "customer" => "c1", "customer_name" => "Maria" },
+                               messages: [{ "role" => "user", "content" => "oi", "guardrail_flags" => [{ "category" => "pii" }] },
+                                          { "role" => "assistant", "content" => "Olá, Maria" }])
+    stale = StoredSession.new(id: "sess-stale", updated_at: "2020-01-01T00:00:00Z",
+                               vars: { "agent" => "chef" }, messages: [{ "role" => "user", "content" => "bom dia" }])
+    app, = build_app(sessions: { "sess-fresh" => fresh, "sess-stale" => stale })
+    body = login(app).get("/live").body
+
+    expect(body).to include('href="/studio/live"') # the nav item
+    expect(body).to include('data-controller="live-floor"')
+    expect(body).to include('data-live-floor-target="ticker"')
+    fresh_card = body[body.index('data-session-id="sess-fresh"')..body.index('data-session-id="sess-stale"')]
+    stale_card = body[body.index('data-session-id="sess-stale"')..]
+    expect(body).to include('<a class="card live-card flagged" href="/studio/sessions/sess-fresh"')
+    expect(fresh_card).to include('<span class="name">Maria</span>', "Olá, Maria", 'class="presence present"')
+    expect(stale_card).to include("bom dia")
+    expect(stale_card).not_to include('class="presence present"')
+    expect(body).to include('<a class="card live-card" href="/studio/sessions/sess-stale"')
+  end
+
+  it "live: an empty store renders the empty state" do
+    app, = build_app
+    expect(login(app).get("/live").body).to include('data-live-floor-target="placeholder"')
+  end
+
   it "chats: customer_name labels the row and the viewer; the customer key stays searchable" do
     sess = StoredSession.new(id: "sess-named", updated_at: "t",
                               vars: { "agent" => "bia", "customer" => "5511999", "customer_name" => "Maria Souza" },
@@ -3622,11 +3877,18 @@ end
     expect(body).to include(%(class="avatar sm avatar-h#{"chef".bytes.sum % 10}"))
   end
 
-  it "the sidebar shows the environment identity chip" do
+  it "shows the environment strip on staging and hides it on production" do
     app, = build_app
-    body = login(app).get("/agents").body
-    expect(body).to include('class="env-chip"')
-    expect(body).to include("environment")
+    begin
+      ENV["INSIKA_ENV"] = "staging"
+      expect(login(app).get("/agents").body).to include('class="env-banner staging"', "<b>staging</b>")
+      ENV["INSIKA_ENV"] = "dev"
+      expect(login(app).get("/agents").body).to include('class="env-banner other"')
+      ENV["INSIKA_ENV"] = "production"
+      expect(login(app).get("/agents").body).not_to include("env-banner")
+    ensure
+      ENV.delete("INSIKA_ENV")
+    end
   end
 
   it "cache-busts the dist assets (?v=) so a rebuild isn't masked by the browser cache" do
@@ -3960,7 +4222,8 @@ end
     # the head carries the count, so it's visible without opening anything
     expect(body).to include("370 tool(s)")
     # the tools panel is its own list-filter scope (distinct from the master's)
-    expect(body.scan('data-controller="list-filter"').size).to eq(2)
+    page = body[/<main.*<\/main>/m]
+    expect(page.scan('data-controller="list-filter"').size).to eq(2)
     expect(body).to include('data-filter-text="tool_1 does thing number 1 in great detail"')
     # each row: mono name, an ellipsis-clipped preview, and a <details> to expand the full text
     expect(body).to include('<code class="mono">tool_1</code>')
@@ -5155,6 +5418,50 @@ end
     expect(body).to include("conversion")
   end
 
+  it "marks the biggest drop between consecutive stages and links each drop" do
+    cells = [funnel_cell(1, counts: { "greeted" => 10, "qualified" => 8, "cart" => 2, "paid" => 1 })]
+    app, = funnel_app(funnel_cells: cells)
+    body = login(app).get("/funnel").body
+    expect(body).to include("Where conversations stop")
+    expect(body).to match(%r{qualified → cart</a></td>\s*<td class="num">6</td>\s*<td class="num">75%</td>\s*<td><span class="pill warn">biggest drop</span>})
+    expect(body.scan("biggest drop").size).to eq(1)
+    expect(body).to include("/studio/funnel?agent=funnel-store&amp;period=30&amp;drop=greeted")
+  end
+
+  it "the drop drill groups the sessions stuck at the stage by their last event" do
+    today = Date.today
+    at = Time.utc(today.year, today.month, today.day, 9)
+    outcomes = %w[s-quiet s-wait s-tool s-flag s-gone s-paid].map do |sid|
+      { tenant: nil, agent: "funnel-store", session_id: sid, outcome: "qualified", at: at }
+    end
+    outcomes << { tenant: nil, agent: "funnel-store", session_id: "s-paid", outcome: "pix_paid", at: at }
+    sessions = {
+      "s-quiet" => StoredSession.new(id: "s-quiet", updated_at: "t", messages: [{ "role" => "assistant", "content" => "a" }]),
+      "s-wait" => StoredSession.new(id: "s-wait", updated_at: "t", messages: [{ "role" => "user", "content" => "u" }]),
+      "s-tool" => StoredSession.new(id: "s-tool", updated_at: "t", messages: [{ "role" => "assistant", "content" => "a" }]),
+      "s-flag" => StoredSession.new(id: "s-flag", updated_at: "t",
+                                    messages: [{ "role" => "user", "content" => "u", "guardrail_flags" => [{ "category" => "x" }] }]),
+      "s-paid" => StoredSession.new(id: "s-paid", updated_at: "t", messages: [{ "role" => "user", "content" => "u" }])
+    }
+    app, = build_app(agents: [profile("funnel-store", funnel: FUNNEL_DECL)], outcomes: outcomes, sessions: sessions,
+                     funnel_cells: [funnel_cell(0, counts: { "greeted" => 6, "qualified" => 6, "paid" => 1 })],
+                     tool_traces: { "s-tool" => [{ "turn" => 1, "tool" => "menu", "result" => { "error" => "boom" } }] })
+    body = login(app).get("/funnel?agent=funnel-store&drop=qualified").body
+    expect(body).to include("Reached qualified, not cart")
+    { "Last tool call failed · 1" => "s-tool", "A guardrail flagged a message · 1" => "s-flag",
+      "Customer waiting on a reply · 1" => "s-wait", "Customer went quiet after the agent&#39;s reply · 1" => "s-quiet",
+      "Conversation no longer stored · 1" => "s-gone" }.each do |label, sid|
+      expect(body).to match(%r{#{Regexp.escape(label)}</span>\s*<span class="v">\s*<a class="mono" href="/studio/sessions/#{sid}"})
+    end
+    expect(body).not_to include("/studio/sessions/s-paid") # reached paid: not stuck at qualified
+  end
+
+  it "a drop on the last stage or an unknown stage renders no drill" do
+    app, = funnel_app(funnel_cells: [funnel_cell(1, counts: { "greeted" => 1 })])
+    expect(login(app).get("/funnel?agent=funnel-store&drop=paid").body).not_to include("Reached paid")
+    expect(login(app).get("/funnel?agent=funnel-store&drop=nope").body).not_to include("Reached nope")
+  end
+
   it "the funnel nav row is present" do
     app, = build_app
     body = login(app).get("/home").body
@@ -5874,10 +6181,38 @@ end
     end
   end
 
+  it "renders the ⌘K palette with every nav page and agent" do
+    app, = build_app
+    body = login(app).get("/agents").body
+    expect(body).to include('data-controller="palette"', 'class="palette"')
+    expect(body).to include('data-filter-text="review Approvals"', 'href="/studio/agents/bia"')
+  end
+
+  it "the Overview lists what needs attention, and says so when nothing does" do
+    app, = build_app(pendings: [pending(tool: "refund_order")])
+    body = login(app).get("/home").body
+    expect(body).to include('class="attention-item warn" href="/studio/approvals"', "1 approval(s) waiting")
+    expect(login(build_app.first).get("/home").body).to include("Nothing waiting on you.")
+  end
+
+  it "GET /login when already signed in goes to the Overview" do
+    app, = build_app
+    res = login(app).get("/login")
+    expect(res.status).to eq(302)
+    expect(res.headers["location"]).to eq("/studio/home")
+  end
+
+  it "badges a Review nav item with its pending count, and shows none at zero" do
+    app, = build_app(pendings: [pending(tool: "refund_order"), pending(tool: "refund_order")])
+    body = login(app).get("/agents").body
+    expect(body).to include('class="nav-badge" aria-label="2 pending">2<')
+    expect(login(build_app.first).get("/agents").body).not_to include("nav-badge")
+  end
+
   it "a page's breadcrumb is its nav group, never a repeat of its own title" do
     app, = build_app
     body = login(app).get("/knowledge?agent=bia").body
-    expect(body).to include(%(<nav class="crumbs"><span>operate</span></nav>))
+    expect(body).to include(%(<nav class="crumbs"><span>insights</span></nav>))
     expect(body).not_to include(%(<nav class="crumbs"><span>knowledge</span></nav>))
   end
 end
