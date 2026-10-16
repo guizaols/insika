@@ -794,9 +794,11 @@ end
     end
 
     it "counts the funnel's primary outcome and says when a window is incomplete" do
-      app, = changed_app(2, [[20, "paid"], [5, "paid"], [1, "lead"]], funnel: FUNNEL_DECL)
+      # outcome kinds map to the primary stage through advance_on (pix_paid -> paid)
+      app, = changed_app(2, [[20, "pix_paid"], [5, "pix_paid"], [1, "lead"]], funnel: FUNNEL_DECL)
       body = login(app).get("/agents/bia").body
       expect(body).to include("Primary outcome · paid per day")
+      expect(body).to include("<title>#{days_ago(5).strftime('%b %-d')} · 1 outcome")
       expect(body).to include("<title>#{days_ago(1).strftime('%b %-d')} · 0 outcomes</title>") # the lead is not counted
       expect(body).to include("7 days before: not enough data")
     end
@@ -2673,6 +2675,26 @@ end
     app, = build_app
     why = app.allocate.send(:why_panels, msgs, traces, [])
     expect([why[1][:context]["used"], why[3][:context]["used"]]).to eq([1, 2])
+  end
+
+  it "turns split where task_id changes, even when a turn ends on a tool result" do
+    msgs = [{ "role" => "user", "content" => "a", "task_id" => "t1" },
+            { "role" => "assistant", "content" => "A", "task_id" => "t1" },
+            { "role" => "tool", "content" => "r", "task_id" => "t1" },
+            { "role" => "user", "content" => "b", "task_id" => "t2" },
+            { "role" => "assistant", "content" => "B", "task_id" => "t2" }]
+    app, = build_app
+    expect(app.allocate.send(:why_panels, msgs, [], []).keys).to eq([1, 4])
+  end
+
+  it "the tool waterfall draws one group per task's turn, not one per turn number" do
+    app, = build_app(tool_traces: { "sess-why" => [
+                       { "task_id" => "t1", "turn" => 1, "tool" => "a", "call_id" => "c1", "result" => {}, "ms" => 5, "at" => "2026-10-15T10:00:00Z" },
+                       { "task_id" => "t2", "turn" => 1, "tool" => "b", "call_id" => "c2", "result" => {}, "ms" => 5, "at" => "2026-10-15T12:00:00Z" }
+                     ] },
+                     sessions: { "sess-why" => StoredSession.new(id: "sess-why", updated_at: "t", messages: []) })
+    body = login(app).get("/sessions/sess-why").body
+    expect(body.scan('<div class="turn-label">turn 1</div>').size).to eq(2)
   end
 
   it "review fixes: no negative funnel loss, no 500 on a negative reply, live grid capped" do

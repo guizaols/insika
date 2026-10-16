@@ -201,9 +201,12 @@ module Insika
 
     def review_guardrail_flag(id, message:, flag:, status:)
       record = fetch!(id)
-      target = Array(record["messages"])[Integer(message)]
+      message = Integer(message)
+      flag = Integer(flag)
+      # a negative index would count from the end: a different flag
+      target = Array(record["messages"])[message] unless message.negative?
       flags = target.is_a?(Hash) ? Array(target["guardrail_flags"]) : []
-      entry = flags[Integer(flag)]
+      entry = flags[flag] unless flag.negative?
       raise Insika::NotFoundError, "guardrail flag not found: #{id} #{message}/#{flag}" unless entry.is_a?(Hash)
 
       if status.nil?
@@ -213,7 +216,7 @@ module Insika
 
         entry["review"] = { "status" => status.to_s, "at" => timestamp }
       end
-      write(record)
+      write(record, amend: true)
       to_session(record)
     end
 
@@ -250,8 +253,9 @@ module Insika
     # flagged: messages carrying a guardrail flag; reported: flags a person
     # marked as a false positive and nobody resolved yet. Both 0 on stats
     # written before they existed, until the session's next write.
-    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role, :flagged, :reported) do
-      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil, flagged: 0, reported: 0) = super
+    # reported_at: the newest of those reports.
+    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role, :flagged, :reported, :reported_at) do
+      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil, flagged: 0, reported: 0, reported_at: nil) = super
     end
 
     # -> [Stat] every session's stats, in no particular order: small enough to read
@@ -260,17 +264,22 @@ module Insika
       @store.entries(STATS_SCOPE, KEY_PREFIX).map { |key, stat| to_stat(key, stat) }
     end
 
-    # Writes the stats of every session that has none (sessions stored before
-    # stats existed) and deletes stats whose session is gone. Idempotent and safe
-    # with the app running: each batch re-reads inside a transaction, skipping a
-    # session that wrote its own stats meanwhile or was deleted. -> stats written.
+    # Bumped when stats gain a field (2: flagged/reported), so backfill_stats
+    # rewrites the older ones instead of only filling the missing.
+    STATS_VERSION = 2
+
+    # Writes the stats of every session that has none or older ones (sessions
+    # stored before a field existed) and deletes stats whose session is gone.
+    # Idempotent and safe with the app running: each batch re-reads inside a
+    # transaction, skipping a session that wrote its own stats meanwhile or was
+    # deleted. -> stats written.
     def backfill_stats(batch: 500)
-      have = @store.list(STATS_SCOPE, KEY_PREFIX).to_set
+      have = @store.entries(STATS_SCOPE, KEY_PREFIX).filter_map { |key, stat| key if current_stat?(stat) }.to_set
       written = 0
       @store.list(SCOPE, KEY_PREFIX).reject { |key| have.include?(key) }.each_slice(batch) do |keys|
         @store.transaction do
           keys.each do |key|
-            next if @store.get(STATS_SCOPE, key)
+            next if current_stat?(@store.get(STATS_SCOPE, key))
 
             record = @store.get(SCOPE, key) or next
             @store.set(STATS_SCOPE, key, stats_of(record))
@@ -294,11 +303,14 @@ module Insika
     private
 
     # The one write of a session record: the record and its stats, side by side.
-    def write(record)
+    # amend: an edit that is not activity keeps the session's place in #recent.
+    def write(record, amend: false)
       key = key_for(record["id"])
-      @store.set(SCOPE, key, record)
+      amend ? @store.amend(SCOPE, key, record) : @store.set(SCOPE, key, record)
       @store.set(STATS_SCOPE, key, stats_of(record))
     end
+
+    def current_stat?(stat) = stat.is_a?(Hash) && stat["v"].to_i >= STATS_VERSION
 
     def stats_of(record)
       messages = Array(record["messages"])
@@ -306,10 +318,11 @@ module Insika
       vars = record["vars"] || {}
       flags = messages.map { |m| m.is_a?(Hash) ? Array(m["guardrail_flags"]) : [] }
       flagged = flags.count(&:any?)
-      reported = flags.flatten.count { |f| f.is_a?(Hash) && f.dig("review", "status") == "reported" }
-      { "updated_at" => record["updated_at"], "message_count" => messages.size,
+      reported = flags.flatten.select { |f| f.is_a?(Hash) && f.dig("review", "status") == "reported" }
+      { "v" => STATS_VERSION, "updated_at" => record["updated_at"], "message_count" => messages.size,
         "agent" => vars["agent"], "customer" => vars["customer"],
-        "last_role" => last.is_a?(Hash) ? last["role"] : nil, "flagged" => (flagged if flagged.positive?), "reported" => (reported if reported.positive?),
+        "last_role" => last.is_a?(Hash) ? last["role"] : nil, "flagged" => (flagged if flagged.positive?),
+        "reported" => (reported.size if reported.any?), "reported_at" => reported.filter_map { |f| f.dig("review", "at") }.max,
         **vars.slice(*CUSTOMER_LABELS) }.compact
     end
 
@@ -317,7 +330,8 @@ module Insika
       Stat.new(id: key.delete_prefix(KEY_PREFIX), updated_at: stat["updated_at"],
                message_count: stat["message_count"].to_i,
                vars: stat.slice("agent", "customer", *CUSTOMER_LABELS),
-               last_role: stat["last_role"], flagged: stat["flagged"].to_i, reported: stat["reported"].to_i)
+               last_role: stat["last_role"], flagged: stat["flagged"].to_i, reported: stat["reported"].to_i,
+               reported_at: stat["reported_at"])
     end
 
     def key_for(id)

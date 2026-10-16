@@ -225,17 +225,17 @@
             </details>
           <% end %>
 
-          <% traces = @tool_traces || {} %>
+          <% traces = @tool_traces || [] %>
           <% unless traces.empty? %>
-            <% errors = traces.values.flatten.count { |trace| !trace["ok"] || trace["gate"] } %>
+            <% errors = traces.flatten.count { |trace| !trace["ok"] || trace["gate"] } %>
             <details class="card tooltrace operation-diagnostics">
-              <summary>Tool calls <span class="muted">· <%= traces.values.sum(&:size) %></span><% if errors.positive? %> <span class="status err"><%= errors %> failed or blocked</span><% end %></summary>
+              <summary>Tool calls <span class="muted">· <%= traces.sum(&:size) %></span><% if errors.positive? %> <span class="status err"><%= errors %> failed or blocked</span><% end %></summary>
               <p class="muted">Arguments and responses are masked.</p>
-              <% traces.keys.sort.each do |turn| %>
+              <% traces.each do |group| %>
                 <div class="trace-turn">
-                  <div class="turn-label">turn <%= turn %></div>
+                  <div class="turn-label">turn <%= group.first["turn"] %></div>
                   <%# Waterfall: when each call ran inside the turn (SVG geometry, CSP-safe). %>
-                  <% bars = trace_waterfall(traces[turn]) %>
+                  <% bars = trace_waterfall(group) %>
                   <% if bars.size > 1 %>
                     <svg class="waterfall" viewBox="0 0 100 <%= bars.size * 6 %>" preserveAspectRatio="none" role="img"
                          aria-label="<%= bars.map { |b| "#{b[:tool]} #{b[:ms]}ms" }.join(", ") %>">
@@ -244,7 +244,7 @@
                       <% end %>
                     </svg>
                   <% end %>
-                  <% traces[turn].each do |t| %>
+                  <% group.each do |t| %>
                     <details class="trace-item <%= t["ok"] ? "ok" : "err" %>">
                       <summary>
                         <span class="badge"><%= t["gate"] ? "blocked: #{t["gate"]}" : (t["ok"] ? "ok" : "error") %></span>

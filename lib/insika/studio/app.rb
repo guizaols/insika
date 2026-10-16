@@ -1025,13 +1025,15 @@ module Studio
 
             # master column: recent conversations, current one active
             setup_chat_list(r.params)
-            # Session's tool-call trace (debug): grouped by turn in the view.
+            # Session's tool-call trace (debug), one group per turn of a task:
+            # `turn` restarts at 1 every task (entries without a task_id, written
+            # before it, group by consecutive turn).
             @tool_traces = (insika[:tool_trace_store]&.for_session(sid) || [])
-                           .group_by { |t| t["turn"] }
+                           .chunk_while { |a, b| a["task_id"] == b["task_id"] && a["turn"] == b["turn"] }.to_a
             # Context breakdown per turn: chronological entries.
             @context_traces = insika[:context_trace_store]&.for_session(sid) || []
             # Per-reply "why did it say that?" panels, drawn under each reply.
-            @why = why_panels(Array(@session.messages), @context_traces, @tool_traces.values.flatten)
+            @why = why_panels(Array(@session.messages), @context_traces, @tool_traces.flatten)
             # the stage history — the session's outcomes folded
             # into the agent's declared stages (unmapped kinds render raw).
             @stage_history = stage_history_for(sid)
@@ -1653,24 +1655,33 @@ end
       ].select { |n, *| n.positive? }.map { |n, text, href, tone| ["#{n} #{text}", href, tone] }
     end
 
-    # Items parked on a human, per Review page — the sidebar badges. Read once
-    # per request; a store that is missing or fails counts as 0 (the nav never
-    # breaks a page).
-    def review_counts
-      @review_counts ||= {
-        approvals: safe_count { insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR) },
-        facts: safe_count { insika[:proposal_store]&.pending(limit: 100) },
-        harvest: safe_count { insika[:harvest_store]&.awaiting_approval(limit: 100) },
-        refinement: safe_count { insika[:refinement_store]&.awaiting_approval(limit: 100) },
-        false_positives: safe_count { reported_sessions }
+    # Items parked on a human, per Review page — the sidebar badges.
+    def review_counts = review_queues.transform_values(&:size)
+
+    # The Review queues themselves, read once per request (the sidebar and the
+    # inbox share them); a store that is missing or fails is empty (the nav
+    # never breaks a page).
+    def review_queues
+      @review_queues ||= {
+        approvals: safe_list { insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR) },
+        facts: safe_list { insika[:proposal_store]&.pending(limit: 100) },
+        harvest: safe_list { insika[:harvest_store]&.awaiting_approval(limit: 100) },
+        refinement: safe_list { insika[:refinement_store]&.awaiting_approval(limit: 100) },
+        false_positives: safe_list { reported_sessions }
       }
+    end
+
+    # Every session's stats, read once per request: the sidebar badge, the
+    # inbox and the page itself all ask for them.
+    def session_stats
+      @session_stats ||= insika[:session_store].all_stats
     end
 
     # Sessions holding a guardrail flag someone reported as a false positive
     # and nobody resolved yet (stats only).
     def reported_sessions
       store = insika[:session_store]
-      store.respond_to?(:all_stats) ? store.all_stats.select { |s| s.reported.positive? } : []
+      store.respond_to?(:all_stats) ? session_stats.select { |s| s.reported.positive? } : []
     end
 
     INBOX_TYPES = { "approval" => "Approval", "fact" => "Fact", "skill" => "Skill",
@@ -1680,27 +1691,28 @@ end
     # linking to the page where it is decided. -> [{ type:, title:, agent:, at:, href: }]
     def inbox_items
       tasks = insika[:task_store]
+      queues = review_queues
       items = []
-      Array(insika[:pending_action_store]&.all_open(kind: Insika::PendingActionStore::OPERATOR)).each do |pa|
+      queues[:approvals].each do |pa|
         items << { type: "approval", title: "#{pa.tool} needs approval", agent: (task = tasks&.find(pa.task_id)) && task_agent(task),
                    at: pa.requested_at, href: "/studio/approvals" }
       end
-      Array(insika[:proposal_store]&.pending(limit: 100)).each do |p|
+      queues[:facts].each do |p|
         items << { type: "fact", title: "#{p.key}: #{p.value}"[0, 120], agent: p.scope,
                    at: p.created_at, href: "/studio/facts/#{Rack::Utils.escape_path(p.id)}" }
       end
-      Array(insika[:harvest_store]&.awaiting_approval(limit: 100)).each do |c|
+      queues[:harvest].each do |c|
         items << { type: "skill", title: "Mined skill: #{c.name}", agent: c.agent,
                    at: c.updated_at, href: "/studio/harvest?agent=#{Rack::Utils.escape(c.agent.to_s)}" }
       end
-      Array(insika[:refinement_store]&.awaiting_approval(limit: 100)).each do |run|
+      queues[:refinement].each do |run|
         items << { type: "refinement", title: "Refinement run waiting for a decision", agent: run.agent_id,
                    at: run.finished_at || run.started_at, href: "/studio/refinement/#{Rack::Utils.escape_path(run.id)}" }
       end
-      reported_sessions.each do |st|
+      queues[:false_positives].each do |st|
         who = presence(st.vars["customer_name"]) || presence(st.vars["customer"]) || st.id
         items << { type: "false_positive", title: "Guardrail false positive · #{who}", agent: st.vars["agent"],
-                   at: st.updated_at, href: "/studio/sessions/#{Rack::Utils.escape_path(st.id)}" }
+                   at: st.reported_at || st.updated_at, href: "/studio/sessions/#{Rack::Utils.escape_path(st.id)}" }
       end
       items.sort_by { |i| i[:at].to_s }
     end
@@ -1714,10 +1726,10 @@ end
       view("inbox")
     end
 
-    def safe_count
-      Array(yield).size
+    def safe_list
+      Array(yield)
     rescue StandardError
-      0
+      []
     end
 
     # NAV_ICONS + nav_icon moved to Studio::NavIcons.
@@ -2660,7 +2672,7 @@ end
       @perf = insika[:model_metrics_store]&.windows(agent: id, now: now) || {}
       store = insika[:session_store]
       stats = if store.nil? then []
-              elsif store.respond_to?(:all_stats) then store.all_stats
+              elsif store.respond_to?(:all_stats) then session_stats
               else every_record(store)
               end
       mine = agent_sessions(stats, id)
@@ -2686,7 +2698,7 @@ end
       week = CHANGE_COMPARE_DAYS * 86_400
       covered_from = parse_time(records.last&.at) # all() is newest first
       @change_primary = primary_stage_for(id)
-      counted = @change_primary ? records.select { |r| r.outcome == @change_primary } : records
+      counted = @change_primary ? records.select { |r| reached_primary?(id, r) } : records
       times = counted.filter_map { |r| parse_time(r.at) }
       first_day = now.to_date - (CHANGE_WINDOW_DAYS - 1)
       @change_days = (0...CHANGE_WINDOW_DAYS).map { |i| [first_day + i, 0] }.to_h
@@ -2782,7 +2794,7 @@ end
 
       ids = store.each_id.to_set
       @session_total = ids.size
-      store.all_stats.select { |s| ids.include?(s.id) && in_window.call(s) }
+      session_stats.select { |s| ids.include?(s.id) && in_window.call(s) }
     end
 
     # A session's message count, whether the home holds the session or its stats.
@@ -3021,7 +3033,7 @@ end
       @agent = presence(request.params["agent"])
       store = insika[:session_store]
       @sessions = if @agent && store.respond_to?(:all_stats)
-                    store.all_stats.select { |s| session_agent(s) == @agent }
+                    session_stats.select { |s| session_agent(s) == @agent }
                          .sort_by { |s| s.updated_at.to_s }.last(LIVE_CARDS).reverse
                          .filter_map { |s| store.find(s.id) }
                   else
@@ -3041,7 +3053,7 @@ end
       store = insika[:session_store]
       return @sessions = [] unless store
 
-      all = store.respond_to?(:all_stats) ? store.all_stats : every_record(store)
+      all = store.respond_to?(:all_stats) ? session_stats : every_record(store)
       @chats_all = all.size
       # the agents column: one row per agent with conversations, latest first
       @chat_agents = all.group_by { |s| session_agent(s) }.except("")
@@ -3084,16 +3096,19 @@ end
     end
 
     # "Why did it say that?" — one entry per reply, keyed by the index of the
-    # turn's LAST assistant message with text. A turn opens on a user message
-    # that is not steered (a steered one joins the running turn). Messages carry
-    # no task id and the trace `turn` restarts at 1 every task, so the traces are
-    # matched like the skill cards in the thread: the context entry by time (it is
-    # written before the turn's messages are persisted), tool traces by call id
-    # (the persisted tool_calls carry it). -> { index => { context:, tools:, calls:, flags: } }
+    # turn's LAST assistant message with text. Messages persisted with a task_id
+    # split where it changes; older ones guess: a turn opens on a user message
+    # that is not steered (a steered one joins the running turn). The context
+    # entry matches by task_id (older ones: by time, it is written before the
+    # turn's messages are persisted), tool traces by call id (the persisted
+    # tool_calls carry it). -> { index => { context:, tools:, calls:, flags: } }
     def why_panels(messages, context_traces, tool_traces)
       by_call = tool_traces.to_h { [_1["call_id"].to_s, _1] }
       pending = context_traces.sort_by { _1["at"].to_s }
       turns = messages.each_index.slice_before do |i|
+        task, prev = messages[i]["task_id"].to_s, i.positive? ? messages[i - 1]["task_id"].to_s : ""
+        next task != prev unless task.empty? || prev.empty?
+
         messages[i]["role"].to_s == "user" && !(i.positive? && messages[i - 1]["role"].to_s == "tool")
       end
       turns.each_with_object({}) do |idx, acc|
@@ -3165,7 +3180,7 @@ end
       store = insika[:session_store]
       return 1 if customer.to_s.empty? || !store.respond_to?(:all_stats)
 
-      [store.all_stats.count { |s| s.vars["customer"].to_s == customer }, 1].max
+      [session_stats.count { |s| s.vars["customer"].to_s == customer }, 1].max
     end
 
     def chats_path(**extra)
@@ -3884,16 +3899,27 @@ end
       return 0 unless outcomes
 
       records = sessions.empty? ? [] : outcomes.all.select { |r| sessions.include?(r.session_id) }
-      primary = primary_stage_for(agent_id)
-      return records.count { |r| r.outcome == primary } if primary
+      return records.count { |r| reached_primary?(agent_id, r) } if primary_stage_for(agent_id)
 
       records.group_by(&:session_id).size
     end
 
     def primary_stage_for(agent_id)
+      funnel_decl_for(agent_id)&.primary
+    end
+
+    # An outcome record is a kind; the primary is a stage. advance_on maps one to the other.
+    def reached_primary?(agent_id, record)
+      decl = funnel_decl_for(agent_id)
+      decl && decl.advance_on[record.outcome].to_s == decl.primary.to_s
+    end
+
+    def funnel_decl_for(agent_id)
+      @funnel_decls ||= {}
+      return @funnel_decls[agent_id] if @funnel_decls.key?(agent_id)
+
       profile = insika[:profile_source]&.fetch(agent_id)
-      decl = profile && Insika::FunnelDeclaration.parse(profile.funnel)
-      decl && decl.primary
+      @funnel_decls[agent_id] = profile && Insika::FunnelDeclaration.parse(profile.funnel)
     end
 
     # The opt-outs of ONE arm: contact cells of the customers THAT ARM fired

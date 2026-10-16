@@ -44,6 +44,8 @@ module Insika
       LOCKED_UPSERT = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
                       "INSERT INTO insika_kv (scope, key, value, updated_at) SELECT $1, $2, $3, clock_timestamp() FROM l " \
                       "ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at"
+      LOCKED_AMEND = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
+                     "UPDATE insika_kv SET value = $3 WHERE scope = $1 AND key = $2 AND EXISTS (SELECT 1 FROM l)"
       LOCKED_DELETE = "WITH l AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ' ' || $2, 0))) " \
                       "DELETE FROM insika_kv WHERE scope = $1 AND key = $2 AND EXISTS (SELECT 1 FROM l)"
 
@@ -85,6 +87,13 @@ module Insika
         # together (inside a transaction the lock is still held to COMMIT).
         with_conn { |c| c.exec_params(LOCKED_UPSERT, [scope, key, serialized]) }
         value
+      end
+
+      # updated_at is left alone: it is the write order #recent reads.
+      def amend(scope, key, value)
+        serialized = serialize(value)
+        updated = with_conn { |c| c.exec_params(LOCKED_AMEND, [scope, key, serialized]).cmd_tuples.positive? }
+        updated ? value : set(scope, key, value)
       end
 
       def delete(scope, key)

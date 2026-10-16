@@ -37,6 +37,13 @@ module Insika
       raise NotImplementedError, "#{self.class}#set"
     end
 
+    # -> value. Like #set, but an existing key keeps its place in #recent: an edit
+    # that is not new activity (a review on a session). This default is #set,
+    # exact only for a backend whose #recent reads the value's "updated_at".
+    def amend(scope, key, value)
+      set(scope, key, value)
+    end
+
     # -> true | false (did it exist?)
     def delete(scope, key)
       raise NotImplementedError, "#{self.class}#delete"
