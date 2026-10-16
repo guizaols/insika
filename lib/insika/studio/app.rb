@@ -3080,7 +3080,14 @@ end
         msgs = messages.values_at(*idx)
         at = msgs.first["at"].to_s
         context = nil
-        context = pending.shift while !at.empty? && pending.first && pending.first["at"].to_s <= at
+        if (task_id = presence(msgs.first["task_id"].to_s))
+          # exact: the turn's own trace (the last one, if the task suspended and resumed)
+          context = context_traces.select { _1["task_id"].to_s == task_id }.max_by { _1["at"].to_s }
+          pending.reject! { _1["at"].to_s <= at }
+        else
+          # older messages carry no task_id: the latest trace recorded before the turn was saved
+          context = pending.shift while !at.empty? && pending.first && pending.first["at"].to_s <= at
+        end
         reply = idx.reverse.find { |i| messages[i]["role"].to_s == "assistant" && !messages[i]["content"].to_s.empty? } or next
         calls = msgs.flat_map { |m| Array(m["tool_calls"]) }
         acc[reply] = { context: context, tools: by_call.values_at(*calls.map { _1["id"].to_s }).compact,
