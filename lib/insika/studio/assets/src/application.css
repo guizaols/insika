@@ -259,6 +259,18 @@
   .guardrail-why { display:grid; grid-template-columns:max-content 1fr; gap:.2rem .75rem; margin:.5rem 0 0; font-size:var(--text-sm); }
   .guardrail-why dt { color:var(--faint); }
   .guardrail-why dd { margin:0; font-family:var(--mono); font-size:var(--text-xs); overflow-wrap:anywhere; }
+  /* "Why this reply": the turn's context bars, skills, calls and checks. */
+  .why { display:flex; flex-direction:column; gap:.35rem; margin:.35rem 0 0; padding:.6rem .75rem; border:1px solid var(--line-1); border-radius:var(--radius-sm); background:var(--surface-1); font-size:var(--text-sm); }
+  .why h3 { margin:.3rem 0 0; font-size:var(--text-xs); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); }
+  .why p, .why ul { margin:0; }
+  .why ul { list-style:none; padding:0; display:flex; flex-direction:column; gap:.2rem; }
+  .why-bars { display:grid; grid-template-columns:max-content 1fr; gap:.2rem .75rem; align-items:center; margin:0; }
+  .why-bars dt { font-family:var(--mono); font-size:var(--text-xs); color:var(--dim); }
+  .why-bars dd { margin:0; display:flex; align-items:center; gap:.5rem; font-family:var(--mono); font-size:var(--text-xs); }
+  .why-bars svg { flex:1; height:.5rem; }
+  .why-bars rect { fill:var(--accent-bg); }
+  .why-bars rect.track { fill:var(--line-1); }
+  .why .actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.3rem; }
   .guardrail-review { display:flex; align-items:center; gap:.5rem; margin:.6rem 0 0; }
 
   /* Chats status tabs, under the master search. */

@@ -97,6 +97,7 @@
                   right after a tool result arrived mid-run. See _message.erb. %>
               <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil,
                                                 review: { path: "/studio/sessions/#{Rack::Utils.escape_path(@session.id)}/guardrail", message: i } }) %>
+              <% if (w = @why && @why[i]) %><%== render("_why", locals: { w: w, sid: @session.id, index: i }) %><% end %>
             <% end %>
           </div>
           <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@session.messages).empty? %>>This session has no messages.</div>
