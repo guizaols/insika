@@ -3652,6 +3652,17 @@ end
     expect(stale_row).not_to include('class="presence present"')
   end
 
+  it "live?agent= keeps only that agent's cards and scopes the stream to them" do
+    bia = StoredSession.new(id: "sess-bia", updated_at: Time.now.utc.iso8601, vars: { "agent" => "bia" },
+                            messages: [{ "role" => "user", "content" => "oi" }])
+    chef = StoredSession.new(id: "sess-chef", updated_at: Time.now.utc.iso8601, vars: { "agent" => "chef" },
+                             messages: [{ "role" => "user", "content" => "oi" }])
+    app, = build_app(sessions: { "sess-bia" => bia, "sess-chef" => chef })
+    body = login(app).get("/live?agent=bia").body
+    expect(body).to include('data-session-id="sess-bia"', 'data-live-floor-scoped-value="true"')
+    expect(body).not_to include('data-session-id="sess-chef"')
+  end
+
   it "live: one card per recent conversation, with presence, flag and the live-floor hooks" do
     fresh = StoredSession.new(id: "sess-fresh", updated_at: Time.now.utc.iso8601,
                                vars: { "agent" => "bia", "customer" => "c1", "customer_name" => "Maria" },
