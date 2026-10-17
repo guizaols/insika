@@ -125,6 +125,7 @@ module Insika
     def due_sessions
       due = []
       @session_store.each_id do |id|
+        next if Insika::SessionStore.synthetic?(id) # not customers — and skips reading the record
         session = @session_store.find(id)
         next unless session
         next if @harvest_store.mined?(id)

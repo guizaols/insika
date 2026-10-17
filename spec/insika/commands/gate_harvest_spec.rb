@@ -85,6 +85,17 @@ RSpec.describe Insika::Commands::GateHarvest do
     expect(event.data).to include(eval_passed: true, conversion_passed: false, reason: :conversion_down)
   end
 
+  it "re-gates a parked candidate once the missing ruler is fixed — parking is not a dead end" do
+    evals_pass
+    cand = seed_candidate
+    harvest_store.attach_gate(cand.id, eval_gate: { "passed" => true },
+                                       conversion_gate: { "passed" => false, "reason" => "no_criterion" },
+                                       criterion_sha: nil)
+    allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))
+    result = handler.call(cmd("candidate_id" => cand.id))
+    expect(result.status).to eq("awaiting_approval")
+  end
+
   it "a known-worse candidate is rejected by the eval gate (regressions)" do
     allow(gate).to receive(:score) do |agent_id:, skill:, run_id:|
       Insika::Harvest::Gate::Report.new(

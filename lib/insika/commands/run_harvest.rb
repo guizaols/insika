@@ -63,7 +63,9 @@ module Insika
         grounding = Grounding.parse(profile.grounding)
         return skip("no_grounding_matcher") if grounding.nil? || !grounding.matcher.sku?
 
-        miner = @miner_factory.call(config)
+        # the agent's provider backs a bare miner model ref; a "provider/model"
+        # ref (what the Studio picker writes) carries its own
+        miner = @miner_factory.call(config.merge("provider" => profile.provider.to_s))
         return skip("no_model") if miner.nil?
 
         run = @harvest_store.create_run(agent_id: agent, window: window_record(p),
@@ -189,6 +191,7 @@ module Insika
       #  is the grounding filter's input.
       def resolve_sessions(agent, p, config)
         ids = window_session_ids(agent, p, config)
+        ids = ids.reject { |sid| Insika::SessionStore.synthetic?(sid) } # sims/evals are not customers
         ids = ids.reject { |sid| @harvest_store.mined?(sid) } unless EnvSchema.truthy?(p[:full])
         ids = ids.first(Harvest::Miner::MAX_SESSIONS)
 
@@ -291,7 +294,20 @@ module Insika
           ## Skills this agent already has (do not re-propose them)
 
           #{current_skills.empty? ? "(none)" : current_skills.join(", ")}
+
+          ## Skills already proposed and awaiting review (do not re-propose the same idea under another name)
+
+          #{open_candidate_lines(agent)}
         PROMPT
+      end
+
+      # Name dedup only catches an exact repeat; the miner sees the open ideas
+      # and judges sameness itself (no text matching on free text).
+      def open_candidate_lines(agent)
+        open = Insika::HarvestStore::OPEN_STATUSES.flat_map { |s| @harvest_store.candidates(agent_id: agent, status: s) }
+        return "(none)" if open.empty?
+
+        open.map { |c| "- #{c.name} — #{c.description}" }.join("\n")
       end
 
       def current_skill_names(agent)

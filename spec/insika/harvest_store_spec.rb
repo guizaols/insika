@@ -134,6 +134,16 @@ RSpec.describe Insika::HarvestStore do
         .to raise_error(ArgumentError, /gated/)
     end
 
+    it "reopen sends a parked (gated) candidate back to pending, keeping its last reports; only from gated" do
+      cand = create_candidate
+      expect { store.reopen(cand.id) }.to raise_error(ArgumentError, /pending/)
+      store.attach_gate(cand.id, eval_gate: { "passed" => false, "reason" => "no_frozen_baseline" },
+                                 conversion_gate: { "passed" => false, "reason" => "no_criterion" }, criterion_sha: "x")
+      reopened = store.reopen(cand.id)
+      expect(reopened.status).to eq("pending")
+      expect(reopened.eval_gate).to include("reason" => "no_frozen_baseline")
+    end
+
     it "mark_awaiting only from gated" do
       cand = create_candidate
       expect { store.mark_awaiting(cand.id) }.to raise_error(ArgumentError, /pending/)

@@ -122,6 +122,17 @@ RSpec.describe Insika::Commands::RunHarvest do
       expect(handler_with.call(cmd("agent" => "store-support"))).to eq(mined: false, skipped: "no_model")
     end
 
+    it "hands the miner factory the agent's provider, so a bare model ref resolves" do
+      seen = []
+      spy = Class.new { def initialize(s) = (@s = s); def call(config) = (@s << config; nil) }.new(seen)
+      described_class.new(profiles: { "store-support" => profile.with(provider: :deepseek) },
+                          harvest_store: harvest_store, session_store: session_store,
+                          task_store: tasks, skill_store: skills, settings_store: settings,
+                          event_stream: stream, negative_list: negative_list, miner_factory: spy)
+                     .call(cmd("agent" => "store-support"))
+      expect(seen.first["provider"]).to eq("deepseek")
+    end
+
     it "an unknown agent -> NotFoundError" do
       expect { handler.call(cmd("agent" => "nope")) }.to raise_error(Insika::NotFoundError)
     end
@@ -158,6 +169,29 @@ RSpec.describe Insika::Commands::RunHarvest do
       expect(event.data[:candidates]).to eq(1)
       expect(event.data[:cost]).to eq("spent" => 100, "cached" => 90)
       expect(event.data.to_s).to_not include("SKU0001") # counts and ids only, never content
+    end
+
+    it "a manual window never mines synthetic traffic either" do
+      seed_session(id: "acme:sim-abc")
+      handler.call(cmd("agent" => "store-support", "session_ids" => ["acme:sim-abc", "acme:sess_1"]))
+      prompt = fake_miner.calls.first[:prompt]
+      expect(prompt).to include("acme:sess_1")
+      expect(prompt).not_to include("acme:sim-abc")
+    end
+
+    it "tells the miner the candidates still open, so it does not re-propose an idea under a new name" do
+      open = harvest_store.create_candidate(run_id: "r0", agent: "store-support", name: "out_of_catalog_redirect",
+                                            description: "redirect a shoe request to beauty", body: "b",
+                                            rationale: "r", origin: ["acme:old"], proposer: "m")
+      gone = harvest_store.create_candidate(run_id: "r0", agent: "store-support", name: "rejected_idea",
+                                            description: "was rejected", body: "b", rationale: "r",
+                                            origin: ["acme:old"], proposer: "m")
+      harvest_store.mark_rejected(gone.id, operator: "studio", note: "no")
+      handler.call(cmd("agent" => "store-support"))
+      prompt = fake_miner.calls.first[:prompt]
+      expect(prompt).to include("out_of_catalog_redirect — redirect a shoe request to beauty")
+      expect(prompt).not_to include("rejected_idea")
+      expect(open.status).to eq("pending")
     end
 
     it "the mined sessions are byte-identical after the pass (E1 — the fork wrote nothing)" do

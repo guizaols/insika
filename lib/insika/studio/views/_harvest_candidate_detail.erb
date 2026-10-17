@@ -1,0 +1,14 @@
+<%# What a person needs to judge a candidate before gating it: why it was
+    proposed, where it came from, and the skill text itself. %>
+<details class="review-details">
+  <summary>View skill</summary>
+  <p class="muted"><%= cand.rationale %></p>
+  <% if Array(cand.origin).any? %>
+    <p class="muted">From:
+      <% Array(cand.origin).each do |sid| %>
+        <a href="/studio/sessions/<%= Rack::Utils.escape(sid) %>?agent=<%= Rack::Utils.escape(cand.agent) %>" class="mono" data-turbo-frame="_top"><%= sid %></a>
+      <% end %>
+    </p>
+  <% end %>
+  <div class="markdown-preview" data-controller="markdown"><%= cand.body %></div>
+</details>
