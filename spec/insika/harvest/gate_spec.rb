@@ -42,41 +42,6 @@ RSpec.describe Insika::Harvest::Gate do
     end
   end
 
-  # Answers probe turns by phase (conv id ends in -before / -after) and
-  # golden turns like GateTransportDouble. Records every message it saw.
-  class ProbeTransportDouble < GateTransportDouble
-    attr_reader :messages_seen
-
-    # again: the second no-skill run (the noise check); same as before unless
-    # a test makes the agent disagree with itself.
-    def initialize(script, before: "não sei", after: "aceitamos pix", again: nil, error_after: false,
-                   error_before: false, sessions: nil)
-      super(script)
-      @error_before = error_before
-      @sessions = sessions
-      @before = before
-      @again = again || before
-      @after = after
-      @error_after = error_after
-      @messages_seen = []
-    end
-
-    def turn(agent:, conv:, message:)
-      @messages_seen << [conv, message]
-      return super unless conv.start_with?("probe-")
-
-      @agents_seen << agent
-      # what the server does: the conv id becomes a (tenant-scoped) session
-      @sessions.create(id: "acme:#{conv}") if @sessions && @sessions.find("acme:#{conv}").nil?
-      error = (@error_after && conv.end_with?("-after")) || (@error_before && conv.end_with?("-before")) ? "boom" : nil
-      text = { "-before" => @before, "-again" => @again }.find { |sfx, _| conv.end_with?(sfx) }&.last || @after
-      Insika::Evals::TurnOutcome.new(
-        result: Insika::Evals::TurnResult.new(output_text: text, tool_calls: [], error: error),
-        ttfb: 1.0, total: 2.0, usage: nil
-      )
-    end
-  end
-
   def seed_agent(id: "support", skills: nil)
     profiles.put(Insika::AgentProfile.build(id: id, model: "m", provider: :deepseek,
                                             prompt_files: ["TOOLS.md"], skills: skills))
@@ -198,17 +163,11 @@ RSpec.describe Insika::Harvest::Gate do
 
     it "replays against the CLONE — the clone's catalog serves the skill (the model can load_skill it)" do
       g, transport = gate
-      served = nil
-      allow(transport).to receive(:turn).and_wrap_original do |orig, **kw|
-        served ||= skill_catalog.find("pix-recovery", agent: kw[:agent])
-        orig.call(**kw)
-      end
       g.score(agent_id: "support", skill: candidate, run_id: "abc-def-99")
       expect(transport.agents_seen.uniq).to eq(["support-harvest-abcdef99"])
+      served = skill_catalog.find("pix-recovery", agent: "support-harvest-abcdef99")
       expect(served).to_not be_nil
       expect(served.body).to include("## Steps")
-      # ... and gone once the clone is destroyed
-      expect(skill_catalog.find("pix-recovery", agent: "support-harvest-abcdef99")).to be_nil
     end
 
     it "leaves the live agent's files, profile and skills untouched" do
@@ -285,174 +244,5 @@ RSpec.describe Insika::Harvest::Gate do
     g, = gate
     expect(g.clone_id_for("support", "9f2c1b40-aaaa")).to eq("support-harvest-9f2c1b40")
     expect(g.clone_id_for("support", "1111-2222")).to eq("support-harvest-11112222")
-  end
-  describe "the probe" do
-    let(:golden_ok) { { "quotes-freight" => { text: "R$ 20", tools: ["shipping_quote"] } } }
-    let(:asked) { [] }
-
-    # A scripted pairwise judge: says the side containing `winner_text` wins.
-    def pairwise(winner_text:, sink:)
-      ask = lambda do |prompt|
-        sink << prompt
-        a = prompt[/CONVERSATION A:\n(.*?)\n\s*CONVERSATION B:/m, 1].to_s
-        { "winner" => a.include?(winner_text) ? "A" : "B", "reason" => "resolveu" }.to_json
-      end
-      Insika::Evals::Pairwise.new(asks: [ask])
-    end
-
-    let(:session_store) { Insika::SessionStore.new(store: backend) }
-
-    def probe_gate(transport, pairwise_factory:)
-      described_class.new(profiles: profiles, agent_files: agent_files, goldens: goldens,
-                          baselines: baselines, skill_store: skill_store,
-                          skill_catalog: skill_catalog, transport_factory: -> { transport },
-                          pairwise_factory: pairwise_factory, session_store: session_store)
-    end
-
-    before do
-      seed_case
-      baseline!("quotes-freight" => { "pass" => true, "score" => nil })
-    end
-
-    it "passes when the skill makes the origin conversation better" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      judge = pairwise(winner_text: "aceitamos pix", sink: asked)
-      report = probe_gate(transport, pairwise_factory: -> { judge })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(true)
-      expect(report.probe).to include("passed" => true, "better" => 1)
-      expect(report.to_h["probe"]).to eq(report.probe)
-    end
-
-    it "rejects when the skill makes it worse" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      judge = pairwise(winner_text: "não sei", sink: asked)
-      report = probe_gate(transport, pairwise_factory: -> { judge })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(false)
-      expect(report.reason).to match(/probe_worse/)
-    end
-
-    it "replays before without the skill and after with it, on the clone only" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      convs = transport.messages_seen.map(&:first)
-      expect(convs.first).to end_with("-before")
-      expect(convs.last).to end_with("-after")
-      expect(transport.agents_seen.uniq).to eq(["support-harvest-r1"])
-    end
-
-    it "skips the after pass and the judge when the golden replay regresses" do
-      transport = ProbeTransportDouble.new({ "quotes-freight" => { text: "não sei", tools: [] } })
-      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "x", sink: asked) })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(false)
-      expect(report.probe).to be_nil
-      expect(transport.messages_seen.map(&:first)).not_to include(a_string_ending_with("-after"))
-      expect(asked).to be_empty
-    end
-
-    it "refuses when probe cases are given but no pairwise judge is configured" do
-      report = probe_gate(ProbeTransportDouble.new(golden_ok), pairwise_factory: -> { nil })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(false)
-      expect(report.reason).to match(/\Aprobe_no_judge: .*no pairwise judge/)
-    end
-
-    it "stops a case at an errored after turn and records no preference for it" do
-      transport = ProbeTransportDouble.new(golden_ok, error_after: true)
-      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?", "e boleto?"]])
-      expect(report.probe).to include("cases" => 1, "better" => 0)
-      expect(report.passed).to be(false)
-      expect(asked).to be_empty
-      expect(transport.messages_seen.count { |c, _| c.end_with?("-after") }).to eq(1)
-    end
-
-    it "redacts customer PII before the judge sees it" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-        .score(agent_id: "support", skill: candidate, run_id: "r1",
-               probe_cases: [["meu cpf é 123.456.789-09, tem pix?"]])
-      expect(asked).not_to be_empty
-      expect(asked.join).not_to include("123.456.789-09")
-    end
-
-    it "gates on the probe alone when the agent has no golden cases" do
-      goldens.delete("quotes-freight")
-      baselines.delete("support")
-      transport = ProbeTransportDouble.new({})
-      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(true)
-      expect(report.cases).to eq(0)
-      expect(report.probe).to include("better" => 1)
-    end
-
-    it "still refuses an agent with no golden cases when the probe is off" do
-      goldens.delete("quotes-freight")
-      report = probe_gate(ProbeTransportDouble.new({}), pairwise_factory: -> { nil })
-               .score(agent_id: "support", skill: candidate, run_id: "r1")
-      expect(report.passed).to be(false)
-      expect(report.reason).to match(/no golden cases/)
-    end
-
-    it "gives every gate run its own probe conversations, even within one harvest run" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      g = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-      g.score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      first = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }
-      transport.messages_seen.clear
-      g.score(agent_id: "support", skill: candidate(name: "other"), run_id: "r1", probe_cases: [["tem pix?"]])
-      second = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }
-      expect(first & second).to be_empty
-    end
-
-    it "drops the clone skill from the catalog once the gate is done" do
-      probe_gate(ProbeTransportDouble.new(golden_ok), pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(skill_catalog.effective(nil, agent: "support-harvest-r1").map(&:name)).not_to include("pix-recovery")
-    end
-
-    it "records no preference for a case whose before turn errored — a timeout is not a win" do
-      transport = ProbeTransportDouble.new(golden_ok, error_before: true)
-      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(false)
-      expect(report.reason).to match(/probe_no_gain/)
-      expect(asked).to be_empty
-    end
-
-    it "deletes the probe sessions it created — they hold raw customer text" do
-      transport = ProbeTransportDouble.new(golden_ok, sessions: session_store)
-      session_store.create(id: "acme:real-chat")
-      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(session_store.each_id.to_a).to eq(["acme:real-chat"])
-    end
-
-    it "discounts a win when the agent without the skill already disagrees with itself — noise, not the skill" do
-      transport = ProbeTransportDouble.new(golden_ok, again: "aceitamos pix também")
-      report = probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-               .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      expect(report.passed).to be(false)
-      expect(report.probe).to include("better" => 0, "comparable" => 1)
-      expect(report.probe["verdicts"].first["reason"]).to match(/noise/)
-    end
-
-    it "runs the second no-skill pass before the skill is installed" do
-      transport = ProbeTransportDouble.new(golden_ok)
-      probe_gate(transport, pairwise_factory: -> { pairwise(winner_text: "aceitamos pix", sink: asked) })
-        .score(agent_id: "support", skill: candidate, run_id: "r1", probe_cases: [["tem pix?"]])
-      phases = transport.messages_seen.map(&:first).select { |c| c.start_with?("probe-") }.map { |c| c.split("-").last }
-      expect(phases).to eq(%w[before again after])
-    end
-
-    it "leaves the report unchanged when no probe cases are given" do
-      report = gate(script: golden_ok).first.score(agent_id: "support", skill: candidate, run_id: "r1")
-      expect(report.passed).to be(true)
-      expect(report.probe).to be_nil
-    end
   end
 end

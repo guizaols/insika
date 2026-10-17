@@ -69,10 +69,9 @@ RSpec.describe Insika::HarvestEngine do
       expect(summary[:errors]).to eq(0)
     end
 
-    it "never mines synthetic traffic — simulator, eval and probe sessions are not customers" do
+    it "never mines synthetic traffic — simulator and eval sessions are not customers" do
       seed_session(id: "acme:sim-1", updated_at: "2026-07-01T00:00:00Z")   # older, would win
       seed_session(id: "eval-golden-1", updated_at: "2026-07-02T00:00:00Z")
-      seed_session(id: "acme:probe-1a2b3c4d-0-before", updated_at: "2026-07-03T00:00:00Z")
       seed_session(id: "acme:real")
       engine.run_once
       expect(calls.map { |p| p[:session_ids] }).to eq([["acme:real"]])

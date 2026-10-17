@@ -135,7 +135,7 @@ RSpec.describe "Insika::Executor knowledge extraction" do
     executor.send(:finalize_knowledge_extraction, task_for, off_profile, long_messages)
   end
 
-  %w[sim-chat-1 eval-golden-1 acme:sim-chat-1 acme:probe-1a2b3c4d-0-before].each do |session_id|
+  %w[sim-chat-1 eval-golden-1 acme:sim-chat-1].each do |session_id|
     it "skips synthetic traffic (#{session_id}): it must not teach the production agent" do
       expect(Insika::Knowledge::ExtractorFactory).not_to receive(:build)
       build_executor.send(:finalize_knowledge_extraction, task_for(session_id: session_id), profile, long_messages)

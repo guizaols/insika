@@ -191,7 +191,7 @@ module Insika
       #  is the grounding filter's input.
       def resolve_sessions(agent, p, config)
         ids = window_session_ids(agent, p, config)
-        ids = ids.reject { |sid| Insika::SessionStore.synthetic?(sid) } # sims/evals/probes are not customers
+        ids = ids.reject { |sid| Insika::SessionStore.synthetic?(sid) } # sims/evals are not customers
         ids = ids.reject { |sid| @harvest_store.mined?(sid) } unless EnvSchema.truthy?(p[:full])
         ids = ids.first(Harvest::Miner::MAX_SESSIONS)
 

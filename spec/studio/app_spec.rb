@@ -1275,23 +1275,6 @@ end
       )
     end
 
-    it "harvest: the probe switch and its limits survive a save" do
-      app, bus = build_app
-      client = login(app)
-      config_post(client, "model" => "x", "harvest_enabled" => "1", "harvest_probe_enabled" => "1",
-                          "harvest_probe_max_cases" => "2", "harvest_probe_max_turns" => "3")
-      expect(bus.last(:update_agent).payload[:harvest]["probe"])
-        .to eq("enabled" => true, "max_cases" => 2, "max_turns" => 3)
-    end
-
-    it "harvest: the config tab shows a probe that is on, so a save keeps it" do
-      bia = profile("bia").with(harvest: { "enabled" => true, "probe" => { "enabled" => true, "max_turns" => 2 } })
-      app, = build_app(agents: [bia])
-      body = login(app).get("/agents/bia").body
-      expect(body).to include('name="harvest_probe_enabled" value="1" checked')
-      expect(body).to include('name="harvest_probe_max_turns" value="2"')
-    end
-
     it "refinement: mode, window, findings cap, files, proposers and budget" do
       app, bus = build_app
       client = login(app)
@@ -5952,19 +5935,13 @@ end
       expect(body).to include("/studio/sessions/acme%3As_9")
     end
 
-    it "a blocked candidate shows its probe verdict next to the conversion hole" do
-      won = { "passed" => true, "cases" => 0,
-              "probe" => { "passed" => true, "better" => 1, "comparable" => 1, "worse" => 0, "cases" => 2 } }
-      lost = { "passed" => false, "reason" => "probe_no_gain: no case improved over the agent without the skill",
-               "probe" => { "passed" => false, "better" => 0, "comparable" => 2, "worse" => 0, "cases" => 2 } }
+    it "a blocked candidate shows its eval failure next to the conversion hole, with a re-run" do
+      lost = { "passed" => false, "reason" => "1 regression(s): quotes-freight (pass→fail)" }
       app, = harvest_app(candidates: [
-                           { name: "won", description: "d", status: "blocked", eval_gate: won, conversion_reason: "no_criterion" },
                            { name: "lost", description: "d", status: "blocked", eval_gate: lost, conversion_reason: "no_criterion" }
                          ])
       body = login(app).get("/harvest?agent=store-support").body
-      expect(body).to include("probe passed: 1 better · 1 comparable · 0 worse")
-      expect(body).to include("probe failed: 0 better · 2 comparable · 0 worse")
-      expect(body).to include("probe_no_gain")
+      expect(body).to include("1 regression(s): quotes-freight (pass→fail)")
       expect(body).to include("no_criterion")
       blocked = body[body.index("Blocked")..]
       expect(blocked).to include('action="/studio/harvest/gate"') # re-run once the hole is fixed
@@ -5984,13 +5961,6 @@ end
       res = client.post("/harvest/gate", params: { "candidate_id" => "anything", "_csrf" => csrf })
       expect(res.headers["location"]).to include("/studio/harvest")
       expect(bus.last(:gate_harvest).payload).to include(candidate_id: "anything")
-      expect(bus.last(:gate_harvest).payload).not_to have_key(:probe_sessions)
-
-      client.post("/harvest/gate", params: { "candidate_id" => "x", "_csrf" => csrf,
-                                             "probe_sessions" => "acme:a, acme:b\nacme:c" })
-      expect(bus.last(:gate_harvest).payload[:probe_sessions]).to eq(%w[acme:a acme:b acme:c])
-      blocked, = harvest_app(candidates: [{ name: "parked", description: "d", status: "blocked" }])
-      expect(login(blocked).get("/harvest?agent=store-support").body).to include('name="probe_sessions"')
     end
 
     it "the promote POST dispatches :promote_harvest with operator 'studio' and the note" do

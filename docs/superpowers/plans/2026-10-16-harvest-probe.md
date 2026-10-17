@@ -1,5 +1,7 @@
 # Harvest probe Implementation Plan
 
+> **Status: removed (2026-10-17).** Built, piloted on staging Época, then deleted. Store tools need a backend chat (achei-b2b `require_chat!`), so probe replays hit 404 on both sides and every case came out `comparable`; with 3 cases the judge also needed a double no-skill run to beat run-to-run noise. Skill value has to be measured on real traffic. The Harvest fixes found during the pilot stay (miner provider, synthetic-session skip, open-candidate dedup, re-gate of parked candidates, Studio visibility).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A harvest candidate skill must prove it *helps* the conversation it was mined from, not just that it breaks nothing.
