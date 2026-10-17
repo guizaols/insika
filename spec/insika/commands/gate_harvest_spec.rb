@@ -32,7 +32,7 @@ RSpec.describe Insika::Commands::GateHarvest do
       Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: true, reason: nil,
                                         cases: 7, passed_cases: 7, baseline_cases: 7,
                                         regressions: [], report: { "total" => 7 }, tokens: 1200,
-                                        cached: 900, probe: nil)
+                                        cached: 900)
     end
   end
 
@@ -43,11 +43,11 @@ RSpec.describe Insika::Commands::GateHarvest do
                                                 snapshot_ref: "funnel:platform:store-support:2026-08-16")
   end
 
-  def seed_candidate(origin: ["acme:sess_1"], evidence_turns: [])
+  def seed_candidate
     harvest_store.create_candidate(
       run_id: "run-1", agent: "store-support", name: "pix-recovery",
       description: "d", body: "---\nname: pix-recovery\n---\nbody", rationale: "r",
-      origin: origin, evidence_turns: evidence_turns, proposer: "utility_model"
+      origin: ["acme:sess_1"], proposer: "utility_model"
     )
   end
 
@@ -85,6 +85,17 @@ RSpec.describe Insika::Commands::GateHarvest do
     expect(event.data).to include(eval_passed: true, conversion_passed: false, reason: :conversion_down)
   end
 
+  it "re-gates a parked candidate once the missing ruler is fixed — parking is not a dead end" do
+    evals_pass
+    cand = seed_candidate
+    harvest_store.attach_gate(cand.id, eval_gate: { "passed" => true },
+                                       conversion_gate: { "passed" => false, "reason" => "no_criterion" },
+                                       criterion_sha: nil)
+    allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))
+    result = handler.call(cmd("candidate_id" => cand.id))
+    expect(result.status).to eq("awaiting_approval")
+  end
+
   it "a known-worse candidate is rejected by the eval gate (regressions)" do
     allow(gate).to receive(:score) do |agent_id:, skill:, run_id:|
       Insika::Harvest::Gate::Report.new(
@@ -92,7 +103,7 @@ RSpec.describe Insika::Commands::GateHarvest do
         reason: "1 regression(s): quotes-freight (pass→fail)", cases: 7, passed_cases: 6,
         baseline_cases: 7,
         regressions: [{ "id" => "quotes-freight", "kind" => "pass→fail", "detail" => nil }],
-        report: { "total" => 7 }, tokens: 1200, cached: 900, probe: nil
+        report: { "total" => 7 }, tokens: 1200, cached: 900
       )
     end
     allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))
@@ -145,123 +156,5 @@ RSpec.describe Insika::Commands::GateHarvest do
   it "a missing candidate_id -> ValidationError; an unknown one -> NotFoundError" do
     expect { handler.call(cmd({})) }.to raise_error(Insika::ValidationError)
     expect { handler.call(cmd("candidate_id" => "nope")) }.to raise_error(Insika::NotFoundError)
-  end
-
-  describe "the probe" do
-    let(:session_store) { Insika::SessionStore.new(store: backend) }
-    let(:config_store) { Insika::ConfigStore.new(store: backend) }
-    let(:profiles) { Insika::StoredProfileSource.new(config_store: config_store) }
-    let(:seen) { [] }
-
-    subject(:handler) do
-      described_class.new(harvest_store: harvest_store, gate: gate, conversion_gate: conversion_gate,
-                          criterion: criterion, event_stream: stream,
-                          profiles: profiles, session_store: session_store)
-    end
-
-    def seed_profile(probe:)
-      profiles.put(Insika::AgentProfile.build(id: "store-support", model: "m", provider: :deepseek,
-                                              harvest: { "probe" => probe }))
-    end
-
-    def seed_origin(id = "acme:sess_1")
-      session_store.create(id: id, vars: { "agent" => "store-support" })
-      session_store.append_messages(id, [{ "role" => "user", "content" => "tem pix?" },
-                                         { "role" => "assistant", "content" => "não sei" }])
-    end
-
-    before do
-      allow(gate).to receive(:score) do |agent_id:, skill:, run_id:, probe_cases: []|
-        seen << probe_cases
-        Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: true, reason: nil,
-                                          cases: 1, passed_cases: 1, baseline_cases: 1,
-                                          regressions: [], report: {}, tokens: nil, cached: nil, probe: nil)
-      end
-      allow(conversion_gate).to receive(:call).and_return(conversion(passed: true))
-    end
-
-    it "sends the origin customer turns when the agent turned the probe on" do
-      seed_profile(probe: { "enabled" => true })
-      seed_origin
-      c = seed_candidate(evidence_turns: [1])
-      handler.call(cmd("candidate_id" => c.id))
-      expect(seen).to eq([[["tem pix?"]]])
-    end
-
-    it "sends no probe cases when the probe is off" do
-      seed_profile(probe: { "enabled" => false })
-      seed_origin
-      c = seed_candidate
-      handler.call(cmd("candidate_id" => c.id))
-      expect(seen).to eq([[]])
-    end
-
-    it "parks a candidate mined from a multi-session window — the skill's own conversation is unknown" do
-      seed_profile(probe: { "enabled" => true })
-      seed_origin("acme:sess_1")
-      seed_origin("acme:sess_2")
-      c = seed_candidate(origin: ["acme:sess_1", "acme:sess_2"])
-      result = handler.call(cmd("candidate_id" => c.id))
-      expect(result.status).to eq("gated")
-      expect(result.eval_gate).to include("passed" => false, "reason" => "probe_ambiguous_origin")
-      expect(seen).to be_empty
-    end
-
-    it "survives a nonsense max_turns/max_cases — clamped, never a crash" do
-      seed_profile(probe: { "enabled" => true, "max_turns" => -1, "max_cases" => 0 })
-      seed_origin
-      c = seed_candidate
-      handler.call(cmd("candidate_id" => c.id))
-      expect(seen).to eq([[["tem pix?"]]])
-    end
-
-    it "parks, never rejects, when the gate says the probe has no judge — a config hole" do
-      seed_profile(probe: { "enabled" => true })
-      seed_origin
-      allow(gate).to receive(:score) do |skill:, **|
-        Insika::Harvest::Gate::Report.new(candidate_id: skill["name"], passed: false,
-                                          reason: "probe_no_judge: the probe is on but no pairwise judge is configured",
-                                          cases: 0, passed_cases: 0, baseline_cases: 0, regressions: [],
-                                          report: nil, tokens: nil, cached: nil, probe: nil)
-      end
-      result = handler.call(cmd("candidate_id" => seed_candidate.id))
-      expect(result.status).to eq("gated")
-    end
-
-    it "adds the operator's extra probe conversations after the origin, whole, up to max_cases" do
-      seed_profile(probe: { "enabled" => true, "max_cases" => 2 })
-      seed_origin("acme:sess_1")
-      session_store.create(id: "acme:similar", vars: { "agent" => "store-support" })
-      session_store.append_messages("acme:similar", [{ "role" => "user", "content" => "vende sapato?" },
-                                                     { "role" => "assistant", "content" => "não" },
-                                                     { "role" => "user", "content" => "e bolsa?" }])
-      session_store.create(id: "acme:third", vars: { "agent" => "store-support" })
-      session_store.append_messages("acme:third", { "role" => "user", "content" => "tem tênis?" })
-      c = seed_candidate(evidence_turns: [1])
-      handler.call(cmd("candidate_id" => c.id, "probe_sessions" => ["acme:similar", "acme:third", "acme:gone"]))
-      expect(seen).to eq([[["tem pix?"], ["vende sapato?", "e bolsa?"]]])
-    end
-
-    it "re-gates a parked candidate once the hole is fixed — parking is not a dead end" do
-      seed_profile(probe: { "enabled" => true })
-      seed_origin
-      c = seed_candidate
-      parked = harvest_store.attach_gate(c.id, eval_gate: { "passed" => false, "reason" => "probe_no_judge: x" },
-                                               conversion_gate: { "passed" => false, "reason" => "no_criterion" },
-                                               criterion_sha: nil)
-      expect(parked.status).to eq("gated")
-      result = handler.call(cmd("candidate_id" => c.id))
-      expect(seen).to eq([[["tem pix?"]]])
-      expect(result.status).to eq("awaiting_approval")
-    end
-
-    it "parks the candidate when the probe is on but the origin is gone" do
-      seed_profile(probe: { "enabled" => true })
-      c = seed_candidate(origin: ["acme:deleted"])
-      result = handler.call(cmd("candidate_id" => c.id))
-      expect(result.status).to eq("gated")
-      expect(result.eval_gate).to include("passed" => false, "reason" => "probe_no_cases")
-      expect(seen).to be_empty
-    end
   end
 end

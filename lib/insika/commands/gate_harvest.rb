@@ -13,17 +13,12 @@ module Insika
     # candidate is terminal — the same finding must re-surface with new
     # evidence, no silent retry).
     class GateHarvest
-      # profiles + session_store: the probe inputs (the agent opt-in and the
-      # origin turns). Both nil -> no probe, the gate as before.
-      def initialize(harvest_store:, gate:, conversion_gate:, criterion: nil, event_stream:,
-                     profiles: nil, session_store: nil)
+      def initialize(harvest_store:, gate:, conversion_gate:, criterion: nil, event_stream:)
         @harvest_store = harvest_store
         @gate = gate
         @conversion_gate = conversion_gate
         @criterion = criterion
         @event_stream = event_stream
-        @profiles = profiles
-        @session_store = session_store
       end
 
       # payload: { candidate_id: } (tenant from command.meta — WS1)
@@ -71,23 +66,10 @@ module Insika
           return parked
         end
 
-        # The probe is on but cannot replay the skill's own conversation: a
-        # missing ruler parks, it never passes.
-        probe_cases = probe_cases_for(candidate, Array(p[:probe_sessions]).map(&:to_s))
-        if probe_cases.is_a?(String)
-          return @harvest_store.attach_gate(
-            candidate.id,
-            eval_gate: { "passed" => false, "reason" => probe_cases },
-            conversion_gate: { "passed" => false, "reason" => probe_cases },
-            criterion_sha: nil
-          )
-        end
-
         skill = { "name" => candidate.name, "description" => candidate.description,
                   "body" => candidate.body, "triggers" => candidate.triggers }
-        probe_kw = probe_cases.empty? ? {} : { probe_cases: probe_cases }
         eval_report = @gate.score(agent_id: candidate.agent, skill: skill,
-                                  run_id: candidate.run_id, **probe_kw)
+                                  run_id: candidate.run_id)
         conversion_report = @conversion_gate.call(tenant: command.meta[:tenant],
                                                   agent: candidate.agent)
         criterion_sha = @criterion ? @criterion.sha : nil
@@ -96,8 +78,7 @@ module Insika
         # a candidate failure: it parks the candidate at gated with both
         # reports and the named reason — the page shows the ruler's hole.
         # Only a conversion FAILURE (current worse than baseline) rejects.
-        # A probe with no judge is the same kind of hole: the ruler is missing.
-        if refused?(conversion_report) || eval_report.reason.to_s.start_with?("probe_no_judge")
+        if refused?(conversion_report)
           gated = @harvest_store.attach_gate(candidate.id,
                                              eval_gate: eval_report.to_h,
                                              conversion_gate: conversion_report.to_h,
@@ -122,36 +103,6 @@ module Insika
       end
 
       private
-
-      # -> [] (probe off), the turns to replay, or a park reason (String):
-      # "probe_ambiguous_origin" — a manual run mines a whole window and the
-      # miner does not say which session a skill came from (the engine loop
-      # mines one session at a time, so its origin is exact);
-      # "probe_no_cases" — nothing left to replay (purged by retention).
-      def probe_cases_for(candidate, extra_ids = [])
-        config = probe_config(candidate.agent)
-        return [] unless config
-        return "probe_ambiguous_origin" if Array(candidate.origin).size > 1
-
-        max_cases = (config["max_cases"] || Insika::Harvest::Probe::MAX_CASES).to_i.clamp(1, 10)
-        max_turns = (config["max_turns"] || Insika::Harvest::Probe::MAX_TURNS).to_i.clamp(1, 10)
-        messages_of = ->(ids) { ids.filter_map { |sid| @session_store.find(sid)&.messages&.to_a } }
-        cases = Insika::Harvest::Probe.cases(messages_of.(Array(candidate.origin)), evidence_turns: candidate.evidence_turns,
-                                                                                 max_cases: max_cases, max_turns: max_turns)
-        # Operator-picked conversations like the origin: one case per origin
-        # session is weak evidence, so extras widen it (whole, no evidence cut).
-        cases += Insika::Harvest::Probe.cases(messages_of.(extra_ids), evidence_turns: [],
-                                                                     max_cases: max_cases, max_turns: max_turns)
-        cases = cases.first(max_cases)
-        cases.empty? ? "probe_no_cases" : cases
-      end
-
-      def probe_config(agent)
-        return nil unless @profiles && @session_store
-
-        config = (Coercion.deep_stringify(@profiles.fetch(agent)&.harvest) || {})["probe"]
-        config.is_a?(Hash) && Coercion.truthy?(config["enabled"]) ? config : nil
-      end
 
       # The D6 refusals: the ruler is MISSING, not moving — the candidate
       # parks. Anything else with passed: false is a real failure.

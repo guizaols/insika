@@ -111,9 +111,6 @@
             <span class="status <%= status_class('blocked') %>">blocked</span>
             <span class="mono"><%= cand.name %></span>
             <% ev = cand.eval_gate || {} %>
-            <% if (pr = ev["probe"]) %>
-              <span class="preview">probe <%= pr["passed"] ? "passed" : "failed" %>: <%= pr["better"] %> better · <%= pr["comparable"] %> comparable · <%= pr["worse"] %> worse</span>
-            <% end %>
             <% if ev["passed"] == false && ev["reason"] && (cand.conversion_gate || {})["reason"] %>
               <span class="preview muted"><%= ev["reason"] %> ·</span>
             <% end %>
@@ -133,7 +130,6 @@
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= cand.agent %>">
               <input type="hidden" name="candidate_id" value="<%= cand.id %>">
-              <input type="text" name="probe_sessions" class="mono" placeholder="extra probe conversations (session ids, optional)" title="Conversations like the origin; the probe replays them too (one case per conversation is weak evidence)">
               <button type="submit" data-turbo-submits-with="Checking…" title="Re-run once the missing piece is fixed">Run checks again</button>
               <button type="submit" class="danger" formaction="/studio/harvest/reject">Reject</button>
             </form>

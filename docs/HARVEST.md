@@ -35,8 +35,10 @@ A mine reads ONLY durable, finished data — never an in-flight turn, never a
 live prompt prefix (the "fork" is structural: the mining writes nothing to the
 sessions it read, so a customer turn's cache is untouched by construction). The
 miner gets the transcript slices (masked), the session's evidence-ledger ids,
-and the agent's current skill names so it does not re-propose them. Then the
-filters, each drop counted and logged:
+the agent's current skill names and the candidates still open (name and
+description), so it does not re-propose an idea under another name.
+Simulator and eval sessions (`sim-…`, `eval-…`) are never mined: they are
+not customers. Then the filters, each drop counted and logged:
 
 1. **The negative list** — the versioned rules file (seed, imported
    per store by `insika harvest:negative import --agent ID --file F`) and the
@@ -77,53 +79,6 @@ dipped below its frozen baseline since gating parks the promotion with the
 current numbers, and a criterion file that changed since boot is a criterion
 nobody froze.
 
-### The probe (opt-in)
-
-The golden replay proves a candidate breaks nothing. It does not prove the
-candidate fixes the conversation it was mined from. With
-`harvest: { probe: { enabled: true } }` on the agent, the gate also replays
-the origin session's customer turns (up to the last evidence turn, at most
-`max_turns: 4` per case and `max_cases: 3` cases) on the clone twice: once
-before the skill is installed and once after. The pairwise judge
-(anonymous, both orders, see [Evals](EVALS.md)) compares the two. The
-candidate passes only if at least one case got `better` and none got
-`worse`. Transcripts are redacted before the judge reads them.
-
-An agent with no golden cases is gated by the probe alone. That is the
-point of the probe: the origin conversation is a test case nobody had to
-write. With golden cases, the golden veto runs first and the probe second.
-A human approves every promotion either way.
-
-Refusals park at `gated`, never pass and never reject: probe on with no
-pairwise judge configured (`probe_no_judge`), probe on with no origin turns left (the candidate
-parks at `gated` with `probe_no_cases`), probe on for a candidate mined
-from a multi-session window (`probe_ambiguous_origin` — the miner does not
-say which session a skill came from; the automatic loop mines one session
-at a time, so its candidates are exact). A case with an errored turn on
-either side counts as no preference. The replay sessions are deleted with
-the clone and never feed knowledge extraction. The after pass and its judge
-calls run only when the golden replay passed.
-
-**Noise.** Two runs of the same agent differ, and the judge credits that
-variance to the skill: a never-loaded skill "won" 2 of 3 cases. So the probe
-runs the agent without the skill twice, and a case counts as `better` only
-when the skill beats both runs. `ruby scripts/probe_control.rb` checks this
-with real models on a tool-free store agent (a helpful skill must pass, a
-harmful and a useless one must fail; it exits 1 on a miss). With 3 cases it
-separates large effects reliably; a useless skill can still draw one
-`better`, which is why a human approves every promotion. Raise `max_cases`
-for more power.
-
-**Store tools.** Tools that need a backend chat (achei-b2b's
-`require_chat!`: product search, FAQ, cart) answer 404 on probe replays, so
-both sides fail alike and every case comes out `comparable`. The probe
-cannot judge a skill that depends on those tools yet.
-
-Cost per candidate: 3 × cases × turns agent turns, plus 2–4 judge calls per
-judge per case.
-
-Idea from Harness² (Google Research, arXiv:2610.14224), "Probe" step.
-
 ## Rollback
 
 One click, deterministic: the snapshot is restored — `WriteSkill` with the
@@ -134,13 +89,8 @@ back, re-promoted is three readable rows.
 
 ## The honest limits
 
-- **A store with no golden cases cannot gate, and cannot promote** — unless the
-  probe is on, which then gates alone on the origin conversations.
-- **The probe replays real customer turns against live tools.** The clone
-  has the agent's tools, as in the golden replay. A customer turn that
-  leads to a write tool calls it. `max_turns` caps the exposure; keep the
-  probe off for agents whose write tools touch external systems without a
-  confirmation step.
+- **A store with no golden cases cannot gate, and cannot promote.** The gate's
+  strength is entirely the golden set.
 - **Grounding first.** A store without a matcher does not mine — the product
   loop is blocked until the evidence ledger is live (by refusal, not by
   warning).
@@ -163,6 +113,9 @@ back, re-promoted is three readable rows.
 - `insika harvest:criterion check --file F` — strict-load the frozen conversion criterion (the hook before any promotion).
 - The **Harvest page** in the Studio: the human's inbox (each candidate with
   its evidence excerpt, the eval report, the conversion card, promote/reject),
-  the gated-but-blocked rows with the named ruler hole, the pending list, the
+  the gated-but-blocked rows with the named ruler hole and a "Run checks
+  again" once the hole is fixed, the pending list (every row with the skill
+  text, the rationale and a link to its origin conversation), a notice when
+  the loop skips the agent (harvest off, or no grounding matcher), the
   append-only promoted log with the rollback mirror, the negative list with
   per-rule rejection counts, and the criterion block read-only.
