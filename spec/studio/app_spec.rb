@@ -5941,6 +5941,17 @@ end
       expect(body).not_to include("<script>order</script>")
     end
 
+    it "pending and blocked candidates show the skill body, the rationale and a link to the origin conversation" do
+      app, = harvest_app(candidates: [
+                           { name: "fresh", description: "d", body: "Ask <b>first</b>", rationale: "agent re-asked", status: "pending",
+                             origin: ["acme:s_9"] },
+                           { name: "parked", description: "d", body: "Park body", rationale: "r2", status: "blocked" }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("Ask &lt;b&gt;first&lt;/b&gt;", "agent re-asked", "Park body")
+      expect(body).to include("/studio/sessions/acme%3As_9")
+    end
+
     it "a blocked candidate shows its probe verdict next to the conversion hole" do
       won = { "passed" => true, "cases" => 0,
               "probe" => { "passed" => true, "better" => 1, "comparable" => 1, "worse" => 0, "cases" => 2 } }

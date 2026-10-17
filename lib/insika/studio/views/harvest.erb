@@ -128,6 +128,7 @@
                 <%= (cand.eval_gate || {})["reason"] %>
               <% end %>
             </span>
+            <%== render("_harvest_candidate_detail", locals: { cand: cand }) %>
             <form method="post" action="/studio/harvest/gate" class="actions inline">
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= cand.agent %>">
@@ -152,6 +153,7 @@
             <span class="status <%= status_class(cand.status) %>"><%= cand.status %></span>
             <span class="mono"><%= cand.name %></span>
             <span class="preview muted"><%= cand.description %></span>
+            <%== render("_harvest_candidate_detail", locals: { cand: cand }) %>
             <form method="post" action="/studio/harvest/gate" class="actions inline">
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= cand.agent %>">
