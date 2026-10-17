@@ -3808,6 +3808,10 @@ end
     def harvest_idle_reason(agent_id)
       profile = agent_id && insika[:profile_source].fetch(agent_id)
       return nil unless profile
+
+      # The loop reads profiles with the platform defaults applied (an agent
+      # with no harvest of its own inherits Settings › Agent defaults).
+      profile = Insika::AgentDefaults.apply_safely(profile, platform_agent_defaults)
       return :off unless Insika::Coercion.truthy?((profile.harvest || {})["enabled"])
 
       grounding = Insika::Grounding.parse(profile.grounding)

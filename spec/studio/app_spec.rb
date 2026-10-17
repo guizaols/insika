@@ -5831,7 +5831,7 @@ end
 
   describe "Harvest page " do
     def harvest_app(candidates: [], promotions: [], runs: [], sessions: {},
-                    criterion: nil, negative: nil, agents: nil)
+                    criterion: nil, negative: nil, agents: nil, settings: nil)
       store = Insika::HarvestStore.new(store: Insika::Stores::Memory.new)
       candidates.each do |c|
         cand = store.create_candidate(
@@ -5870,7 +5870,7 @@ end
       end
       agents ||= [profile("store-support"), profile("chef")]
       app, bus = build_app(agents: agents, sessions: sessions, harvest_store: store,
-                           harvest_criterion: criterion, negative_list: negative)
+                           harvest_criterion: criterion, negative_list: negative, settings: settings)
       [app, bus]
     end
 
@@ -5878,6 +5878,15 @@ end
       rule = Insika::Harvest::Criterion::Rule.new(version: 1, metric: "paid", window: "72h",
                                                   threshold: 0.05, min_span: "28d")
       Insika::Harvest::Criterion.new(rule: rule, path: "deployment/CRITERION.md", sha: "sha256:abc")
+    end
+
+    it "reads the agent as the loop does — with the platform defaults it inherits" do
+      defaults = { "agent_defaults" => { "harvest" => { "enabled" => true },
+                                         "grounding" => { "mode" => "flag", "matcher" => { "sku" => "\\A\\d+\\z" } } } }
+      app, = harvest_app(agents: [profile("store-support")], settings: defaults)
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).not_to include("Harvest is off for this agent")
+      expect(body).not_to include("no grounding matcher")
     end
 
     it "says why the automatic loop skips an agent — harvest off, or on with no grounding matcher" do
