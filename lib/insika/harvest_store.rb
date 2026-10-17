@@ -196,6 +196,18 @@ module Insika
 
     # gated -> awaiting_approval. The refusal parks: a conversion REFUSAL
     # keeps the candidate AT gated (the page shows the ruler's hole).
+    # A parked candidate (gated on a missing ruler: no judge, no criterion,
+    # no origin) goes back to pending so the operator can re-run the gate
+    # once the hole is fixed. The last reports stay until the new gate
+    # overwrites them. gated -> pending only.
+    def reopen(candidate_id)
+      update_candidate(candidate_id) do |record|
+        guard_candidate_state!(record, "gated")
+        record["status"] = "pending"
+        record["updated_at"] = timestamp
+      end
+    end
+
     def mark_awaiting(candidate_id)
       update_candidate(candidate_id) do |record|
         guard_candidate_state!(record, "gated")

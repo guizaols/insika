@@ -35,8 +35,10 @@ A mine reads ONLY durable, finished data — never an in-flight turn, never a
 live prompt prefix (the "fork" is structural: the mining writes nothing to the
 sessions it read, so a customer turn's cache is untouched by construction). The
 miner gets the transcript slices (masked), the session's evidence-ledger ids,
-and the agent's current skill names so it does not re-propose them. Then the
-filters, each drop counted and logged:
+the agent's current skill names and the candidates still open (name and
+description), so it does not re-propose an idea under another name.
+Simulator and eval sessions (`sim-…`, `eval-…`) are never mined: they are
+not customers. Then the filters, each drop counted and logged:
 
 1. **The negative list** — the versioned rules file (seed, imported
    per store by `insika harvest:negative import --agent ID --file F`) and the
@@ -111,6 +113,9 @@ back, re-promoted is three readable rows.
 - `insika harvest:criterion check --file F` — strict-load the frozen conversion criterion (the hook before any promotion).
 - The **Harvest page** in the Studio: the human's inbox (each candidate with
   its evidence excerpt, the eval report, the conversion card, promote/reject),
-  the gated-but-blocked rows with the named ruler hole, the pending list, the
+  the gated-but-blocked rows with the named ruler hole and a "Run checks
+  again" once the hole is fixed, the pending list (every row with the skill
+  text, the rationale and a link to its origin conversation), a notice when
+  the loop skips the agent (harvest off, or no grounding matcher), the
   append-only promoted log with the rollback mirror, the negative list with
   per-rule rejection counts, and the criterion block read-only.

@@ -31,6 +31,9 @@ module Insika
 
         candidate = @harvest_store.find_candidate(candidate_id) ||
                     (raise Insika::NotFoundError, "harvest candidate not found: #{candidate_id}")
+        # A parked candidate (a missing ruler, now maybe fixed) is re-gated
+        # from scratch; any other state keeps the store's guards.
+        candidate = @harvest_store.reopen(candidate.id) if candidate.status == "gated"
 
         # The base graph wires NO gates (the deployment owns the eval surface):
         # the candidate parks at gated with the named reason — refuse-with-a-

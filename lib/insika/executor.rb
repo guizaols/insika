@@ -2980,12 +2980,8 @@ module Insika
       PROMPT
     end
 
-    # Simulator (`sim-<chat>`) and eval (`eval-<id>`) sessions are synthetic
-    # traffic: they must not teach the production agent. A tenant-scoped id
-    # ("<tenant>:sim-…") is judged by its last segment.
-    def simulated_session?(session_id)
-      session_id.to_s.split(":").last.to_s.start_with?("sim-", "eval-")
-    end
+    # Synthetic traffic must not teach the production agent (SessionStore.synthetic?).
+    def simulated_session?(session_id) = Insika::SessionStore.synthetic?(session_id)
 
     # Only what people said, PII-redacted — a `role: tool` message is
     # third-party text and never a source of a learned concept.
