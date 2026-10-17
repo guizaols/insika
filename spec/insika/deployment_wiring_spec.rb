@@ -431,6 +431,17 @@ RSpec.describe Deploy::Wiring do
         expect(engine.instance_variable_get(:@runner)).to be_a(Insika::Commands::RunHarvest)
       end
 
+      it "the loop's runner reads agents with the platform defaults, as the loop elects them" do
+        # An agent whose harvest is inherited from Settings › Agent defaults was
+        # elected by the engine (defaults applied) and skipped as "disabled" by
+        # the runner (own record) — every 5 minutes, silently, forever.
+        runner = w::GRAPH.executor.harvest_engine.instance_variable_get(:@runner)
+        expect(runner).to be(w::HARVEST_RUN)
+        profiles = runner.instance_variable_get(:@profiles)
+        expect(profiles).to be_a(Insika::AgentDefaults::ProfileSource)
+        expect(profiles.source).to be(w::PROFILE_SOURCE)
+      end
+
       it "registers the five harvest commands on the bus" do
         %i[run_harvest gate_harvest promote_harvest rollback_harvest reject_harvest].each do |type|
           expect(w::BUS.registered?(type)).to be(true), "missing harvest command #{type}"
