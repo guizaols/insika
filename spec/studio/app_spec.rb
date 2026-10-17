@@ -5848,8 +5848,9 @@ end
                                     criterion_sha: "sha256:abc")
           store.mark_awaiting(cand.id)
         when "blocked"
-          store.attach_gate(cand.id, eval_gate: { "passed" => true },
-                                    conversion_gate: { "passed" => false, "reason" => "no_frozen_baseline" },
+          store.attach_gate(cand.id, eval_gate: c[:eval_gate] || { "passed" => true },
+                                    conversion_gate: { "passed" => false,
+                                                       "reason" => c[:conversion_reason] || "no_frozen_baseline" },
                                     criterion_sha: "sha256:abc")
         when "pending"
           nil # stays pending
@@ -5879,6 +5880,23 @@ end
       Insika::Harvest::Criterion.new(rule: rule, path: "deployment/CRITERION.md", sha: "sha256:abc")
     end
 
+    it "says why the automatic loop skips an agent — harvest off, or on with no grounding matcher" do
+      off = profile("store-support")
+      app, = harvest_app(agents: [off])
+      expect(login(app).get("/harvest?agent=store-support").body).to include("Harvest is off for this agent")
+
+      no_matcher = profile("store-support").with(harvest: { "enabled" => true })
+      app, = harvest_app(agents: [no_matcher])
+      expect(login(app).get("/harvest?agent=store-support").body).to include("no grounding matcher")
+
+      ready = profile("store-support").with(harvest: { "enabled" => true },
+                                            grounding: { "mode" => "flag", "matcher" => { "sku" => "\\A\\d+\\z" } })
+      app, = harvest_app(agents: [ready])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).not_to include("no grounding matcher")
+      expect(body).not_to include("Harvest is off for this agent")
+    end
+
     it "lists awaiting candidates with their evidence excerpt, read from the session at request time" do
       sessions = { "acme:s_1" => StoredSession.new(id: "acme:s_1",
                                                     messages: [
@@ -5904,6 +5922,29 @@ end
       expect(body).to include("Check &lt;script&gt;order&lt;/script&gt;", "Avoid duplicate charges")
       expect(body.index("Proposed skill")).to be < body.index('action="/studio/harvest/promote"')
       expect(body).not_to include("<script>order</script>")
+    end
+
+    it "pending and blocked candidates show the skill body, the rationale and a link to the origin conversation" do
+      app, = harvest_app(candidates: [
+                           { name: "fresh", description: "d", body: "Ask <b>first</b>", rationale: "agent re-asked", status: "pending",
+                             origin: ["acme:s_9"] },
+                           { name: "parked", description: "d", body: "Park body", rationale: "r2", status: "blocked" }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("Ask &lt;b&gt;first&lt;/b&gt;", "agent re-asked", "Park body")
+      expect(body).to include("/studio/sessions/acme%3As_9")
+    end
+
+    it "a blocked candidate shows its eval failure next to the conversion hole, with a re-run" do
+      lost = { "passed" => false, "reason" => "1 regression(s): quotes-freight (pass→fail)" }
+      app, = harvest_app(candidates: [
+                           { name: "lost", description: "d", status: "blocked", eval_gate: lost, conversion_reason: "no_criterion" }
+                         ])
+      body = login(app).get("/harvest?agent=store-support").body
+      expect(body).to include("1 regression(s): quotes-freight (pass→fail)")
+      expect(body).to include("no_criterion")
+      blocked = body[body.index("Blocked")..]
+      expect(blocked).to include('action="/studio/harvest/gate"') # re-run once the hole is fixed
     end
 
     it "a conversion-blocked candidate renders the ruler's hole with a link to the Funnel page" do

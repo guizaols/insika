@@ -3798,7 +3798,22 @@ end
       @sessions = insika[:session_store]
       @negative = insika[:negative_list]
       @filter = presence(request.params["agent"])
+      @idle_reason = harvest_idle_reason(@agent)
       view("harvest")
+    end
+
+    # Why the automatic loop elects none of this agent's conversations — the
+    # engine skips them silently (HarvestEngine#harvest_declared?), so the page
+    # says it. nil when the agent is minable.
+    def harvest_idle_reason(agent_id)
+      profile = agent_id && insika[:profile_source].fetch(agent_id)
+      return nil unless profile
+      return :off unless Insika::Coercion.truthy?((profile.harvest || {})["enabled"])
+
+      grounding = Insika::Grounding.parse(profile.grounding)
+      grounding&.matcher&.sku? ? nil : :no_matcher
+    rescue StandardError
+      :no_matcher # a matcher that does not parse is no matcher
     end
 
     # --- Knowledge index -------------------------------------------------

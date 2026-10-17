@@ -31,6 +31,12 @@
     </div>
   </div>
 
+  <% if @idle_reason == :off %>
+    <div class="empty">Harvest is off for this agent — turn it on in <a href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?cfg=harvest">Agents › Config › harvest</a>.</div>
+  <% elsif @idle_reason == :no_matcher %>
+    <div class="empty">Not mining: harvest is on but there is <strong>no grounding matcher</strong>, so the automatic loop skips every conversation. Set a matcher SKU (and uncheck "use the platform default") in <a href="/studio/agents/<%= Rack::Utils.escape(@agent) %>?cfg=grounding">Agents › Config › grounding</a>.</div>
+  <% end %>
+
   <% if @candidates.empty? && @blocked.empty? && @pending_gates.empty? %>
     <div class="empty">No skills awaiting review. Mine finished conversations to find candidates.</div>
   <% end %>
@@ -104,6 +110,10 @@
           <li>
             <span class="status <%= status_class('blocked') %>">blocked</span>
             <span class="mono"><%= cand.name %></span>
+            <% ev = cand.eval_gate || {} %>
+            <% if ev["passed"] == false && ev["reason"] && (cand.conversion_gate || {})["reason"] %>
+              <span class="preview muted"><%= ev["reason"] %> ·</span>
+            <% end %>
             <span class="preview muted">
               <% reason = (cand.conversion_gate || {})["reason"] %>
               <% if reason == "no_frozen_baseline" %>
@@ -115,6 +125,14 @@
                 <%= (cand.eval_gate || {})["reason"] %>
               <% end %>
             </span>
+            <%== render("_harvest_candidate_detail", locals: { cand: cand }) %>
+            <form method="post" action="/studio/harvest/gate" class="actions inline">
+              <%== csrf_tag %>
+              <input type="hidden" name="agent" value="<%= cand.agent %>">
+              <input type="hidden" name="candidate_id" value="<%= cand.id %>">
+              <button type="submit" data-turbo-submits-with="Checking…" title="Re-run once the missing piece is fixed">Run checks again</button>
+              <button type="submit" class="danger" formaction="/studio/harvest/reject">Reject</button>
+            </form>
           </li>
         <% end %>
       </ul>
@@ -131,6 +149,7 @@
             <span class="status <%= status_class(cand.status) %>"><%= cand.status %></span>
             <span class="mono"><%= cand.name %></span>
             <span class="preview muted"><%= cand.description %></span>
+            <%== render("_harvest_candidate_detail", locals: { cand: cand }) %>
             <form method="post" action="/studio/harvest/gate" class="actions inline">
               <%== csrf_tag %>
               <input type="hidden" name="agent" value="<%= cand.agent %>">
