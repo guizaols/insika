@@ -419,7 +419,9 @@ module Deploy
       funnel_store: GRAPH.funnel_store, criterion: HARVEST_CRITERION
     )
     HARVEST_RUN = Insika::Commands::RunHarvest.new(
-      profiles: PROFILE_SOURCE, harvest_store: GRAPH.harvest_store,
+      # the loop elects agents with the platform defaults applied; the runner
+      # must read them the same way or an inherited harvest reads as disabled
+      profiles: Insika::AgentDefaults.for_turns(PROFILE_SOURCE, SETTINGS_STORE), harvest_store: GRAPH.harvest_store,
       session_store: SESSION_STORE, task_store: TASK_STORE,
       skill_store: SKILL_STORE, tool_trace_store: TOOL_TRACE_STORE,
       settings_store: SETTINGS_STORE, negative_list: HARVEST_NEGATIVE,
