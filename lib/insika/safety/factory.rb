@@ -105,6 +105,9 @@ module Insika
       # when no model is configured / the gem is unavailable.
       def ask_for(config)
         model = resolve_model(config)
+        # A judgment model cannot write the text this ask expects; the output
+        # validator uses the utility_model instead (same as the judge's fallback).
+        model = utility_model if split_ref(model).first == "typesafe"
         return nil if model.nil?
 
         provider, name = split_ref(model)
