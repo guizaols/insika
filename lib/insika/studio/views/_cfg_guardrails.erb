@@ -26,7 +26,7 @@
             <% end %>
           </select>
         </label>
-        <label>LLM moderator <span class="muted">(model ref, or <code>on</code> for the platform utility_model; blank = deterministic only)</span>
+        <label>LLM moderator <span class="muted">(model ref, or <code>on</code> for the platform utility_model; <code>typesafe/jev-latest</code> = fast judge, unsure cases go to the utility_model; blank = deterministic only)</span>
           <input type="text" name="guardrail_moderator" value="<%= guardrail_field(@guardrails, :moderator, "") %>" placeholder="deepseek/deepseek-v4-flash">
         </label>
       </div>

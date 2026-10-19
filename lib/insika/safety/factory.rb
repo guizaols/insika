@@ -3,6 +3,7 @@
 require_relative "config"
 require_relative "detectors"
 require_relative "moderator"
+require_relative "judge_moderator"
 require_relative "output_filter"
 require_relative "input_guardrail"
 require_relative "output_validator"
@@ -63,15 +64,50 @@ module Insika
 
       private
 
+      # A `typesafe/<model>` ref is a judgment model: it answers the category as a
+      # typed choice and hands unsure cases to the chat moderator on the platform
+      # utility_model. Any other ref is the chat moderator itself.
+      # ponytail: provider check is "typesafe" only; widen when another judgment
+      # provider (openai gpt-6-luna, ollama clef) is actually used.
       def moderator_for(config)
+        provider, name = split_ref(resolve_model(config))
+        return chat_moderator(config) unless provider == "typesafe"
+
+        JudgeModerator.new(judge: build_judge(name, provider), fallback: utility_moderator)
+      rescue LoadError, StandardError
+        nil
+      end
+
+      def chat_moderator(config)
         ask = ask_for(config)
         ask && Moderator.new(ask: ask)
+      end
+
+      def utility_moderator
+        ref = utility_model
+        return nil unless ref
+
+        provider, name = split_ref(ref)
+        Moderator.new(ask: build_ask(name, provider))
+      end
+
+      def build_judge(model, provider)
+        require "ruby_llm"
+        llm = @llm || RubyLLM
+        lambda do |message|
+          answer = llm.judge(message, model: model, provider: provider, assume_model_exists: true,
+                                      questions: JudgeModerator::QUESTION)["category"]
+          { "category" => answer.choice.to_s, "confidence" => answer.confidence.to_f }
+        end
       end
 
       # Builds the raw ask ->(prompt){text} on the resolved moderator model, or nil
       # when no model is configured / the gem is unavailable.
       def ask_for(config)
         model = resolve_model(config)
+        # A judgment model cannot write the text this ask expects; the output
+        # validator uses the utility_model instead (same as the judge's fallback).
+        model = utility_model if split_ref(model).first == "typesafe"
         return nil if model.nil?
 
         provider, name = split_ref(model)
