@@ -34,6 +34,12 @@ RSpec.describe Insika::Evals::ModeratorCompare do
     expect(r["correct"]).to eq(3)
   end
 
+  it "keeps each case's verdict by id" do
+    mod = fake("m1" => "allow", "m2" => "refuse", "m3" => "allow", "m4" => "escalate")
+    r = described_class.new(moderators: { "judge" => mod }).run(cases)["judge"]
+    expect(r["verdicts"]["b"]).to eq("action" => "refuse", "category" => "x", "reason" => "")
+  end
+
   it "reports latency percentiles" do
     mod = fake("m1" => "allow", "m2" => "refuse", "m3" => "allow", "m4" => "escalate")
     r = described_class.new(moderators: { "judge" => mod }).run(cases)["judge"]
