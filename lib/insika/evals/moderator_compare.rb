@@ -19,7 +19,7 @@ module Insika
 
       def score(mod, cases)
         r = { "correct" => 0, "total" => cases.size, "false_blocks" => 0, "missed_blocks" => 0,
-              "unavailable" => 0, "misses" => [] }
+              "unavailable" => 0, "misses" => [], "verdicts" => {} }
         times = cases.map do |c|
           t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           v = mod.classify(c["message"])
@@ -30,6 +30,7 @@ module Insika
       end
 
       def tally(r, c, v)
+        r["verdicts"][c["id"]] = { "action" => v.action.to_s, "category" => v.category.to_s, "reason" => v.reason.to_s }
         r["unavailable"] += 1 if v.unavailable?
         want_block = BLOCKS.include?(c["expected"])
         ok = want_block ? v.block? : !v.block? && !v.unavailable?

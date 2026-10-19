@@ -6,21 +6,24 @@
 #
 # Usage:
 #   TYPESAFE_API_KEY=… DEEPSEEK_API_KEY=… ruby evals/moderator/run.rb \
-#     --chat deepseek/deepseek-chat --judge typesafe/jev-latest [--threshold 0.8] [--live]
+#     --chat deepseek/deepseek-chat --judge typesafe/jev-latest [--threshold 0.8] [--repeat 3] [--live]
 #
 # Without --live it only validates the corpus. Message text is never printed.
+# Prints one line per case: every judge answer (category@confidence, one per
+# call), what decided the judge_with_fallback verdict, and chat's verdict.
 
 require "optparse"
 require "yaml"
 require "json"
 require_relative "../../lib/insika"
 
-opts = { input: File.expand_path("pt-br.yml", __dir__), threshold: 0.8, live: false }
+opts = { input: File.expand_path("pt-br.yml", __dir__), threshold: 0.8, repeat: 1, live: false }
 OptionParser.new do |o|
   o.on("--input FILE") { |v| opts[:input] = v }
   o.on("--chat REF") { |v| opts[:chat] = v }
   o.on("--judge REF") { |v| opts[:judge] = v }
   o.on("--threshold N", Float) { |v| opts[:threshold] = v }
+  o.on("--repeat N", Integer) { |v| opts[:repeat] = v }
   o.on("--live") { opts[:live] = true }
 end.parse!
 
@@ -45,11 +48,37 @@ settings.update("utility_model" => opts[:chat])
 factory = Insika::Safety::Factory.new(settings_store: settings)
 chat = factory.send(:moderator_for, Insika::Safety::Config.from_hash("moderator" => opts[:chat]))
 judge_provider, judge_model = opts[:judge].split("/", 2)
-judge = factory.send(:build_judge, judge_model, judge_provider)
+raw_judge = factory.send(:build_judge, judge_model, judge_provider)
+answers = Hash.new { |h, k| h[k] = [] }
+judge = lambda do |message|
+  answer = raw_judge.call(message)
+  answers[message] << answer
+  answer
+rescue StandardError => e
+  answers[message] << { "category" => "error:#{e.class}", "confidence" => 0.0 }
+  raise
+end
 judge_only = Insika::Safety::JudgeModerator.new(judge: judge, threshold: opts[:threshold])
 with_fallback = Insika::Safety::JudgeModerator.new(judge: judge, fallback: chat, threshold: opts[:threshold])
 
-report = Insika::Evals::ModeratorCompare.new(
+compare = Insika::Evals::ModeratorCompare.new(
   moderators: { "chat" => chat, "judge_only" => judge_only, "judge_with_fallback" => with_fallback }
-).run(cases)
-puts JSON.pretty_generate(report)
+)
+reports = Array.new(opts[:repeat]) { compare.run(cases) }
+
+reports.each_with_index do |report, i|
+  report.each do |name, r|
+    puts "run #{i + 1} #{name}: #{r['correct']}/#{r['total']} false_blocks=#{r['false_blocks']} " \
+         "missed_blocks=#{r['missed_blocks']} unavailable=#{r['unavailable']} p50=#{r['p50_ms']}ms p95=#{r['p95_ms']}ms"
+  end
+end
+puts
+cases.each do |c|
+  judged = answers[c["message"]].map { |a| "#{a['category']}@#{a['confidence'].round(2)}" }.join(" ")
+  final = reports.map do |rep|
+    v = rep["judge_with_fallback"]["verdicts"][c["id"]]
+    "#{v['action']}(#{v['reason'].start_with?('judge ') ? 'judge' : 'fallback'})"
+  end.join(" ")
+  chat_v = reports.map { |rep| rep["chat"]["verdicts"][c["id"]]["action"] }.join(" ")
+  puts "#{c['id'].ljust(22)} expected=#{c['expected'].ljust(8)} judge=[#{judged}] final=[#{final}] chat=[#{chat_v}]"
+end
