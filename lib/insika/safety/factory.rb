@@ -141,8 +141,10 @@ module Insika
       def build_ask(model, provider)
         require "ruby_llm"
         llm = @llm || RubyLLM
+        # A bare ref ("deepseek-flash") resolves through the registry, like the
+        # Executor's build_chat; assume_model_exists without a provider raises.
         lambda do |prompt|
-          llm.chat(model: model, provider: provider, assume_model_exists: true)
+          llm.chat(model: model, provider: provider, assume_model_exists: !provider.nil?)
              .with_temperature(0).ask(prompt).content
         end
       end
