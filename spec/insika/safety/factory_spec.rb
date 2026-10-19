@@ -92,6 +92,17 @@ RSpec.describe Insika::Safety::Factory do
       expect(asked).to eq([%w[deepseek deepseek-chat]])
     end
 
+    it "a bare utility_model ref chats through the registry, not assume_model_exists" do
+      llm = double("llm")
+      chat = double("chat")
+      expect(llm).to receive(:chat)
+        .with(model: "deepseek-flash", provider: nil, assume_model_exists: false).and_return(chat)
+      allow(chat).to receive(:with_temperature).and_return(chat)
+      allow(chat).to receive(:ask).and_return(double(content: "{}"))
+      factory = described_class.new(settings_store: settings, llm: llm)
+      factory.send(:build_ask, "deepseek-flash", nil).call("prompt")
+    end
+
     it "a typesafe ref with no utility_model gives the output validator no ask" do
       factory = described_class.new(settings_store: settings)
       expect(factory.send(:ask_for, Insika::Safety::Config.from_hash("moderator" => "typesafe/jev-latest"))).to be_nil
