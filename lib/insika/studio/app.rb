@@ -3223,7 +3223,8 @@ end
     CHAT_STATUSES = %w[active flagged].freeze
 
     # The Chats status tabs: "active" = touched in the last 5 minutes (the
-    # presence dot), "flagged" = a guardrail flagged one of its messages.
+    # presence dot), "flagged" = a guardrail flagged one of its messages and
+    # nobody resolved it yet.
     def chat_status?(stat, status)
       case status
       when "active" then session_fresh?(stat)
@@ -3234,7 +3235,7 @@ end
 
     def session_flagged?(session)
       if session.respond_to?(:flagged) then session.flagged.positive?
-      else Array(session.respond_to?(:messages) ? session.messages : nil).any? { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? }
+      else Array(session.respond_to?(:messages) ? session.messages : nil).any? { |m| m.is_a?(Hash) && Array(m["guardrail_flags"]).any? { Insika::SessionStore.open_flag?(_1) } }
       end
     end
 
