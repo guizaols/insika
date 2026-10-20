@@ -1987,7 +1987,7 @@ end
           versions: store ? store.versions(id, name) : []
         }
       end
-      @all_skills = insika[:skill_catalog]&.all || []
+      @all_skills = insika[:skill_catalog]&.all(agent: id) || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
       load_tool_catalog
       # v2 config surfaces: generation params + model fence. AgentProfile.build
