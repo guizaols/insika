@@ -418,6 +418,16 @@ RSpec.describe Insika::SessionStore do
       expect([stats["a"].flagged, stats["b"].flagged]).to eq([1, 0])
     end
 
+    it "a resolved flag stays on the message but no longer marks the session flagged" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "x", "guardrail_flags" => [{ "category" => "pii" }] }])
+      sessions.review_guardrail_flag("a", message: 0, flag: 0, status: "resolved")
+      expect(sessions.all_stats.first.flagged).to eq(0)
+      expect(sessions.find("a").messages.first["guardrail_flags"].first["category"]).to eq("pii")
+      sessions.review_guardrail_flag("a", message: 0, flag: 0, status: nil)
+      expect(sessions.all_stats.first.flagged).to eq(1)
+    end
+
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")

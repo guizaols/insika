@@ -259,7 +259,8 @@ module Insika
     # session, written with it, instead of the whole record (messages included).
     # last_role: who spoke last ("user" = the customer is waiting); nil on stats
     # written before it existed, until the session's next write.
-    # flagged: messages carrying a guardrail flag; reported: flags a person
+    # flagged: messages carrying a guardrail flag nobody resolved (a resolved
+    # flag stays on the message as history); reported: flags a person
     # marked as a false positive and nobody resolved yet. Both 0 on stats
     # written before they existed, until the session's next write.
     # reported_at: the newest of those reports.
@@ -273,9 +274,13 @@ module Insika
       @store.entries(STATS_SCOPE, KEY_PREFIX).map { |key, stat| to_stat(key, stat) }
     end
 
-    # Bumped when stats gain a field (2: flagged/reported), so backfill_stats
-    # rewrites the older ones instead of only filling the missing.
-    STATS_VERSION = 2
+    # Bumped when stats gain a field (2: flagged/reported; 3: flagged skips
+    # resolved flags), so backfill_stats rewrites the older ones instead of
+    # only filling the missing.
+    STATS_VERSION = 3
+
+    # A guardrail flag still marks its conversation until a person resolves it.
+    def self.open_flag?(flag) = !(flag.is_a?(Hash) && flag.dig("review", "status") == "resolved")
 
     # Writes the stats of every session that has none or older ones (sessions
     # stored before a field existed) and deletes stats whose session is gone.
@@ -326,7 +331,7 @@ module Insika
       last = messages.last
       vars = record["vars"] || {}
       flags = messages.map { |m| m.is_a?(Hash) ? Array(m["guardrail_flags"]) : [] }
-      flagged = flags.count(&:any?)
+      flagged = flags.count { |fs| fs.any? { self.class.open_flag?(_1) } }
       reported = flags.flatten.select { |f| f.is_a?(Hash) && f.dig("review", "status") == "reported" }
       { "v" => STATS_VERSION, "updated_at" => record["updated_at"], "message_count" => messages.size,
         "agent" => vars["agent"], "customer" => vars["customer"],

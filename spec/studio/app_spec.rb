@@ -2644,6 +2644,16 @@ end
     expect(bus.last(:review_guardrail_flag).payload).to include(session_id: "sess-fp", message: "0", flag: "0", status: "reported")
   end
 
+  it "a resolved guardrail flag keeps its chip but leaves the flagged tab" do
+    sess = StoredSession.new(id: "sess-rs", updated_at: "t", vars: { "agent" => "bia" },
+                             messages: [{ "role" => "user", "content" => "x",
+                                          "guardrail_flags" => [{ "category" => "sexual", "review" => { "status" => "resolved" } }] }])
+    app, = build_app(sessions: { "sess-rs" => sess })
+    client = login(app)
+    expect(client.get("/sessions/sess-rs").body).to include("guardrail flagged · sexual", "resolved", "Undo")
+    expect(client.get("/chats?status=flagged").body).not_to include("sess-rs")
+  end
+
   it "the Inbox lists every queue oldest first and filters by type" do
     reported = StoredSession.new(id: "sess-rp", updated_at: "2026-10-15T10:00:00Z", vars: { "agent" => "bia" },
                                  messages: [{ "role" => "user", "content" => "x",
