@@ -63,7 +63,14 @@ RSpec.describe Studio::App do
   # doubles carry the agent scope as { [agent, name] => … }, mirroring the store's
   # two-argument shape.
   SkillCatalogDouble = Struct.new(:skills, :own) do # own: { [agent, name] => SkillEntry }
-    def all(agent: nil) = agent.nil? ? skills : skills.map { |s| scoped(agent, s.name) || s }
+    # Like the real catalog: the agent's overrides replace shared entries, and its
+    # private skills (a pack's, written with `agent:`) are added.
+    def all(agent: nil)
+      return skills if agent.nil?
+
+      private_only = (own || {}).select { |(a, n), _| a == agent && skills.none? { |s| s.name == n } }.values
+      skills.map { |s| scoped(agent, s.name) || s } + private_only
+    end
     def find(name, agent: nil) = scoped(agent, name) || skills.find { |s| s.name == name.to_s }
     def scoped(agent, name) = agent && (own || {})[[agent, name.to_s]]
   end
@@ -1619,6 +1626,19 @@ end
     csrf = csrf_from(client.get("/agents/bia").body)
     client.post("/agents/bia/skills", params: { "all_skills" => "1", "_csrf" => csrf })
     expect(bus.last(:update_agent).payload).to include(skills: nil)
+  end
+
+  # A pack import writes its skills into the AGENT scope (write_skill with agent:),
+  # so they exist only there. The Skills tab must list them, or a provisioned
+  # store looks skill-less while its turns load them.
+  it "the Skills tab lists the agent's private skills" do
+    own = { %w[bia escalation-to-human] => "---\nname: escalation-to-human\n---\nonly bia" }
+    app, = build_app(own_skills: own)
+
+    body = login(app).get("/agents/bia").body
+
+    expect(body).to include('value="escalation-to-human"')
+    expect(login(app).get("/agents/chef").body).not_to include('value="escalation-to-human"')
   end
 
   it "skills subset dispatches update_agent with the checked list" do
