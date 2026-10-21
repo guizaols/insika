@@ -927,7 +927,9 @@
   }
   label.check.tool-check:hover { border-color:var(--line-3); }
   label.check.tool-check:has(input:checked) { border-color:color-mix(in srgb,var(--accent-bg) 42%,var(--line-2)); background:var(--accent-weak); }
-  label.check.tool-check > .mono { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* Wraps, never truncates: sibling tools share long prefixes (search_products_b2b,
+     search_products_groceries), so an ellipsis left them indistinguishable. */
+  label.check.tool-check > .mono { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
   label.check.tool-check .pill { flex:0 0 auto; }
   .warn-text { color:var(--warn); }
   .agent-picker { min-width:16rem; }
