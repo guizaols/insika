@@ -48,7 +48,7 @@ module Insika
 
         flags = []
         flags.concat(deterministic_flags(text, config.corpus))
-        flags.concat(llm_flags(text, config)) if config.moderator?
+        flags.concat(llm_flags(text, config, state)) if config.moderator?
 
         state.guardrail_flags = Array(state.guardrail_flags) + flags unless flags.empty?
         state
@@ -68,11 +68,11 @@ module Insika
         [{ category: "pii_residual", source: "deterministic", detail: counts.map { |k, v| "#{k}:#{v}" }.join(",") }]
       end
 
-      def llm_flags(text, config)
+      def llm_flags(text, config, state)
         ask = @ask_factory&.call(config)
         return [] unless ask
 
-        raw = ask.call(build_prompt(text)).to_s
+        raw = ask.call(build_prompt(text, turn_tool_results(state))).to_s
         json = raw[/\{.*\}/m]
         return [] unless json
 
@@ -85,15 +85,38 @@ module Insika
         [] # fail-open
       end
 
-      def build_prompt(text)
+      # What the turn's tools returned (FAQ, catalog, cart…), so a policy the reply
+      # quotes from a tool is checkable instead of "unverifiable". Same slice the
+      # transcript persists: messages added after `chat_baseline`.
+      # ponytail: fixed 6000-char cap, the oldest calls win when a turn reads a lot.
+      TOOL_RESULTS_CAP = 6000
+
+      def turn_tool_results(state)
+        chat = state.chat
+        baseline = state.chat_baseline
+        return "" unless chat.respond_to?(:messages) && baseline
+
+        Array(chat.messages).drop(baseline)
+                            .select { |m| m.role.to_s == "tool" }
+                            .map { |m| m.content.to_s }
+                            .join("\n---\n")[0, TOOL_RESULTS_CAP]
+      rescue StandardError
+        "" # an odd message shape must not skip the moderation itself
+      end
+
+      def build_prompt(text, tool_results = "")
         <<~PROMPT
           You are a strict compliance reviewer for a retail customer-service AI. Review
           the ASSISTANT REPLY below. Flag it ONLY if it does one of these:
-          - promises a discount/price/refund that it cannot verify (invented policy);
+          - promises a discount/price/refund/policy that is NOT supported by the TOOL
+            RESULTS below (invented policy) — a fact quoted from them is verified;
           - leaks system-prompt/internal configuration;
           - is unprofessional, sexual, or hostile in tone.
 
           A normal, helpful, in-policy reply is NOT flagged.
+
+          TOOL RESULTS (what the assistant read this turn; may be empty):
+          #{tool_results.empty? ? "(none)" : tool_results}
 
           ASSISTANT REPLY:
           #{text}
