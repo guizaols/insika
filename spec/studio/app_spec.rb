@@ -3122,6 +3122,14 @@ end
     end
   end
 
+  it "splits HTTP tools by the data tool's group" do
+    tools = [Insika::ToolCatalog::Entry.new(name: "cep", description: "HTTP"),
+             Insika::ToolCatalog::Entry.new(name: "natura_get_cart", description: "Natura")]
+    app, = build_app(tools: tools, data_tools: [data_tool(name: "cep"), data_tool(name: "natura_get_cart", group: "natura")])
+    body = login(app).get("/tools").body
+    expect(body).to include("HTTP tools", "HTTP: natura")
+  end
+
   it "mcp: a frame request renders the detail pane alone, and ?i= selects the instance" do
     app, = build_app(mcp_instances: [{ "name" => "alpha" }, { "name" => "zeta" }])
     client = login(app)
