@@ -85,21 +85,22 @@ module Insika
         [] # fail-open
       end
 
-      # What the turn's tools returned (FAQ, catalog, cart…), so a policy the reply
-      # quotes from a tool is checkable instead of "unverifiable". Same slice the
-      # transcript persists: messages added after `chat_baseline`.
-      # ponytail: fixed 6000-char cap, the oldest calls win when a turn reads a lot.
+      # What the tools returned (FAQ, catalog, cart…), so a policy the reply quotes
+      # from a tool is checkable instead of "unverifiable". The WHOLE chat, not just
+      # this turn: the replayed history carries earlier tool results and the model
+      # quotes them again without re-calling the tool.
+      # ponytail: fixed 6000-char cap keeping the most recent results; a long session
+      # loses its oldest reads.
       TOOL_RESULTS_CAP = 6000
 
       def turn_tool_results(state)
         chat = state.chat
-        baseline = state.chat_baseline
-        return "" unless chat.respond_to?(:messages) && baseline
+        return "" unless chat.respond_to?(:messages)
 
-        Array(chat.messages).drop(baseline)
-                            .select { |m| m.role.to_s == "tool" }
-                            .map { |m| m.content.to_s }
-                            .join("\n---\n")[0, TOOL_RESULTS_CAP]
+        joined = Array(chat.messages).select { |m| m.role.to_s == "tool" }
+                                     .map { |m| m.content.to_s }
+                                     .join("\n---\n")
+        joined.length > TOOL_RESULTS_CAP ? joined[-TOOL_RESULTS_CAP..] : joined
       rescue StandardError
         "" # an odd message shape must not skip the moderation itself
       end
