@@ -57,18 +57,29 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(st.guardrail_flags).to be_nil
     end
 
-    it "shows the moderator this turn's tool results, so a fact read from a tool is verifiable" do
+    it "shows the moderator the conversation's tool results, so a fact read from a tool is verifiable" do
       st = state("Frete grátis acima de R$ 249,90 pra SP.", guardrails: { "moderator" => "on" })
-      older = Struct.new(:role, :content).new(:tool, "turno anterior")
+      # read on an EARLIER turn: the model sees it in the replayed history and may quote it again
       faq = Struct.new(:role, :content).new(:tool, '{"answer":"Frete Grátis acima de R$ 249,90 para SP"}')
       reply = Struct.new(:role, :content).new(:assistant, "Frete grátis acima de R$ 249,90 pra SP.")
-      st.chat = Struct.new(:messages).new([older, faq, reply])
+      st.chat = Struct.new(:messages).new([faq, reply])
       st.chat_baseline = 1
       prompts = []
       v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
       v.call(st)
       expect(prompts.first).to include("R$ 249,90 para SP")
-      expect(prompts.first).not_to include("turno anterior")
+    end
+
+    it "keeps the most recent tool results when they exceed the cap" do
+      st = state("ok", guardrails: { "moderator" => "on" })
+      old = Struct.new(:role, :content).new(:tool, "VELHO" + ("x" * 7000))
+      recent = Struct.new(:role, :content).new(:tool, "RECENTE")
+      st.chat = Struct.new(:messages).new([old, recent])
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("RECENTE")
+      expect(prompts.first).not_to include("VELHO")
     end
 
     it "fails open when the LLM ask raises (audit must not break the turn)" do
