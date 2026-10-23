@@ -55,7 +55,10 @@ module Insika
 
     # The never-ship set: the studio JS toolchain (only assets/dist ships) and
     # the docs' own Jekyll Gemfile/config.
-    NEVER_SHIP_PREFIXES = ["node_modules", "lib/insika/studio/test/", "lib/insika/studio/assets/src/"].freeze
+    # docs/superpowers/ holds internal plans (customer names, live results): never
+    # tracked here any more, and never shipped even if one is committed by mistake.
+    NEVER_SHIP_PREFIXES = ["node_modules", "lib/insika/studio/test/", "lib/insika/studio/assets/src/",
+                           "docs/superpowers/"].freeze
     NEVER_SHIP_PATHS = %w[
       docs/Gemfile docs/Gemfile.lock docs/_config.yml
       lib/insika/studio/README.md lib/insika/studio/package.json
