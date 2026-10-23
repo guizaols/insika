@@ -74,8 +74,8 @@ RSpec.describe Insika::Channels::Relay do
       expect(http.requests.first[:headers]["authorization"]).to eq("Bearer out-tok")
     end
 
-    it "still honors the deprecated HARNESS_ alias, like every other engine key" do
-      expect(described_class.from_env({ "HARNESS_RELAY_TOKEN" => "t" })).not_to be_nil
+    it "no longer reads the removed HARNESS_ name, like every other engine key" do
+      expect(described_class.from_env({ "HARNESS_RELAY_TOKEN" => "t" })).to be_nil
     end
 
     it "reads INSIKA_RELAY_SHADOW as the shadow switch" do

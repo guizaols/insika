@@ -17,11 +17,6 @@ module Deploy
   # key or a typo must never take the whole service down — same reasoning as the
   # resilient DEEPSEEK boot below); set INSIKA_CONFIG_STRICT=1 to refuse boot instead.
   # `insika doctor` gives the same report on demand.
-  #
-  # Env rename (pass 2): backfill INSIKA_* from any legacy HARNESS_* alias BEFORE the
-  # gate and before any read below — the process ENV speaks the new names from here on
-  # (a deprecation warning names the ones still set under the old prefix).
-  Insika::EnvSchema.reconcile_legacy!
   ENV_SPECS = [
     Insika::EnvSchema.spec(name: "DEEPSEEK_API_KEY", secret: true, description: "DeepSeek API key (turns fail until set — env or Studio)."),
     Insika::EnvSchema.spec(name: "DEEPSEEK_MODEL", description: "DeepSeek model id (default: deepseek-v4-flash)."),

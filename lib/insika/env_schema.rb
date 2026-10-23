@@ -9,7 +9,7 @@ module Insika
   #   · `validate(env)` — returns structured Findings: a value that fails its type
   #     (INSIKA_PORT=abc), an UNKNOWN key inside a namespace the engine owns
   #     (INSIKA_EGRES_ALLOW_HTTP — a typo the runtime would otherwise ignore in
-  #     silence), and a DEPRECATED legacy key still set under the old HARNESS_ prefix.
+  #     silence), and a REMOVED legacy key still set under the old HARNESS_ prefix.
   #     Unknown-key detection is scoped to the OWNED prefixes only, so the platform's
   #     own vars (Railway's RAILWAY_*, PORT, PATH, the litestream sidecar's
   #     LITESTREAM_*, the deployment's DEEPSEEK_*/CONSUMER_*) are never flagged.
@@ -19,12 +19,10 @@ module Insika
   #     RAISES ConfigError only when strictness is on (INSIKA_CONFIG_STRICT truthy,
   #     or `strict: true`).
   #
-  # RENAME (env pass 2): the engine's owned prefix is now INSIKA_. The old HARNESS_
-  # names still work — `reconcile_legacy!` backfills INSIKA_* from any HARNESS_* alias
-  # at boot (new name wins), and `read` gives the same dual-read to the self-contained
-  # readers (Telemetry, TurnTiming, SubagentGraph) that receive an env hash directly.
-  # A legacy name in use surfaces as a `:deprecated` warning (never fatal) so operators
-  # get a clear "rename to INSIKA_*" without a broken boot.
+  # RENAME: the engine's owned prefix is INSIKA_. The old HARNESS_ names were removed
+  # in 1.0 and are no longer read. HARNESS_ stays an OWNED prefix only so a forgotten
+  # legacy name is reported (`:removed`, an error) instead of ignored in silence — a
+  # stale HARNESS_DB would otherwise boot the engine on the ephemeral memory backend.
   #
   # Insika::Doctor reuses `validate` for its `env:*` checks; the boot roots call
   # `enforce!`. A deployment layers its own keys on via `extra:` (see
@@ -66,13 +64,13 @@ module Insika
       def to_h = { "key" => key, "kind" => kind.to_s, "severity" => severity.to_s, "message" => message }
     end
 
-    # The engine's owned prefix and its deprecated predecessor.
+    # The engine's owned prefix and its removed predecessor.
     PREFIX = "INSIKA_"
     LEGACY_PREFIX = "HARNESS_"
 
     # Prefixes the engine fully OWNS: an unknown key under one of these is a typo, not
-    # a foreign var. INSIKA_ (current) and HARNESS_ (legacy, still honored during the
-    # deprecation window). Deliberately NOT OPENCLAW_ (the OpenClaw gateway product
+    # a foreign var. INSIKA_ (current) and HARNESS_ (removed in 1.0, reported so it is
+    # not silently ignored). Deliberately NOT OPENCLAW_ (the OpenClaw gateway product
     # sets its own OPENCLAW_HOME/_STATE_DIR/… on the same host; the engine reads none
     # of them), nor LITESTREAM_ (the sidecar owns it), nor OTEL_ (the OpenTelemetry
     # SDK owns its env).
@@ -159,54 +157,12 @@ module Insika
       spec(name: "OTEL_SERVICE_NAME", description: "Service name for OTEL spans (default: insika).")
     ].freeze
 
-    # -- dual-read (rename compat) -------------------------------------
-
-    # HARNESS_X -> INSIKA_X for the deprecated alias of a canonical key; nil if `name`
-    # is not an INSIKA_ key.
-    def legacy_alias(name)
-      s = name.to_s
-      s.start_with?(PREFIX) ? LEGACY_PREFIX + s[PREFIX.length..] : nil
-    end
-
-    # The current (canonical) name for any owned key: HARNESS_X -> INSIKA_X; an INSIKA_
-    # key or any non-owned key is returned unchanged.
-    def canonical(name)
-      s = name.to_s
-      s.start_with?(LEGACY_PREFIX) ? PREFIX + s[LEGACY_PREFIX.length..] : s
-    end
-
     def legacy?(name) = name.to_s.start_with?(LEGACY_PREFIX)
     def owned?(name) = OWNED_PREFIXES.any? { |p| name.to_s.start_with?(p) }
 
-    # Reads a canonical INSIKA_* key, falling back to the deprecated HARNESS_* alias
-    # (new name wins). For the self-contained readers that get an env hash directly and
-    # so never see `reconcile_legacy!`'s process-wide backfill. -> value | nil.
-    def read(canonical_name, env = ENV)
-      value = env[canonical_name]
-      return value if present?(value)
-
-      (legacy = legacy_alias(canonical_name)) ? env[legacy] : value
-    end
-
-    # BOOT backfill: copies every still-set HARNESS_* var to its INSIKA_* name (new name
-    # wins if both are set) so the process ENV speaks the new names before any read.
-    # Generic (not schema-bound) so plugin/deployment HARNESS_* keys migrate too. WARNS
-    # once with the migrated list. -> [migrated legacy names]. Idempotent.
-    def reconcile_legacy!(env = ENV, warn: method(:default_warn))
-      migrated = env.keys.map(&:to_s).select { |k| k.start_with?(LEGACY_PREFIX) }.sort.each_with_object([]) do |legacy, acc|
-        canonical = PREFIX + legacy[LEGACY_PREFIX.length..]
-        next if present?(env[canonical]) # the new name already wins
-        next if env[legacy].nil?
-
-        env[canonical] = env[legacy]
-        acc << legacy
-      end
-      unless migrated.empty?
-        warn.call("deprecation: #{migrated.join(', ')} — HARNESS_* env vars are renamed to INSIKA_*; " \
-                  "honored via the new names this run, please update your environment (legacy names removed in a future release)")
-      end
-      migrated
-    end
+    # Reads an INSIKA_* key from `env`. The single reader for the self-contained
+    # readers (Telemetry, TurnTiming, SubagentGraph) that get an env hash directly.
+    def read(name, env = ENV) = env[name]
 
     # -- validation ----------------------------------------------------
 
@@ -217,33 +173,28 @@ module Insika
       findings = []
 
       # VALUE + required checks over the KNOWN specs (owned or not — DEEPSEEK_API_KEY
-      # is not prefixed). Dual-read: the canonical name wins, the legacy alias is honored.
+      # is not prefixed).
       specs.each_value do |s|
-        legacy = legacy_alias(s.name)
-        set_name = if env.key?(s.name) then s.name
-                   elsif legacy && env.key?(legacy) then legacy
-                   end
-
-        if set_name.nil?
+        unless env.key?(s.name)
           findings << Finding.new(key: s.name, kind: :missing_required, severity: :error,
                                   message: "#{s.name} is required (unset)") if s.required?
           next
         end
 
-        msg = s.error_for(env[set_name])
-        findings << Finding.new(key: set_name, kind: :invalid, severity: :error, message: "#{set_name} #{msg}") if msg
+        msg = s.error_for(env[s.name])
+        findings << Finding.new(key: s.name, kind: :invalid, severity: :error, message: "#{s.name} #{msg}") if msg
       end
 
-      # OWNED-PREFIX scan: a legacy alias of a known key is DEPRECATED (warn); any other
-      # owned key with no matching spec is UNKNOWN (a typo the runtime would ignore).
+      # OWNED-PREFIX scan: a HARNESS_ key is REMOVED (no longer read); any other owned
+      # key with no matching spec is UNKNOWN (a typo the runtime would ignore).
       env.each_key do |raw|
         key = raw.to_s
         next unless owned?(key)
 
-        if legacy?(key) && specs.key?(canonical(key))
-          findings << Finding.new(key: key, kind: :deprecated, severity: :warn,
-                                  message: "#{key} is deprecated — rename to #{canonical(key)}")
-        elsif !specs.key?(canonical(key)) && !specs.key?(key)
+        if legacy?(key)
+          findings << Finding.new(key: key, kind: :removed, severity: :error,
+                                  message: "#{key} was removed in 1.0 and is ignored — rename to #{PREFIX}#{key.delete_prefix(LEGACY_PREFIX)}")
+        elsif !specs.key?(key)
           findings << Finding.new(key: key, kind: :unknown, severity: :error,
                                   message: "#{key} is not a known config key (typo? unknown key in an owned namespace)")
         end
@@ -257,7 +208,7 @@ module Insika
 
     # BOOT GATE. Validates the environment, WARNS every finding via `warn` (a callable
     # taking a String), and RAISES ConfigError only when strict. `strict` defaults to
-    # the INSIKA_CONFIG_STRICT flag (HARNESS_CONFIG_STRICT still honored). -> [Finding]
+    # the INSIKA_CONFIG_STRICT flag. -> [Finding]
     # (also on the happy path). The root keeps booting on warnings (last-known-good).
     def enforce!(env = ENV, extra: [], strict: nil, warn: method(:default_warn))
       strict = truthy?(read("INSIKA_CONFIG_STRICT", env)) if strict.nil?

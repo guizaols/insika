@@ -68,7 +68,7 @@ RSpec.describe Insika::Plugin::Loader do
     expect(result[:plugins].map(&:id)).to eq(["alpha"])
   end
 
-  it "accepts old plugin.yml with a deprecation warning" do
+  it "refuses a leftover plugin.yml out loud instead of loading it" do
     write_plugin("beta", <<~YAML, poro_entry("BetaPlugin", "def self.register(api) = nil"), manifest_name: "plugin.yml")
       id: beta
       module: BetaPlugin
@@ -76,7 +76,9 @@ RSpec.describe Insika::Plugin::Loader do
       contracts: { tools: [] }
     YAML
 
-    expect { load(enabled: %w[beta]) }.to output(/plugin.yml is deprecated/).to_stderr
+    result = nil
+    expect { result = load(enabled: %w[beta]) }.to output(/plugin.yml was removed in 1.0/).to_stderr
+    expect(result[:plugins]).to be_empty
   end
 
   it "insika.plugin.yml takes precedence over plugin.yml in the same dir (no warn)" do
@@ -86,7 +88,7 @@ RSpec.describe Insika::Plugin::Loader do
     File.write(File.join(dir, "plugin.yml"), "id: gamma_old\ncontracts: { tools: [] }\n")
 
     result = nil
-    expect { result = load(enabled: %w[gamma gamma_old]) }.not_to output(/deprecado/).to_stderr
+    expect { result = load(enabled: %w[gamma gamma_old]) }.not_to output(/removed in 1.0/).to_stderr
     expect(result[:plugins].map(&:id)).to eq(["gamma"])
   end
 

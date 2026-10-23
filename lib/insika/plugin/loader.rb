@@ -78,8 +78,9 @@ module Insika
         @announced_roots.any? { |root| dir == root || dir.start_with?("#{root}#{File::SEPARATOR}") }
       end
 
-      # One manifest per directory: insika.plugin.yml takes precedence over
+      # One manifest per directory: insika.plugin.yml takes precedence over a leftover
       # plugin.yml (same dir). Order preserved (root precedence — first wins via `seen`).
+      # plugin.yml is still globbed only so load_manifest can refuse it out loud.
       def manifest_files
         selected = {}
         @roots.each do |root|
@@ -96,7 +97,8 @@ module Insika
         return nil unless manifest.is_a?(Hash)
 
         if File.basename(file) == "plugin.yml"
-          warn "[plugin #{manifest['id']}] plugin.yml is deprecated — rename to insika.plugin.yml"
+          warn "[plugin #{manifest['id']}] plugin.yml was removed in 1.0 and is not loaded — rename to insika.plugin.yml"
+          return nil
         end
         manifest
       rescue StandardError => e
