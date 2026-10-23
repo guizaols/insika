@@ -34,10 +34,14 @@ require "net/http"
 require "json"
 require "uri"
 
+# The last four are the skills-shared/ copies the openclaw enabled in 11 of the 17
+# grocery stores, same text in all of them (achei-b2b SCRUM-6470): on demand, no
+# triggers, as they ran there.
 SKILLS = %w[
   conduct-guardrails security-guardrails
   form-of-address grocery-core grocery-discovery grocery-offers
   grocery-category-nav grocery-substitution grocery-budget
+  escalation-to-human handling-price-objection recommendation-formatting tool-error-recovery
 ].freeze
 
 # skill => the hook's keyword constant.
