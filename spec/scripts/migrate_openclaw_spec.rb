@@ -486,6 +486,25 @@ RSpec.describe MigrateOpenclaw do
       ], "summary" => nil }])
     end
 
+    it "drops the agent's platform-only replies: NO_REPLY and a tool call written as text" do
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:9", "w", NOW, [
+        msg("1", nil, "user", "bom dia"),
+        msg("2", "1", "assistant", "NO_REPLY"),
+        msg("3", "2", "user", "vcs são carmelita"),
+        msg("4", "3", "assistant", "<tool_call>\nsearch_faq\n<parameter name=\"query\">carmelita</parameter>\n</tool_call>"),
+        msg("5", "4", "assistant", "<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"search_faq\">"),
+        msg("6", "5", "user", "?"),
+        msg("7", "6", "assistant", "Somos sim. Responder NO_REPLY seria errado aqui.")
+      ])
+      d.close
+
+      expect(described_class.seed_plan(root, agent: "shop", now: NOW).first["history"]).to eq([
+        { "role" => "user", "content" => "bom dia\n\nvcs são carmelita\n\n?" },
+        { "role" => "assistant", "content" => "Somos sim. Responder NO_REPLY seria errado aqui." }
+      ])
+    end
+
     it "follows the active branch and starts at the last compaction, keeping its summary" do
       d = db(root, "agents/shop")
       session(d, "agent:shop:openresponses-user:7", "w", NOW, [
