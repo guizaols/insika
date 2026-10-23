@@ -109,6 +109,52 @@ RSpec.describe "RubyLLM boundary contract" do
     ])
   end
 
+  # Loja Mensageiros, 23/10/2026: deepseek-v4-flash answered with the call as text,
+  # the tool never ran and the customer got silence.
+  it "runs a tool call the model wrote as text and persists it as a real call" do
+    leaked = RubyLLM::Message.new(
+      role: :assistant,
+      content: "<tool_call>\nsearch_faq\n<parameter name=\"query\">ordem carmelita</parameter>\n</tool_call>"
+    )
+    ran = []
+    chat.with_tools(tool("search_faq") { |_, args| ran << args; "Somos de tradição carmelita." })
+    state.chat = chat
+    state.chat_baseline = 0
+    expect(chat.provider).to receive(:complete).ordered.and_return(leaked)
+    expect(chat.provider).to receive(:complete).ordered do |messages, **|
+      expect(messages.map(&:role)).to eq(%i[user assistant tool])
+      RubyLLM::Message.new(role: :assistant, content: "Somos sim, carmelitas.")
+    end
+    chat.ask_later("Vcs são Carmelita")
+
+    expect(executor.send(:complete_chat, state, chat).content).to eq("Somos sim, carmelitas.")
+    expect(ran).to eq([{ query: "ordem carmelita" }])
+    store = Insika::SessionStore.new(store: Insika::Stores::Memory.new)
+    session = store.create
+    store.append_messages(session.id, executor.send(:recorded_turn_messages, state))
+    persisted = store.find(session.id).messages.map { |message| message.except("at") }
+    call_id = persisted[1]["tool_calls"].first["id"]
+    expect(persisted).to eq([
+      { "role" => "user", "content" => "Vcs são Carmelita" },
+      { "role" => "assistant", "content" => "", "tool_calls" => [
+        { "id" => call_id, "name" => "search_faq", "arguments" => { "query" => "ordem carmelita" } }
+      ] },
+      { "role" => "tool", "tool_call_id" => call_id, "content" => "Somos de tradição carmelita." },
+      { "role" => "assistant", "content" => "Somos sim, carmelitas." }
+    ])
+  end
+
+  it "leaves a text tool call for a tool the chat does not offer as the answer" do
+    leaked = RubyLLM::Message.new(role: :assistant, content: "<tool_call>\nsend_pix\n</tool_call>")
+    chat.with_tools(tool("search_faq") { raise "must not execute" })
+    state.chat = chat
+    expect(chat.provider).to receive(:complete).once.and_return(leaked)
+    chat.ask_later("oi")
+
+    expect(executor.send(:complete_chat, state, chat)).to equal(leaked)
+    expect(chat.complete?).to be(true)
+  end
+
   it "parks an approval without executing its tool or requesting another completion" do
     guarded = tool("guarded") { raise "must not execute" }
     guarded.class.requires_approval
