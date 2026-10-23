@@ -169,9 +169,9 @@ require "insika/plugin"
 Insika::Plugin.announce(File.expand_path("../..", __dir__))
 ```
 
-Discovery details worth knowing: the manifest may be named `insika.plugin.yml`
-(preferred) or `plugin.yml` (deprecated — it warns); one manifest per directory,
-with `insika.plugin.yml` winning if both exist; and if two roots ship the same
+Discovery details worth knowing: the manifest is named `insika.plugin.yml` (a leftover
+`plugin.yml` from before 1.0 is not loaded and warns to rename it); one manifest per
+directory; and if two roots ship the same
 `id`, the **first root wins** and the second is skipped.
 
 ### Secrets

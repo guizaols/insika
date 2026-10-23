@@ -75,9 +75,9 @@ RSpec.describe "bin/insika" do
     expect(status).to be_success
   end
 
-  it "doctor exits 1 on an unknown HARNESS_ key (error)" do
+  it "doctor exits 1 on a removed HARNESS_ key (error)" do
     out, status = run("doctor", env: { "HARNESS_BOGUS" => "1" })
-    expect(out).to match(/HARNESS_BOGUS is not a known config key/)
+    expect(out).to match(/HARNESS_BOGUS was removed in 1.0/)
     expect(status.exitstatus).to eq(1)
   end
 

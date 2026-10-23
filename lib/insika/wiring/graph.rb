@@ -24,7 +24,7 @@ module Insika
 
       # Backend by config: INSIKA_DB set → durable SQLite (survives restart, the
       # prerequisite for Recovery); missing → ephemeral Memory (dev/demo). The same
-      # rule lived verbatim in both roots. Dual-read honors the legacy HARNESS_DB alias.
+      # rule lived verbatim in both roots.
       # LITESTREAM_REPLICA_URL is the same switch deploy/entrypoint.sh uses: set, and
       # Litestream owns the checkpoints.
       # Every backend counts its calls into the running turn (TurnTiming).
@@ -54,7 +54,7 @@ module Insika
       end
 
       # an integer tick knob from the env, nil when unset (the caller's
-      # default wins). Dual-read honors the deprecated HARNESS_* alias.
+      # default wins).
       def tick_env(name, env = ENV)
         value = Insika::EnvSchema.read(name, env)
         value&.to_i

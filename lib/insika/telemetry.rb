@@ -17,7 +17,7 @@ module Insika
   # (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`). The destination/protocol
   # follows the OTEL SDK's default config (env) — SigNoz/Tempo/Jaeger/Collector. The
   # OTEL_* keys are the OpenTelemetry SDK's own env and stay verbatim; only our opt-in
-  # toggle is renamed (INSIKA_OTEL, with the HARNESS_OTEL alias still read).
+  # toggle is INSIKA_OTEL.
   #
   # Metrics ride the same switch and the SAME standard env: the SDK
   # registers a periodic metric reader when the OTLP metrics exporter is loadable,

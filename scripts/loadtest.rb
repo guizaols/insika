@@ -107,7 +107,7 @@ rescue ArgumentError, TypeError
 end
 
 TOKEN = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
-base = (ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
+base = (ENV["INSIKA_URL"] || "http://localhost:9292").sub(%r{/$}, "")
 BASE_URLS = (args["ports"] ? args["ports"].split(",").map { |p| "http://localhost:#{p.strip}" } : [base])
 AGENTS = (args["agents"] || "bia").split(",").map(&:strip).reject(&:empty?)
 CONC = positive_int(args, "concurrency", "8")
