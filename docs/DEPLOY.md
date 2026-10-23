@@ -136,11 +136,10 @@ this section is the single source of truth for what changing it means.
 | `LITESTREAM_REGION` | — | bucket region (AWS: `us-east-1`; R2: `auto`) |
 | `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` | — | bucket credentials (read natively by Litestream) |
 
-> **Renamed from `HARNESS_*` → `INSIKA_*`.** Every engine variable now uses the
-> `INSIKA_` prefix. The old `HARNESS_*` names are still honored as deprecated aliases
-> — set either one and the engine reads it, logging a one-line deprecation notice at
-> boot (`insika doctor` reports it too). Migrate at your convenience; the legacy names
-> will be dropped in a future release.
+> **Renamed from `HARNESS_*` → `INSIKA_*`.** Every engine variable uses the `INSIKA_`
+> prefix. The old `HARNESS_*` names were removed in 1.0 and are no longer read: a
+> leftover one is reported as an error naming its replacement (at boot and in
+> `insika doctor`). Rename it before upgrading.
 
 > **The database filename changed too** — the image now defaults to
 > `INSIKA_DB=/data/insika.db` (it was `/data/harness.db`). **Existing volumes are

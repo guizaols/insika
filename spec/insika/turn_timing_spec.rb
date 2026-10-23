@@ -16,8 +16,8 @@ RSpec.describe Insika::TurnTiming do
       end
     end
 
-    it "still honors the deprecated HARNESS_TURN_TIMING alias" do
-      expect(described_class.enabled?({ "HARNESS_TURN_TIMING" => "1" })).to be(true)
+    it "no longer reads the removed HARNESS_TURN_TIMING name" do
+      expect(described_class.enabled?({ "HARNESS_TURN_TIMING" => "1" })).to be(false)
     end
   end
 

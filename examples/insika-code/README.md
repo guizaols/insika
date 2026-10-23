@@ -17,7 +17,7 @@ Two independent controls protect the highest-risk tools:
 
 1. **Sandbox (always on, enforced by the tools).** Every path a tool touches is
    resolved through the core **`Insika::Sandbox`** primitive, which
-   confines all operations to a single **root** (`HARNESS_CODE_ROOT`, default:
+   confines all operations to a single **root** (`INSIKA_CODE_ROOT`, default:
    cwd). `..` traversal, absolute paths outside the root, and symlinks are
    rejected *before any IO* — the final path component may never be a symlink (a
    write target that is a symlink, including a *broken* one pointing outside the
@@ -25,7 +25,7 @@ Two independent controls protect the highest-risk tools:
    stay inside the root. `bash` runs through the sandbox's **exec provider**:
    `local` (default; working directory pinned to the root — advisory, since a
    shell can still reach absolute paths, which is why it is also approval-gated)
-   or `docker` (real container isolation, `HARNESS_CODE_SANDBOX=docker`). Either
+   or `docker` (real container isolation, `INSIKA_CODE_SANDBOX=docker`). Either
    provider enforces a hard-kill wall-clock timeout. See
    [`docs/SANDBOX.md`](../../docs/SANDBOX.md) for the primitive and its config.
 2. **Approval (reuses the engine).** `write_file`, `edit_file`, and `bash` are
@@ -53,16 +53,16 @@ Read-only tools (`read_file`, `list_dir`, `grep`) are not approval-gated.
 Two terminals. **Server:**
 
 ```bash
-HARNESS_CODE_ROOT=/path/to/your/project \
-DEEPSEEK_API_KEY=sk-...            # or ANTHROPIC_API_KEY / OPENAI_API_KEY (+ set HARNESS_CODE_PROVIDER/MODEL) \
+INSIKA_CODE_ROOT=/path/to/your/project \
+DEEPSEEK_API_KEY=sk-...            # or ANTHROPIC_API_KEY / OPENAI_API_KEY (+ set INSIKA_CODE_PROVIDER/MODEL) \
 ruby examples/insika-code/server.rb
 ```
 
 **CLI** (prints the exact command on server startup):
 
 ```bash
-HARNESS_CODE_URL=http://localhost:9292 \
-HARNESS_CODE_TOKEN=local-code \
+INSIKA_CODE_URL=http://localhost:9292 \
+INSIKA_CODE_TOKEN=local-code \
 ruby examples/insika-code/bin/insika-code
 ```
 
@@ -82,23 +82,23 @@ approve? [y/N] y
       Done — added the magic comment.
 ```
 
-Set `HARNESS_CODE_YES=1` to auto-approve (non-interactive/demo).
+Set `INSIKA_CODE_YES=1` to auto-approve (non-interactive/demo).
 
 ## Env
 
 | var | default | meaning |
 |-----|---------|---------|
-| `HARNESS_CODE_ROOT` | cwd | sandbox root the tools are confined to |
-| `HARNESS_CODE_SANDBOX` | `local` | exec provider: `local` (in-process) or `docker` (container) |
-| `HARNESS_CODE_SANDBOX_IMAGE` | `alpine:3.20` | docker image for the `docker` provider |
-| `HARNESS_CODE_SANDBOX_NETWORK` | `none` | docker `--network` for the `docker` provider |
-| `HARNESS_CODE_TOKEN` | `local-code` | bearer for `/v1/responses` |
-| `HARNESS_CODE_MODEL` | `deepseek-v4-flash` | model id |
-| `HARNESS_CODE_PROVIDER` | `deepseek` | RubyLLM provider |
-| `HARNESS_DB` | (unset → memory) | SQLite path for durable state |
+| `INSIKA_CODE_ROOT` | cwd | sandbox root the tools are confined to |
+| `INSIKA_CODE_SANDBOX` | `local` | exec provider: `local` (in-process) or `docker` (container) |
+| `INSIKA_CODE_SANDBOX_IMAGE` | `alpine:3.20` | docker image for the `docker` provider |
+| `INSIKA_CODE_SANDBOX_NETWORK` | `none` | docker `--network` for the `docker` provider |
+| `INSIKA_CODE_TOKEN` | `local-code` | bearer for `/v1/responses` |
+| `INSIKA_CODE_MODEL` | `deepseek-v4-flash` | model id |
+| `INSIKA_CODE_PROVIDER` | `deepseek` | RubyLLM provider |
+| `INSIKA_DB` | (unset → memory) | SQLite path for durable state |
 | `BIND` | `http://localhost:9292` | server bind URL (server.rb) |
-| `HARNESS_CODE_URL` | `http://localhost:9292` | server URL (CLI) |
-| `HARNESS_CODE_YES` | (unset) | `1` = auto-approve every FS/shell action |
+| `INSIKA_CODE_URL` | `http://localhost:9292` | server URL (CLI) |
+| `INSIKA_CODE_YES` | (unset) | `1` = auto-approve every FS/shell action |
 
 ## Layout
 

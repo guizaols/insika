@@ -60,7 +60,6 @@ end
 # Hermetic + honest timing BEFORE the engine loads: Memory backend (never touch a
 # real volume) and the per-turn latency split turned on.
 ENV.delete("INSIKA_DB")
-ENV.delete("HARNESS_DB") # legacy alias — keep the in-memory backend truly hermetic
 ENV["INSIKA_TURN_TIMING"] = "1"
 
 require_relative "../lib/insika"

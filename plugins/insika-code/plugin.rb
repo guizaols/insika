@@ -15,8 +15,8 @@ require_relative "lib/insika_code/tools/bash"
 # turn — every instance shares one stateless, immutable core Sandbox
 # (`Insika::Sandbox::Env`).
 #
-# The Sandbox is assembled from declarative config: `HARNESS_CODE_SANDBOX`
-# selects the provider (local [default] / docker) and `HARNESS_CODE_ROOT` the
+# The Sandbox is assembled from declarative config: `INSIKA_CODE_SANDBOX`
+# selects the provider (local [default] / docker) and `INSIKA_CODE_ROOT` the
 # confinement root — the SAME shape stored on the agent profile's `sandbox`
 # block (config-over-code). See examples/insika-code/boot.rb.
 #
@@ -31,12 +31,12 @@ module InsikaCodePlugin
   # provider, cwd root).
   def sandbox_config
     {
-      "provider"   => ENV["HARNESS_CODE_SANDBOX"],
-      "root"       => (ENV["HARNESS_CODE_ROOT"].to_s.empty? ? Dir.pwd : ENV["HARNESS_CODE_ROOT"]),
-      "image"      => ENV["HARNESS_CODE_SANDBOX_IMAGE"],
-      "network"    => ENV["HARNESS_CODE_SANDBOX_NETWORK"],
-      "timeout"    => ENV["HARNESS_CODE_TOOL_TIMEOUT"],
-      "max_output" => ENV["HARNESS_CODE_SANDBOX_MAX_OUTPUT"]
+      "provider"   => ENV["INSIKA_CODE_SANDBOX"],
+      "root"       => (ENV["INSIKA_CODE_ROOT"].to_s.empty? ? Dir.pwd : ENV["INSIKA_CODE_ROOT"]),
+      "image"      => ENV["INSIKA_CODE_SANDBOX_IMAGE"],
+      "network"    => ENV["INSIKA_CODE_SANDBOX_NETWORK"],
+      "timeout"    => ENV["INSIKA_CODE_TOOL_TIMEOUT"],
+      "max_output" => ENV["INSIKA_CODE_SANDBOX_MAX_OUTPUT"]
     }.reject { |_k, v| v.to_s.empty? }
   end
 

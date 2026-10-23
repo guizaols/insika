@@ -11,9 +11,8 @@
 # Zero Ruby code change: the DB path is the same INSIKA_DB the app already uses.
 set -e
 
-# INSIKA_DB is the current name; HARNESS_DB is honored as a deprecated alias. Resolve
-# once and re-export as INSIKA_DB so litestream.yml (${INSIKA_DB}) and the app agree.
-DB="${INSIKA_DB:-${HARNESS_DB:-/data/insika.db}}"
+# Resolve once and re-export as INSIKA_DB so litestream.yml (${INSIKA_DB}) and the app agree.
+DB="${INSIKA_DB:-/data/insika.db}"
 export INSIKA_DB="${DB}"
 
 # One-shot adoption of a pre-rename volume: the image default moved from

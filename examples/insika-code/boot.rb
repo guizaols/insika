@@ -24,29 +24,29 @@ module InsikaCodeApp
   REPO_ROOT = File.expand_path("../..", __dir__)
 
   # The sandbox root every FS/shell tool is confined to. Resolved once and
-  # written back to ENV so the plugin (which reads HARNESS_CODE_ROOT at register
+  # written back to ENV so the plugin (which reads INSIKA_CODE_ROOT at register
   # time) sees the exact same absolute path.
   WORKSPACE_ROOT = File.expand_path(
-    ENV["HARNESS_CODE_ROOT"].to_s.empty? ? Dir.pwd : ENV["HARNESS_CODE_ROOT"]
+    ENV["INSIKA_CODE_ROOT"].to_s.empty? ? Dir.pwd : ENV["INSIKA_CODE_ROOT"]
   )
-  ENV["HARNESS_CODE_ROOT"] = WORKSPACE_ROOT
+  ENV["INSIKA_CODE_ROOT"] = WORKSPACE_ROOT
 
   # Declarative sandbox policy (config-over-code): `local` (in-process,
-  # default) or `docker` (isolated container, `HARNESS_CODE_SANDBOX=docker`). The
+  # default) or `docker` (isolated container, `INSIKA_CODE_SANDBOX=docker`). The
   # SAME hash is stored on the agent profile below AND read by the plugin to build
   # the tools' Sandbox, so profile and runtime never drift. Docker knobs
   # (image/network/…) default conservatively inside Insika::Sandbox::Docker and
-  # are overridable via HARNESS_CODE_SANDBOX_* env.
+  # are overridable via INSIKA_CODE_SANDBOX_* env.
   SANDBOX_CONFIG = {
-    "provider"   => (ENV["HARNESS_CODE_SANDBOX"].to_s.empty? ? "local" : ENV["HARNESS_CODE_SANDBOX"]),
+    "provider"   => (ENV["INSIKA_CODE_SANDBOX"].to_s.empty? ? "local" : ENV["INSIKA_CODE_SANDBOX"]),
     "root"       => WORKSPACE_ROOT,
-    "image"      => ENV["HARNESS_CODE_SANDBOX_IMAGE"],
-    "network"    => ENV["HARNESS_CODE_SANDBOX_NETWORK"]
+    "image"      => ENV["INSIKA_CODE_SANDBOX_IMAGE"],
+    "network"    => ENV["INSIKA_CODE_SANDBOX_NETWORK"]
   }.reject { |_k, v| v.to_s.empty? }.freeze
 
-  MODEL         = ENV.fetch("HARNESS_CODE_MODEL", "deepseek-v4-flash")
-  PROVIDER      = ENV.fetch("HARNESS_CODE_PROVIDER", "deepseek").to_sym
-  GATEWAY_TOKEN = ENV.fetch("HARNESS_CODE_TOKEN", "local-code")
+  MODEL         = ENV.fetch("INSIKA_CODE_MODEL", "deepseek-v4-flash")
+  PROVIDER      = ENV.fetch("INSIKA_CODE_PROVIDER", "deepseek").to_sym
+  GATEWAY_TOKEN = ENV.fetch("INSIKA_CODE_TOKEN", "local-code")
 
   # Provider-agnostic LLM config: wire up whatever API keys are present. Like the
   # demo deployment, a missing key does NOT crash boot — the engine comes up and
@@ -89,7 +89,7 @@ module InsikaCodeApp
 
   module Wiring
     BACKEND =
-      if (db = ENV["HARNESS_DB"]) && !db.empty?
+      if (db = ENV["INSIKA_DB"]) && !db.empty?
         Insika::Stores::SQLite.new(path: db)
       else
         Insika::Stores::Memory.new
@@ -168,9 +168,9 @@ module InsikaCodeApp
       # ENV, so the tools' runtime sandbox matches this declaration.
       sandbox: InsikaCodeApp::SANDBOX_CONFIG,
       limits: {
-        tool_timeout: Integer(ENV.fetch("HARNESS_CODE_TOOL_TIMEOUT", "120")),
-        turn_timeout: Integer(ENV.fetch("HARNESS_CODE_TURN_TIMEOUT", "600")),
-        approval_timeout: Integer(ENV.fetch("HARNESS_CODE_APPROVAL_TIMEOUT", "3600")),
+        tool_timeout: Integer(ENV.fetch("INSIKA_CODE_TOOL_TIMEOUT", "120")),
+        turn_timeout: Integer(ENV.fetch("INSIKA_CODE_TURN_TIMEOUT", "600")),
+        approval_timeout: Integer(ENV.fetch("INSIKA_CODE_APPROVAL_TIMEOUT", "3600")),
         max_tool_calls: 100
       }
     )

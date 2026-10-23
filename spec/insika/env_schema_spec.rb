@@ -16,9 +16,9 @@ RSpec.describe Insika::EnvSchema do
       expect(findings.first.key).to eq("INSIKA_EGRES_ALLOW_HTTP")
     end
 
-    it "still catches a typo under the legacy HARNESS_ namespace" do
+    it "reports any key under the removed HARNESS_ namespace instead of ignoring it" do
       findings = described_class.validate({ "HARNESS_EGRES_ALLOW_HTTP" => "1" })
-      expect(findings.map(&:kind)).to eq([:unknown])
+      expect(findings.map(&:kind)).to eq([:removed])
       expect(findings.first.key).to eq("HARNESS_EGRES_ALLOW_HTTP")
     end
 
@@ -97,63 +97,26 @@ RSpec.describe Insika::EnvSchema do
       expect(findings.first.kind).to eq(:invalid)
     end
 
-    context "legacy HARNESS_ aliases (rename pass 2)" do
-      it "a known key set under the legacy prefix is DEPRECATED (warn), not fatal" do
+    context "legacy HARNESS_ names (removed in 1.0)" do
+      it "a known key set under the legacy prefix is REMOVED (error) and names the new key" do
         findings = described_class.validate({ "HARNESS_DB" => "/data/h.db" })
-        expect(findings.map(&:kind)).to eq([:deprecated])
-        expect(findings.first.severity).to eq(:warn)
-        expect(findings.first.message).to match(/HARNESS_DB is deprecated — rename to INSIKA_DB/)
+        expect(findings.map(&:kind)).to eq([:removed])
+        expect(findings.first.severity).to eq(:error)
+        expect(findings.first.message).to match(/HARNESS_DB was removed in 1.0 and is ignored — rename to INSIKA_DB/)
       end
 
-      it "still type-checks the VALUE of a legacy key (deprecated + invalid)" do
-        findings = described_class.validate({ "HARNESS_PORT" => "abc" })
-        expect(findings.map(&:kind)).to contain_exactly(:deprecated, :invalid)
-      end
-
-      it "a required key present under only its legacy alias is NOT missing" do
+      it "a required key present only under its legacy name is missing" do
         extra = [described_class.spec(name: "INSIKA_NEEDED", required: true)]
-        expect(described_class.validate({ "HARNESS_NEEDED" => "x" }, extra: extra).map(&:kind)).to eq([:deprecated])
+        kinds = described_class.validate({ "HARNESS_NEEDED" => "x" }, extra: extra).map(&:kind)
+        expect(kinds).to contain_exactly(:missing_required, :removed)
       end
     end
   end
 
-  describe ".read (dual-read)" do
-    it "prefers the canonical INSIKA_ name" do
-      expect(described_class.read("INSIKA_DB", { "INSIKA_DB" => "/new", "HARNESS_DB" => "/old" })).to eq("/new")
-    end
-
-    it "falls back to the deprecated HARNESS_ alias when the new name is blank/absent" do
-      expect(described_class.read("INSIKA_DB", { "HARNESS_DB" => "/old" })).to eq("/old")
-      expect(described_class.read("INSIKA_DB", { "INSIKA_DB" => "", "HARNESS_DB" => "/old" })).to eq("/old")
-    end
-
-    it "nil when neither is set" do
-      expect(described_class.read("INSIKA_DB", {})).to be_nil
-    end
-  end
-
-  describe ".reconcile_legacy!" do
-    it "backfills INSIKA_* from a legacy HARNESS_* alias and warns once with the list" do
-      env = { "HARNESS_DB" => "/old", "HARNESS_OTEL" => "1" }
-      warned = []
-      migrated = described_class.reconcile_legacy!(env, warn: ->(m) { warned << m })
-      expect(migrated).to eq(%w[HARNESS_DB HARNESS_OTEL])
-      expect(env["INSIKA_DB"]).to eq("/old")
-      expect(env["INSIKA_OTEL"]).to eq("1")
-      expect(warned.length).to eq(1)
-      expect(warned.first).to match(/HARNESS_DB, HARNESS_OTEL/)
-    end
-
-    it "the new name WINS when both are set (no overwrite) and is not reported" do
-      env = { "INSIKA_DB" => "/new", "HARNESS_DB" => "/old" }
-      expect(described_class.reconcile_legacy!(env, warn: ->(_) {})).to be_empty
-      expect(env["INSIKA_DB"]).to eq("/new")
-    end
-
-    it "is a no-op (no warning) with no legacy keys" do
-      warned = []
-      expect(described_class.reconcile_legacy!({ "INSIKA_DB" => "/x" }, warn: ->(m) { warned << m })).to be_empty
-      expect(warned).to be_empty
+  describe ".read" do
+    it "reads the INSIKA_ name and never falls back to the legacy HARNESS_ one" do
+      expect(described_class.read("INSIKA_DB", { "INSIKA_DB" => "/new" })).to eq("/new")
+      expect(described_class.read("INSIKA_DB", { "HARNESS_DB" => "/old" })).to be_nil
     end
   end
 
@@ -170,18 +133,18 @@ RSpec.describe Insika::EnvSchema do
         .to raise_error(Insika::ConfigError) { |e| expect(e.findings.map(&:key)).to eq(["INSIKA_BOGUS"]) }
     end
 
-    it "a deprecated legacy key is a WARN, never fatal — even under strict" do
-      expect { described_class.enforce!({ "HARNESS_DB" => "/x" }, strict: true, warn: ->(_) {}) }.not_to raise_error
+    it "a removed legacy key is an error: warned by default, fatal under strict" do
+      expect { described_class.enforce!({ "HARNESS_DB" => "/x" }, strict: false, warn: ->(_) {}) }.not_to raise_error
+      expect { described_class.enforce!({ "HARNESS_DB" => "/x" }, strict: true, warn: ->(_) {}) }
+        .to raise_error(Insika::ConfigError)
     end
 
     it "strict + clean env does not raise" do
       expect { described_class.enforce!({ "INSIKA_DB" => "/x" }, strict: true, warn: ->(_) {}) }.not_to raise_error
     end
 
-    it "derives strictness from INSIKA_CONFIG_STRICT when strict: nil (legacy alias honored)" do
+    it "derives strictness from INSIKA_CONFIG_STRICT when strict: nil (the legacy name is not read)" do
       expect { described_class.enforce!({ "INSIKA_CONFIG_STRICT" => "1", "INSIKA_BOGUS" => "1" }, warn: ->(_) {}) }
-        .to raise_error(Insika::ConfigError)
-      expect { described_class.enforce!({ "HARNESS_CONFIG_STRICT" => "1", "INSIKA_BOGUS" => "1" }, warn: ->(_) {}) }
         .to raise_error(Insika::ConfigError)
       expect { described_class.enforce!({ "INSIKA_BOGUS" => "1" }, warn: ->(_) {}) }.not_to raise_error
     end
