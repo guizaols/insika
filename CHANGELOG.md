@@ -147,6 +147,7 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Fixed
 
+- Skills written in one worker (pack import, Studio edit, `write_skill`) now reach the other workers within 2 s. The catalog only reloaded in the worker that handled the write, so the others kept the skills they booted with until a restart — in the Studio and in customer turns.
 - Harvest no longer mines simulator/eval sessions (`sim-…`, `eval-…`), and the miner sees the candidates still open so it stops re-proposing the same idea under new names.
 - Harvest: a bare `miner.model` ref (no `provider/`) now uses the agent's provider; it used to fail every run with `Provider must be specified`.
 - Studio: `/studio` without a trailing slash answered 404; it now opens the
