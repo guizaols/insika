@@ -6,17 +6,17 @@
 # POST /v1/commands/approve_action, which the CLI (bin/insika-code) drives.
 #
 # Usage:
-#   HARNESS_CODE_ROOT=/path/to/project \
+#   INSIKA_CODE_ROOT=/path/to/project \
 #   DEEPSEEK_API_KEY=... \
 #   ruby examples/insika-code/server.rb           # binds http://localhost:9292
 #
 # Env:
-#   HARNESS_CODE_ROOT      workspace root the tools are sandboxed to (default: cwd)
-#   HARNESS_CODE_TOKEN     bearer for /v1/responses (default: "local-code")
-#   HARNESS_CODE_MODEL     model id (default: "deepseek-v4-flash")
-#   HARNESS_CODE_PROVIDER  provider (default: "deepseek")
+#   INSIKA_CODE_ROOT      workspace root the tools are sandboxed to (default: cwd)
+#   INSIKA_CODE_TOKEN     bearer for /v1/responses (default: "local-code")
+#   INSIKA_CODE_MODEL     model id (default: "deepseek-v4-flash")
+#   INSIKA_CODE_PROVIDER  provider (default: "deepseek")
 #   BIND                   bind URL (default: http://localhost:9292)
-#   HARNESS_DB             SQLite path for durable state (default: in-memory)
+#   INSIKA_DB             SQLite path for durable state (default: in-memory)
 
 $stdout.sync = true
 require "async"
@@ -38,7 +38,7 @@ puts "  bind      : #{BIND}"
 puts "  token     : #{InsikaCodeApp::GATEWAY_TOKEN}"
 puts "  state     : #{W.durable? ? 'durable (sqlite)' : 'ephemeral (memory)'}"
 puts "  tools     : read_file list_dir grep | write_file edit_file bash (approval-gated)"
-puts "  CLI       : HARNESS_CODE_URL=#{BIND} HARNESS_CODE_TOKEN=#{InsikaCodeApp::GATEWAY_TOKEN} " \
+puts "  CLI       : INSIKA_CODE_URL=#{BIND} INSIKA_CODE_TOKEN=#{InsikaCodeApp::GATEWAY_TOKEN} " \
      "ruby examples/insika-code/bin/insika-code"
 puts "  Ctrl-C to stop."
 

@@ -93,7 +93,7 @@ the surrounding style instead of running a formatter.
 - The `Dockerfile` pins `INSIKA_DB=/data/harness.db` — that filename is real data on a
   live volume. Renaming it boots an empty database. Rename the variable spelling if you
   must; leave the path alone.
-- Environment variables are `INSIKA_*`. The old `HARNESS_*` spellings are read as a
-  deprecated fallback only; never document or add one.
+- Environment variables are `INSIKA_*`. The old `HARNESS_*` spellings were removed in
+  1.0 and are reported as errors; never document or add one.
 - Commits are conventional (`feat(scope): …`), branches come off `main`, PRs are
   squash-merged.

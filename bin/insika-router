@@ -34,7 +34,6 @@ module Insika
       module_function
 
       def main
-        Insika::EnvSchema.reconcile_legacy!
         pool = build_pool
         app = Insika::Router::App.new(
           pool: pool,

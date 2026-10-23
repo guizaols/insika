@@ -3,10 +3,11 @@
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
-project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once
-it is released. Entries land with the pull request that makes the change.
+project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0 on. Entries land with the pull request that makes the change.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-10-23
 
 ### Added
 
@@ -141,6 +142,14 @@ it is released. Entries land with the pull request that makes the change.
 
 ### Removed
 
+- **The `HARNESS_*` environment variables (breaking).** Only the `INSIKA_*` names are
+  read. A leftover `HARNESS_*` key is no longer honored: it is reported as an error
+  naming its `INSIKA_*` replacement (a warning at boot, fatal under
+  `INSIKA_CONFIG_STRICT`, and an error in `insika doctor`), so a stale `HARNESS_DB`
+  cannot silently boot the engine on the memory backend. `EnvSchema.reconcile_legacy!`
+  is gone, and the bundled `insika-code` plugin and example read `INSIKA_CODE_*`.
+- **The `plugin.yml` manifest name (breaking).** Only `insika.plugin.yml` loads. A
+  leftover `plugin.yml` is not loaded and warns to rename it.
 - `Insika::LLMHTTPAdapter` (`faraday_adapter = :insika_net_http`). RubyLLM 2.1 shares
   one connection per process and settings, so the stock `:net_http` no longer builds a
   CA store per chat. A deployment that set `:insika_net_http` drops that line.

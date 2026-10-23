@@ -21,7 +21,7 @@ require "json"
 require "uri"
 
 dir = ARGV[0] or abort("usage: import_pack.rb <pack-dir>")
-base   = ENV["INSIKA_URL"] || ENV["HARNESS_URL"] || "http://localhost:9292"
+base   = ENV["INSIKA_URL"] || "http://localhost:9292"
 token  = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
 secret = ENV["INSIKA_INTERNAL_API_TOKEN"]
 

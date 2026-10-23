@@ -15,27 +15,27 @@
 # streams and handles the human-approval side-channel.
 #
 # Usage:
-#   HARNESS_CODE_URL=http://localhost:9292 \
-#   HARNESS_CODE_TOKEN=local-code \
+#   INSIKA_CODE_URL=http://localhost:9292 \
+#   INSIKA_CODE_TOKEN=local-code \
 #   ruby examples/insika-code/bin/insika-code
 #
 # Env:
-#   HARNESS_CODE_URL     server base URL (default http://localhost:9292)
-#   HARNESS_CODE_TOKEN   bearer for /v1/responses (default "local-code")
-#   HARNESS_CODE_AGENT   agent id (default "harness-code")
-#   HARNESS_CODE_SESSION session/user id (default "cli-<pid>")
-#   HARNESS_CODE_YES     "1" to auto-approve every FS/shell action (non-interactive)
+#   INSIKA_CODE_URL     server base URL (default http://localhost:9292)
+#   INSIKA_CODE_TOKEN   bearer for /v1/responses (default "local-code")
+#   INSIKA_CODE_AGENT   agent id (default "harness-code")
+#   INSIKA_CODE_SESSION session/user id (default "cli-<pid>")
+#   INSIKA_CODE_YES     "1" to auto-approve every FS/shell action (non-interactive)
 
 require "net/http"
 require "uri"
 require "json"
 require "securerandom"
 
-BASE    = (ENV["HARNESS_CODE_URL"] || "http://localhost:9292").sub(%r{/$}, "")
-TOKEN   = ENV["HARNESS_CODE_TOKEN"] || "local-code"
-AGENT   = ENV["HARNESS_CODE_AGENT"] || "harness-code"
-SESSION = ENV["HARNESS_CODE_SESSION"] || "cli-#{Process.pid}"
-AUTO    = ENV["HARNESS_CODE_YES"] == "1"
+BASE    = (ENV["INSIKA_CODE_URL"] || "http://localhost:9292").sub(%r{/$}, "")
+TOKEN   = ENV["INSIKA_CODE_TOKEN"] || "local-code"
+AGENT   = ENV["INSIKA_CODE_AGENT"] || "harness-code"
+SESSION = ENV["INSIKA_CODE_SESSION"] || "cli-#{Process.pid}"
+AUTO    = ENV["INSIKA_CODE_YES"] == "1"
 
 DIM = "\e[2m"; CYAN = "\e[36m"; YELLOW = "\e[33m"; GREEN = "\e[32m"; RED = "\e[31m"; RESET = "\e[0m"
 
@@ -102,7 +102,7 @@ def handle_approval(obj, seen)
   OUT.synchronize do
     puts "\n#{YELLOW}⚠ approval required: #{tool}(#{args.to_json})#{RESET}"
     if AUTO
-      puts "#{DIM}auto-approving (HARNESS_CODE_YES=1)#{RESET}"
+      puts "#{DIM}auto-approving (INSIKA_CODE_YES=1)#{RESET}"
     else
       print "#{YELLOW}approve? [y/N] #{RESET}"
     end
