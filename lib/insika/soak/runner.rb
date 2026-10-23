@@ -182,7 +182,7 @@ module Insika
       end
 
       def target_url
-        (@env["INSIKA_URL"] || @env["HARNESS_URL"] || "http://localhost:9292").sub(%r{/$}, "")
+        (@env["INSIKA_URL"] || "http://localhost:9292").sub(%r{/$}, "")
       end
 
       def corpus

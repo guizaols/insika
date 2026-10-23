@@ -179,6 +179,7 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Vulnerabilities go through
 
 ## Status
 
-Pre-1.0 — published on [RubyGems](https://rubygems.org/gems/insika); APIs may
-still change between minor versions ([CHANGELOG.md](CHANGELOG.md)). Licensed
+Published on [RubyGems](https://rubygems.org/gems/insika) and follows
+[Semantic Versioning](https://semver.org/) from 1.0.0: a breaking change only lands in
+a new major version ([CHANGELOG.md](CHANGELOG.md)). Licensed
 **MIT** ([LICENSE](LICENSE)).

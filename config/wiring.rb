@@ -21,10 +21,6 @@ require_relative "../lib/insika/server/a2a/client"
 require_relative "../lib/insika/server/a2a/http"
 require_relative "../lib/insika/server/a2a/remotes"
 
-# Env rename (pass 2): backfill INSIKA_* from any legacy HARNESS_* alias before this
-# root reads the process ENV below.
-Insika::EnvSchema.reconcile_legacy!
-
 module Insika
   module Wiring
     ROOT = File.expand_path("..", __dir__)
@@ -209,8 +205,6 @@ module Insika
       outcome_store: OUTCOME_STORE,
       # GET /v1/vitals: in-flight count + SQLite bytes.
       executor: EXECUTOR,
-      # EnvSchema.read: the HARNESS_DB alias still works, so a deploy that has
-      # not renamed yet keeps reporting real db_bytes instead of 0.
       db_path: Insika::EnvSchema.read("INSIKA_DB"),
       # a 500's error_ref must be findable in the process log.
       logger: $stdout

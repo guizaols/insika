@@ -163,7 +163,7 @@ rescue ArgumentError, TypeError
 end
 
 TOKEN = ENV["INSIKA_GATEWAY_TOKEN"] || ENV["ADMIN_TOKEN"] || "local-demo"
-BASE = (args["url"] || ENV["INSIKA_URL"] || ENV["HARNESS_URL"] ||
+BASE = (args["url"] || ENV["INSIKA_URL"] ||
         (SURFACE == "web" ? "http://localhost:3000" : "http://localhost:9292")).sub(%r{/$}, "")
 
 FLOW = [
