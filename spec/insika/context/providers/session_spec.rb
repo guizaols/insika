@@ -72,6 +72,29 @@ RSpec.describe Insika::Context::Providers::Session do
     expect(provider.call(request(vars: { history: original }))[1].content[:content]).to eq(original[1]["content"])
   end
 
+  # Migrated from OpenClaw (Loja Mensageiros / Supermercado Violeta, 23/10/2026).
+  it "replays no NO_REPLY from the agent and leaves the stored transcript untouched" do
+    session_store.create(id: "s1")
+    session_store.append_messages("s1", [
+      { role: "assistant", content: "Cliente quer arroz.\n- call_support → responder NO_REPLY.\nMora no Centro." },
+      { role: "user", content: "bom dia" },
+      { role: "assistant", content: "NO_REPLY" },
+      { role: "user", content: "cliente escreveu NO_REPLY aqui" },
+      { role: "assistant", content: "Calling NO_REPLY", tool_calls: [{ id: "c1", name: "call_support", arguments: {} }] },
+      { role: "tool", content: "ok", tool_call_id: "c1" }
+    ])
+    original = session_store.find("s1").messages
+
+    messages = provider.call(request(session: session_store.find("s1"))).flat_map do |fragment|
+      fragment.content.is_a?(Array) ? fragment.content : [fragment.content]
+    end
+
+    expect(messages.map { |message| message[:content] }).to eq(
+      ["Cliente quer arroz.\nMora no Centro.", "bom dia", "cliente escreveu NO_REPLY aqui", "Calling NO_REPLY", "ok"]
+    )
+    expect(session_store.find("s1").messages).to eq(original)
+  end
+
   it "retains explicit shared-history attachments in its native prompt projection" do
     attachment = Object.new
     fragments = provider.call(request(vars: { history: [
