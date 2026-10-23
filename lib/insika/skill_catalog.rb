@@ -28,10 +28,17 @@ module Insika
     # store (optional): a SkillStore with the skills AUTHORED in the Studio.
     # They overlay the on-disk ones (seed) — the Store wins, it is the source of truth.
     # Nil = disk-only behavior, zero regression.
-    def initialize(roots, store: nil)
+    #
+    # recheck/clock: another worker may write a skill (pack import, Studio edit) and
+    # `reload` only runs in the process that handled the write. At most every
+    # `recheck` seconds the catalog compares the config version token and reloads
+    # when it moved — the same rule as OverlayToolRegistry for data-tools.
+    def initialize(roots, store: nil, recheck: 2, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
       @roots = Array(roots)
       @store = store
-      @skills, @agent_skills = load_all
+      @recheck = recheck
+      @clock = clock
+      reload
     end
 
     # The SkillStore the catalog overlays — the composition root hands it to
@@ -49,6 +56,7 @@ module Insika
     # Without `agent` the shared scope is all there is, which is what every caller
     # that has no agent in hand (the Studio's shared editor, a bare catalog) means.
     def all(agent: nil)
+      reload if stale?
       shared = @skills
       overrides = agent_scope(agent)
       return shared.values if overrides.empty?
@@ -57,6 +65,7 @@ module Insika
     end
 
     def find(name, agent: nil)
+      reload if stale?
       agent_scope(agent)[name.to_s] || @skills[name.to_s]
     end
 
@@ -64,6 +73,8 @@ module Insika
     # authored/edited skill takes effect without a restart. A turn in progress
     # captured @skills at dispatch, so it does not see the swap mid-flight.
     def reload
+      @token = version_token
+      @checked_at = @clock.call
       @skills, @agent_skills = load_all
       self
     end
@@ -154,6 +165,21 @@ module Insika
     # ("1" from a checkbox, "true" from a pack) — same reading as
     # AgentProfile#stream_public?. Anything else (a list, nil, false) is not blanket.
     def blanket?(spec) = Coercion.truthy?(spec)
+
+    # The token moves on any config write, so a reload may find nothing new. Read
+    # BEFORE load_all in `reload`: a write landing in between leaves the old token,
+    # and the next check reloads again instead of missing it.
+    def stale?
+      return false unless @store.respond_to?(:version_token)
+
+      now = @clock.call
+      return false if now - @checked_at < @recheck
+
+      @checked_at = now
+      version_token != @token
+    end
+
+    def version_token = @store.respond_to?(:version_token) ? @store.version_token : nil
 
     # An agent's override index; {} for a nil agent or one that specialized nothing.
     def agent_scope(agent) = agent.nil? ? {} : (@agent_skills[agent.to_s] || {})
