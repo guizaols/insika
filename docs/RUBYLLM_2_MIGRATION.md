@@ -14,7 +14,7 @@ delegate provider protocols, tool schemas, and cache formatting to RubyLLM.
 No Rails, package extraction or database migration. JSONSchemer is a direct
 dependency for workflow and tool argument validation.
 
-The follow-up [ecosystem audit and execution status](superpowers/plans/2026-09-22-rubyllm-ecosystem-audit.md)
+The follow-up ecosystem audit and execution status (kept with the internal plans)
 records replacements and the concrete gates that still block others.
 
 ## Dependency
@@ -99,8 +99,7 @@ Native `with_fallbacks` adoption remains deferred: it restores the original mode
 before the next generation and requires adaptation for model-bound compaction.
 
 After native compaction, operator approvals and native transport retries: **5,603 examples, zero failures** (seed 32098).
-See the [execution record](superpowers/plans/2026-09-22-rubyllm-ecosystem-audit.md#execution-verification)
-for the new contracts, remaining replacement gates and offline benchmark.
+The execution record (kept with the internal plans) has the new contracts, remaining replacement gates and offline benchmark.
 
 Full RSpec after the benchmark correction: **5,519 examples, zero failures**
 (seed 55367). Studio: **50 tests passed** during the preceding migration validation.

@@ -2442,7 +2442,7 @@ end
       # Names of the DATA-DEFINED tools (editable via the UI). The rest of the catalog are
       # code tools (allow/deny only). Used to mark and link the editor.
       @data_tool_names = insika[:tool_store] ? insika[:tool_store].names : []
-      # A data tool's `group` (natura, b2b, groceries…) splits the HTTP section, so a
+      # A data tool's `group` (commerce, b2b, groceries…) splits the HTTP section, so a
       # catalog with every store type's tools reads by type instead of one long list.
       data_groups = (insika[:tool_store]&.all || []).to_h { |d| [(d["name"] || d[:name]).to_s, (d["group"] || d[:group]).to_s] }
       @tool_groups = @tools.group_by do |tool|

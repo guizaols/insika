@@ -7,6 +7,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-23
+
+### Removed
+
+- Internal planning notes (`docs/superpowers/`) are no longer in the repository or the
+  gem. 1.0.0 shipped them by mistake; the packaging now never ships that directory.
+
 ## [1.0.0] - 2026-10-23
 
 ### Added
