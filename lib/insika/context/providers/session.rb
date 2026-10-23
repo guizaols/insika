@@ -131,12 +131,31 @@ module Insika
           if upto.positive? && state["native"]
             # ponytail: budget the full fallback too; model-aware allocation can
             # recover this headroom once model selection precedes context building.
-            prefix = { "native_compaction" => state["native"], "messages" => messages.take(upto) }
-            return [[prefix] + messages.drop(upto), nil]
+            prefix = { "native_compaction" => state["native"], "messages" => without_no_reply(messages.take(upto)) }
+            return [[prefix] + without_no_reply(messages.drop(upto)), nil]
           end
-          return [messages, nil] unless upto.positive? && Coercion.present?(state["summary"])
+          return [without_no_reply(messages), nil] unless upto.positive? && Coercion.present?(state["summary"])
 
-          [messages.drop([upto, messages.size].min), state]
+          [without_no_reply(messages.drop([upto, messages.size].min)), state]
+        end
+
+        # `NO_REPLY` is the OpenClaw gateway's silence sentinel. Conversations migrated
+        # from it carry it as agent replies, and the compaction summary restates the
+        # rule ("call_support → responder NO_REPLY"); the Insika prompts forbid the
+        # word (silence is an empty answer here), so replaying it only teaches the
+        # model to write it (Loja Exemplo and Supermercado Exemplo, 23/10/2026).
+        # Replay-only, like the operator corrections above: the stored transcript is
+        # untouched. Applied after the compaction cut so `upto` keeps indexing the
+        # stored list. A message left empty is dropped — the customer never saw it.
+        def without_no_reply(messages)
+          messages.filter_map do |message|
+            content = message["content"]
+            next message unless message["role"] == "assistant" && Array(message["tool_calls"]).empty? &&
+                                content.is_a?(String) && content.include?("NO_REPLY")
+
+            kept = content.lines.grep_v(/NO_REPLY/).join.strip
+            message.merge("content" => kept) unless kept.empty?
+          end
         end
 
         # The compacted prefix as ONE history fragment, rendered FIRST (the
