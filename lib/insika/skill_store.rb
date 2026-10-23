@@ -55,6 +55,9 @@ module Insika
       names(agent: agent).each_with_object({}) { |n, acc| acc[n] = get(n, agent: agent) }
     end
 
+    # Changes whenever any config is written, in any process (ConfigStore#version_token).
+    def version_token = @cs.version_token
+
     # -> [String] every agent that has specialized at least one skill. What the
     # catalog overlays and `doctor` sweeps.
     def agents = @cs.keys(AGENT_SCOPE).sort
