@@ -663,7 +663,7 @@ module MigrateOpenclaw
     summary = nil
     if (b = path.rindex { |e| BOUNDARY_TYPES.include?(e["type"]) })
       boundary = path[b]
-      summary = boundary["summary"]
+      summary = scrub_summary(boundary["summary"])
       kept = path.index { |e| e["id"] && e["id"] == boundary["firstKeptEntryId"] }
       path = (kept && kept < b ? path[kept...b] : []) + path[(b + 1)..]
     end
@@ -694,6 +694,15 @@ module MigrateOpenclaw
   INTERNAL_REPLY = /\A\s*NO_REPLY\s*\z|<tool_call>|DSML/
 
   def internal_reply?(text) = text.match?(INTERNAL_REPLY)
+
+  # The compaction summary is OpenClaw's own notes, and it restates the platform's
+  # rules ("call_support → responder NO_REPLY") — seeded as the agent's first reply it
+  # tells the Insika agent to write the sentinel its prompt forbids (Supermercado
+  # Violeta, 23/10/2026). Drop those lines; the customer context around them stays.
+  def scrub_summary(summary)
+    kept = summary.to_s.lines.grep_v(/NO_REPLY|<tool_call>|DSML/).join.strip
+    kept.empty? ? nil : kept
+  end
 
   def message_text(content)
     return content.to_s.strip unless content.is_a?(Array)

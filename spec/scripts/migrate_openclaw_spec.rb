@@ -523,6 +523,27 @@ RSpec.describe MigrateOpenclaw do
       expect(plan["history"].first["role"]).to eq("assistant")
     end
 
+    it "drops the platform's NO_REPLY rules from the summary and keeps the customer context" do
+      summary = "Cliente quer arroz 5 kg.\n- call_support → responder NO_REPLY.\n" \
+                "Escalar via call_support + NO_REPLY sem resposta na base.\nMora no Centro."
+      d = db(root, "agents/shop")
+      session(d, "agent:shop:openresponses-user:8", "w", NOW, [
+        msg("1", nil, "user", "antes"),
+        { "type" => "compaction", "id" => "c", "parentId" => "1", "summary" => summary },
+        msg("2", "c", "user", "voltei")
+      ])
+      session(d, "agent:shop:openresponses-user:6", "w2", NOW, [
+        msg("1", nil, "user", "antes"),
+        { "type" => "compaction", "id" => "c", "parentId" => "1", "summary" => "call_support → NO_REPLY" },
+        msg("2", "c", "user", "voltei")
+      ])
+      d.close
+
+      plan = described_class.seed_plan(root, agent: "shop", now: NOW).to_h { |s| [s["id"], s] }
+      expect(plan["8"]["history"].first).to eq("role" => "assistant", "content" => "Cliente quer arroz 5 kg.\nMora no Centro.")
+      expect(plan["6"]).to include("summary" => nil, "history" => [{ "role" => "user", "content" => "voltei" }])
+    end
+
     it "honours an explicit leaf and ignores side appends" do
       d = db(root, "agents/shop")
       session(d, "agent:shop:openresponses-user:5", "w", NOW, [
