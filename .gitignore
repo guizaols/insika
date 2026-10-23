@@ -101,3 +101,6 @@ evals/bench/confirmation/REPORT-16-recheck.md
 
 # Internal plans (customer names, live results) live in the private deploy repo.
 docs/superpowers/
+
+# Eval run output (evals/run.rb writes one JSON per run); pass --out to keep one elsewhere.
+evals/reports/
