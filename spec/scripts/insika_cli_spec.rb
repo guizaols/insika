@@ -282,7 +282,7 @@ RSpec.describe "bin/insika" do
 
     # Real regression: extract: true with no "provider/model" ref anywhere
     # (agent knowledge.model, no platform utility_model) skips "no_model"
-    # rather than crashing — caught live against agent-store-cacau-show on
+    # rather than crashing — caught live against a real store agent on
     # staging, where knowledge:backfill first raised a RubyLLM::ConfigurationError
     # (the CLI never called configure_cli_llm!, PR fixed here) and then, once
     # keys were wired, needed a "provider/model" ref (a bare "deepseek-chat"

@@ -36,5 +36,5 @@ before cached history is used. Local native purge still requires an explicit cle
 Run the isolated HTTP proof (synthetic model/tools, temporary databases):
 
 ```sh
-SHARED_CONVERSATIONS_SOURCE=/path/to/agentshop-memory bundle exec rspec spec/insika/shared_conversations_http_spec.rb
+SHARED_CONVERSATIONS_SOURCE=/path/to/shared-memory-repo bundle exec rspec spec/insika/shared_conversations_http_spec.rb
 ```
