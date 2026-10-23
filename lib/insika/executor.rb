@@ -1895,6 +1895,7 @@ module Insika
           await_native_approvals(state, chat)
         end
         response = chat.step(&on_chunk)
+        recover_text_tool_call(state, chat, response)
         close_halted_tool_calls(state, chat) if state.native_approvals && state.tool_halt
         save_approval_continuation(state, chat, before) if state.tool_halt || !chat.complete?
         break if state.tool_halt || chat.complete?
@@ -1905,6 +1906,35 @@ module Insika
       # a delta because a steered message can continue this same chat once more.
       usage = chat_usage_since(chat, before, response)
       state.usage = merge_usage(with_model_source(usage, state.model_selection), state.usage) if usage
+    end
+
+    # The model wrote the call as TEXT (see TextToolCall). Swap that message for the
+    # tool call it meant, BEFORE the loop checks `complete?`: the chat then has a
+    # pending call, the next step runs the tool, and the model answers from the
+    # result. The swapped message is what the session persists, so the markup never
+    # reaches the history. TurnOutput already took the markup as the answer
+    # candidate at the boundary; the message that ends the turn now replaces it.
+    def recover_text_tool_call(state, chat, response)
+      # RubyLLM is required lazily (the load-guard); FakeChat answers plain structs.
+      return unless defined?(RubyLLM::Message) && response.is_a?(RubyLLM::Message)
+      return unless response.role == :assistant && !response.tool_call?
+      return unless chat.messages.last.equal?(response)
+
+      parsed = TextToolCall.parse(response.content, chat.tools.keys.map(&:to_s)) or return
+      calls = parsed[:calls].to_h do |call|
+        id = "call_text_#{SecureRandom.hex(6)}"
+        [id, RubyLLM::ToolCall.new(id: id, name: call[:name], arguments: call[:arguments])]
+      end
+      chat.messages.pop
+      chat.add_message(RubyLLM::Message.new(
+        role: :assistant, content: parsed[:text], tool_calls: calls, model: response.model,
+        tokens: response.tokens, thinking: response.thinking, raw_reasoning: response.raw_reasoning
+      ))
+      names = calls.values.map(&:name)
+      # One line per recovery in the deploy log: it is how the rate of text tool
+      # calls is measured per agent.
+      warn "[insika] text tool call recovered agent=#{state.profile&.id} tools=#{names.join(',')}"
+      emit(:tool_call_recovered, { tools: names }, task: state.task) if state.task
     end
 
     def chat_usage_since(chat, before, response = nil)

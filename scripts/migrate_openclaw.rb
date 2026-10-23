@@ -674,7 +674,7 @@ module MigrateOpenclaw
 
       text = message_text(m["content"])
       text = strip_envelope(text) if m["role"] == "user"
-      next if text.empty?
+      next if text.empty? || (m["role"] == "assistant" && internal_reply?(text))
 
       if acc.last && acc.last["role"] == m["role"]
         acc.last["content"] += "\n\n#{text}"
@@ -684,6 +684,16 @@ module MigrateOpenclaw
     end
     [summary, history]
   end
+
+  # What the OpenClaw agent wrote for the PLATFORM, not the customer: the `NO_REPLY`
+  # sentinel (silence) and a tool call written as text (DSML or `<tool_call>`, which
+  # the consumer suppressed). Seeded as an agent reply it teaches the Insika agent to
+  # answer that way — and the Insika prompt never mentions `NO_REPLY`, so it is a
+  # token the model can only copy (Loja Exemplo, 23/10/2026). The customer never
+  # saw either, so dropping them keeps the history true to the chat.
+  INTERNAL_REPLY = /\A\s*NO_REPLY\s*\z|<tool_call>|DSML/
+
+  def internal_reply?(text) = text.match?(INTERNAL_REPLY)
 
   def message_text(content)
     return content.to_s.strip unless content.is_a?(Array)
