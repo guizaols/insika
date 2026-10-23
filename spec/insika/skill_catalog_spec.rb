@@ -229,6 +229,38 @@ RSpec.describe Insika::SkillCatalog do
     end
   end
 
+  # `write_skill` reloads only the catalog of the worker that handled it. Measured in
+  # production: 9 skills written in a row, the Studio's worker listed the first 6.
+  describe "a skill written by another process" do
+    let(:shared) { Insika::Stores::Memory.new }
+    let(:now) { [0.0] }
+    let(:other) { Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: shared)) }
+    let(:mine) do
+      described_class.new(@root, store: Insika::SkillStore.new(config_store: Insika::ConfigStore.new(store: shared)),
+                                 recheck: 2, clock: -> { now[0] })
+    end
+    def skill_md(name, body) = "---\nname: #{name}\ndescription: d\n---\n#{body}\n"
+
+    it "shows up once the recheck window passes, with no reload of its own", :aggregate_failures do
+      expect(mine.find("pedido")).to be_nil
+      other.write("pedido", skill_md("pedido", "de outro worker"))
+      now[0] = 1.0
+      expect(mine.all.map(&:name)).not_to include("pedido")
+      now[0] = 3.0
+      expect(mine.all.map(&:name)).to include("pedido")
+      expect(mine.find("pedido").body).to eq("de outro worker")
+    end
+
+    it "an agent's override written elsewhere reaches it too" do
+      other.write("pedido", skill_md("pedido", "compartilhada"))
+      now[0] = 3.0
+      mine.all
+      other.write("pedido", skill_md("pedido", "da loja"), agent: "loja-a")
+      now[0] = 6.0
+      expect(mine.find("pedido", agent: "loja-a").body).to eq("da loja")
+    end
+  end
+
   # The precedence chain gains a dimension: (agent, name) in the agent scope, then
   # `name` in the shared one. The live consequence of not having it: three
   # skills shared between two stores, each naming one store in its text, served to
