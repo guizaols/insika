@@ -1,15 +1,35 @@
-<%# Type-to-search agent picker: an <input list> over a <datalist> — native
-    search in every browser, no JS. Locals: name, options (ids), value,
-    blank (placeholder meaning "none / all"; nil = a value is required),
-    auto_submit (submit the form when a pick is committed). The server still
-    validates the value: a typed id that is not an agent is refused there. %>
+<%# Type-to-search agent picker: a search input over a listbox of agents
+    (agent-picker controller). Without JS the list stays hidden and the input
+    still takes a typed id. Locals: name, options (ids, or [id, count] pairs —
+    the count shows on the right), value, blank (placeholder meaning
+    "none / all"; nil = a value is required, and no "all" row), all_label /
+    all_count (the "all" row, shown only with blank), label (aria-label when
+    no <label> wraps the picker), auto_submit (submit the form when a pick is
+    committed). The server still validates the value: a typed id that is not
+    an agent is refused there. %>
 <%# unique per page: a page can carry two pickers (a filter and a form) %>
 <% list_id = "agent-options-#{name}-#{@agent_picker_seq = (@agent_picker_seq || 0) + 1}" %>
 <% blank = defined?(blank) ? blank : nil %>
 <% auto_submit = defined?(auto_submit) && auto_submit %>
-<input type="search" class="filter-input agent-picker" name="<%= name %>" list="<%= list_id %>" value="<%= value %>" autocomplete="off"
-       placeholder="<%= blank || "Type to search agents…" %>"<%== " required" unless blank %>
-       <%== %(data-controller="auto-submit" data-action="change->auto-submit#submit") if auto_submit %>>
-<datalist id="<%= list_id %>">
-  <% Array(options).each do |id| %><option value="<%= id %>"></option><% end %>
-</datalist>
+<% label = defined?(label) ? label : nil %>
+<% rows = Array(options).map { |o| o.is_a?(Array) ? o.first(2) : [o, nil] } %>
+<% rows.unshift(["", defined?(all_count) ? all_count : nil]) if blank %>
+<% all_label = (defined?(all_label) && all_label) || "All agents" %>
+<div class="picker" data-controller="agent-picker" data-agent-picker-auto-submit-value="<%= auto_submit %>"
+     data-action="focusout->agent-picker#leave">
+  <input type="search" class="filter-input agent-picker" name="<%= name %>" value="<%= value %>" autocomplete="off"
+         placeholder="<%= blank || "Type to search agents…" %>"<%== " required" unless blank %><% if label %> aria-label="<%= label %>"<% end %>
+         role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="<%= list_id %>"
+         data-agent-picker-target="input"
+         data-action="focus->agent-picker#open input->agent-picker#type keydown->agent-picker#key search->agent-picker#cleared">
+  <div class="picker-list" id="<%= list_id %>" role="listbox" hidden
+       data-agent-picker-target="list" data-action="mousedown->agent-picker#hold">
+    <% rows.each_with_index do |(id, count), i| %>
+      <button type="button" tabindex="-1" class="picker-opt" role="option" id="<%= list_id %>-<%= i %>" data-value="<%= id %>"
+              data-agent-picker-target="option" data-action="click->agent-picker#choose">
+        <span class="n"><%= id.to_s.empty? ? all_label : id %></span><% unless count.nil? %><span class="c"><%= count %></span><% end %>
+      </button>
+    <% end %>
+    <div class="picker-empty" data-agent-picker-target="empty" hidden>No agent matches.</div>
+  </div>
+</div>

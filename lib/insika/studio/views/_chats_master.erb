@@ -9,14 +9,10 @@
   </div>
   <%# Typing filters the rows shown; Enter searches every conversation by id. %>
   <form class="drill-search" method="get" action="/studio/chats" data-turbo-frame="_top">
-    <%# The agent filter: a select, not a column — six rows never earned the width. %>
-    <select name="agent" class="filter-input" aria-label="Filter by agent"
-            data-controller="auto-submit" data-action="change->auto-submit#submit">
-      <option value="">All agents · <%= @chats_all %></option>
-      <% @chat_agents.each do |id, count, _last| %>
-        <option value="<%= id %>"<%== ' selected' if id == @agent %>><%= id %> · <%= count %></option>
-      <% end %>
-    </select>
+    <%# The agent filter: a type-to-search picker, not a column — the rows never earned the width. %>
+    <%== render("_agent_picker", locals: { name: "agent", options: @chat_agents.map { |id, count, _last| [id, count] },
+                                           value: @agent, blank: "All agents · #{@chats_all} — type to search",
+                                           all_count: @chats_all, label: "Filter by agent", auto_submit: true }) %>
     <% if @status %><input type="hidden" name="status" value="<%= @status %>"><% end %>
     <input type="search" name="q" value="<%= @query %>" class="filter-input" placeholder="Filter… Enter searches all by id" aria-label="Filter conversations"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
