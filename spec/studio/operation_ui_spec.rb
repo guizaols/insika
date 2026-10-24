@@ -108,7 +108,9 @@ RSpec.describe "Studio operation screens" do
     expect(request("GET", "/chats?limit=200").body).not_to include("Load ")
 
     rare = request("GET", "/chats?agent=rare").body
-    expect(rare).to include("All agents · 106", '<option value="support">support · 105</option>')
-    expect(rare).to include('<option value="rare" selected>rare · 1</option>')
+    # The agent filter is the type-to-search picker: each agent with its count, the
+    # current one prefilled in the input.
+    expect(rare).to include("All agents · 106", 'data-value="support"', '<span class="n">support</span><span class="c">105</span>')
+    expect(rare).to match(/<input type="search"[^>]*name="agent" value="rare"/)
   end
 end
