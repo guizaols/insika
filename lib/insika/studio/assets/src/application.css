@@ -936,7 +936,7 @@
   /* Agent picker list (_agent_picker.erb): floats under its input, names wrap
      instead of truncating (agent ids share long prefixes), count on the right. */
   .picker { position:relative; min-width:0; }
-  .picker-list { position:absolute; z-index:30; top:calc(100% + .3rem); left:0; right:0; min-width:16rem;
+  .picker-list { position:absolute; z-index:30; top:calc(100% + .3rem); left:0; width:max-content; min-width:100%; max-width:min(34rem, 90vw);
                  max-height:22rem; overflow-y:auto; padding:.3rem; border:1px solid var(--line-2);
                  border-radius:var(--radius); background:var(--panel); box-shadow:var(--shadow-lg); }
   .picker-list[hidden] { display:none; }
