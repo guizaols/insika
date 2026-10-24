@@ -27,6 +27,11 @@ trap 'stop_all; exit 0' TERM INT
 
 for ((i = 0; i < N; i++)); do
   port=$((BASE_PORT + i))
+  # Every worker exports the same metric series; without a per-worker
+  # service.instance.id the backend sees one counter jumping between N values,
+  # reads each drop as a reset and inflates every increase (and the turn p95).
+  # The index is stable across restarts, so no new series per deploy.
+  OTEL_RESOURCE_ATTRIBUTES="service.instance.id=worker-${i}${OTEL_RESOURCE_ATTRIBUTES:+,${OTEL_RESOURCE_ATTRIBUTES}}" \
   bundle exec falcon serve --bind "http://127.0.0.1:${port}" --count 1 --graceful-stop $((DRAIN + 5)) &
   pids+=($!)
   backends="${backends:+${backends},}http://127.0.0.1:${port}"

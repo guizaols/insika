@@ -7,6 +7,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ## [Unreleased]
 
+### Fixed
+
+- With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the
+  backend read the interleaved values as counter resets and inflated turn counts,
+  tool counts and the turn-duration percentiles. Each worker now sets
+  `service.instance.id=worker-<index>` (merged into any `OTEL_RESOURCE_ATTRIBUTES`).
+
 ## [1.0.1] - 2026-10-23
 
 ### Removed
