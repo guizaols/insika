@@ -8,10 +8,10 @@
   <% if users.empty? %>
     <p class="muted">No agent can call this tool yet.</p>
   <% else %>
-    <p>
+    <div class="users-grid">
       <% users.each do |id| %>
-        <a class="pill plain" href="/studio/agents/<%= Rack::Utils.escape(id) %>?tab=tools" data-turbo-frame="_top"><%= id %></a>
+        <a href="/studio/agents/<%= Rack::Utils.escape(id) %>?tab=tools" data-turbo-frame="_top"><%= id %></a>
       <% end %>
-    </p>
+    </div>
   <% end %>
 </div>
