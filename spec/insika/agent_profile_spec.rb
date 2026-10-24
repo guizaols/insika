@@ -153,11 +153,11 @@ RSpec.describe Insika::AgentProfile do
       expect(on.tool_output_compression).to be(true)
     end
 
-    it "DEFAULT_LIMITS matches (+ approval_timeout from, tool_concurrency from)" do
+    it "DEFAULT_LIMITS matches (tool_concurrency has a platform layer, so it is absent)" do
       expect(described_class::DEFAULT_LIMITS).to eq(
         turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
         context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
-        approval_timeout: 3_600, tool_concurrency: 1
+        approval_timeout: 3_600
       )
     end
 

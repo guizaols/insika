@@ -7,6 +7,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ## [Unreleased]
 
+### Changed
+
+- `tool_concurrency` has a platform layer: Studio > Settings sets it for every agent
+  that sets none, and the agent value still wins. It left `DEFAULT_LIMITS` for that.
+  Agents saved before this carry the old default (`tool_concurrency: 1`) and keep
+  ignoring the platform value until `insika doctor --fix` drops it.
+
 ### Fixed
 
 - With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the

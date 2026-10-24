@@ -327,13 +327,11 @@ module Insika
       # consecutive identical (tool, args) calls that trigger the ONE
       # loop warning; a repeat after it aborts like max_tool_calls. < 2 = off.
       max_tool_repeat: 3,
-      approval_timeout: 3_600, # cap on the wait for human approval (~1h)
-      # parallel tool calls. ONE number is both the switch and the cap
-      # (nil/0/1 = serial, the default; N > 1 = at most N tool calls in flight).
-      # It sits next to tool_timeout/max_tool_calls because it is the third bound
-      # on tool execution. Read through TurnState#tool_concurrency, which also
-      # applies the approval gate.
-      tool_concurrency: 1
+      approval_timeout: 3_600 # cap on the wait for human approval (~1h)
+      # tool_concurrency is absent on purpose: it has a platform layer
+      # (Settings["tool_concurrency"]), and a default here would make the key present
+      # on every agent, so the platform value would apply to nobody. Resolved by
+      # TurnState#requested_tool_concurrency.
     }.freeze
 
     # `model` is OPTIONAL as of v2: an agent without one resolves the

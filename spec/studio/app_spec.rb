@@ -931,7 +931,7 @@ end
 
   # the third tool-execution bound sits in the same form as the two
   # timeouts, so an operator can turn parallel tool calls on without the DSL.
-  it "config writes tool_concurrency, and a blank field keeps what is stored" do
+  it "config writes tool_concurrency, and a blank field drops it (inherit the platform)" do
     app, bus = build_app
     client = login(app)
     csrf = csrf_from(client.get("/agents/bia").body)
@@ -940,7 +940,7 @@ end
 
     csrf = csrf_from(client.get("/agents/bia").body)
     client.post("/agents/bia/config", params: { "model" => "x", "tool_concurrency" => "", "_csrf" => csrf })
-    expect(bus.last(:update_agent).payload[:limits][:tool_concurrency]).to eq(1) # DEFAULT_LIMITS
+    expect(bus.last(:update_agent).payload[:limits]).not_to have_key(:tool_concurrency)
   end
 
   describe "agent defaults" do
