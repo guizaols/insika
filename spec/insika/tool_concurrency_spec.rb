@@ -25,18 +25,28 @@ RSpec.describe "tool concurrency" do
     Insika::AgentProfile.build(id: "a", model: "m", limits: limits)
   end
 
-  def state(concurrency: nil, requires_approval: [], task_id: "t", **limits)
+  def state(concurrency: nil, requires_approval: [], task_id: "t", platform: nil, **limits)
     st = Insika::TurnState.new(task: Struct.new(:id, :session_id).new(task_id, nil),
                                profile: profile(concurrency: concurrency, **limits),
                                turn: 1, message: "oi")
     st.requires_approval = requires_approval
+    st.platform_tool_concurrency = platform
     st
   end
 
   describe "the knob (limits[:tool_concurrency])" do
-    it "is off by default — one number, and 1 means serial" do
-      expect(Insika::AgentProfile::DEFAULT_LIMITS[:tool_concurrency]).to eq(1)
+    it "is off by default — no agent key and no platform value means serial" do
+      expect(Insika::AgentProfile::DEFAULT_LIMITS).not_to have_key(:tool_concurrency)
       expect(state.tool_concurrency).to be_nil
+    end
+
+    it "inherits the platform value when the agent sets none" do
+      expect(state(platform: 4).tool_concurrency).to eq(4)
+    end
+
+    it "a PRESENT agent key wins over the platform, including 1 (serial for this agent)" do
+      expect(state(concurrency: 2, platform: 4).tool_concurrency).to eq(2)
+      expect(state(concurrency: 1, platform: 4).tool_concurrency).to be_nil
     end
 
     it "nil / 0 / 1 all mean off (parity), N > 1 is the cap" do

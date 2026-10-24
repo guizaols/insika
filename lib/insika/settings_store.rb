@@ -30,6 +30,10 @@ module Insika
       "max_retries" => 2,
       "turn_timeout" => 120,
       "tool_timeout" => 30,
+      # Platform layer of parallel tool calls (TurnState#requested_tool_concurrency):
+      # an agent without limits[:tool_concurrency] runs with this one. nil = serial.
+      # Additive key — reads overlay DEFAULTS.
+      "tool_concurrency" => nil,
       # In-session compaction (RFC-0044): when a session's UNCOMPACTED
       # transcript grows past `compact_after` messages, everything but the
       # last `keep_last` is summarized (model -> compaction.model, else the

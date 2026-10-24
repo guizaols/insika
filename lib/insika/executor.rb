@@ -1008,6 +1008,7 @@ module Insika
       state.approval_continuation = resume_from&.continuation
       state.usage = state.approval_continuation&.fetch("usage", nil)&.transform_keys(&:to_sym)
       state.fence_max_chars = fence_max_chars if Insika::Fence.enabled?(profile)
+      state.platform_tool_concurrency = @settings_store&.get&.fetch("tool_concurrency", nil)
       # resolved for the RUN, not per message, so what the turn accepts cannot
       # change under it. Same cost as the EdgeLimiter's per-turn resolution. Only for a
       # SESSION turn: steering needs a session to arrive through, and resolving here for a

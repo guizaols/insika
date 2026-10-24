@@ -13,16 +13,15 @@ module Studio
     # those ride the `carry` merge below (the guardrails corpora precedent).
     def config_patch(r)
       limits = @agent.limits.dup
-      # Always present via DEFAULT_LIMITS (tool_concurrency defaults to 1 = serial),
-      # so a blank field just keeps whatever is stored.
-      %w[turn_timeout tool_timeout tool_concurrency].each do |field|
+      # Always present via DEFAULT_LIMITS, so a blank field just keeps whatever is stored.
+      %w[turn_timeout tool_timeout].each do |field|
         v = presence(r.params[field])
         limits[field.to_sym] = Integer(v) if v
       end
-      # Per-agent edge overrides. Unlike the timeouts (always present via
-      # DEFAULT_LIMITS), these are OPT-IN keys: blank DELETES the override (inherit
-      # the platform edge settings); 0 explicitly disables for this agent.
-      %w[chat_rate_limit agent_token_ceiling].each do |field|
+      # Per-agent overrides of a platform layer. Unlike the timeouts (always present
+      # via DEFAULT_LIMITS), these are OPT-IN keys: blank DELETES the override (inherit
+      # the platform settings); 0 explicitly disables for this agent.
+      %w[chat_rate_limit agent_token_ceiling tool_concurrency].each do |field|
         v = edge_int(r.params[field], field)
         if v.nil?
           limits.delete(field.to_sym)
@@ -594,6 +593,8 @@ module Studio
       # per-tenant map in the record — the view says so.
       v = presence(r.params["memory_ttl_days"])
       patch["memory_ttl_days"] = v.nil? ? nil : Integer(v)
+      # Parallel tool calls for every agent that sets none. Blank = nil = serial.
+      patch["tool_concurrency"] = edge_int(r.params["tool_concurrency"], "tool_concurrency")
       # In-session compaction (RFC-0044). The checkbox is authoritative on
       # this form (unchecked = disable); the numbers keep their stored value
       # when cleared (deep_merge — the defaults backstop a fresh record);

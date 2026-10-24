@@ -447,6 +447,28 @@ RSpec.describe Insika::Doctor do
     end
   end
 
+  describe "tool-concurrency check (the old default pinned on stored agents)" do
+    let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
+    let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }
+
+    def finding = described_class.new(env: {}, profile_source: profiles).run.findings.find { |f| f.check == "tool-concurrency" }
+
+    it "warns on agents storing tool_concurrency: 1 and the fix drops only that key" do
+      cs.put("agents", "pinned", { "id" => "pinned", "model" => "m", "limits" => { "tool_concurrency" => 1, "turn_timeout" => 90 } })
+      cs.put("agents", "chosen", { "id" => "chosen", "model" => "m", "limits" => { "tool_concurrency" => 3 } })
+
+      f = finding
+      expect(f.severity).to eq(:warn)
+      expect(f.message).to include("1 agent(s)", "pinned")
+
+      f.fix.call
+      expect(cs.get("agents", "pinned")["limits"]).not_to have_key("tool_concurrency")
+      expect(cs.get("agents", "pinned")["limits"]["turn_timeout"]).to eq(90)
+      expect(cs.get("agents", "chosen")["limits"]["tool_concurrency"]).to eq(3)
+      expect(finding).to be_nil
+    end
+  end
+
   describe "grounding check (— a matcher that matches nothing is useless)" do
     let(:cs) { Insika::ConfigStore.new(store: Insika::Stores::Memory.new) }
     let(:profiles) { Insika::StoredProfileSource.new(config_store: cs) }

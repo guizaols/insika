@@ -208,10 +208,20 @@ module Insika
     # runs its tools serially. Per-TURN and not per-profile because
     # `requires_approval` comes from the Resolution: it can be empty on a turn
     # whose profile does list approvals.
+    #
+    # Resolution: agent → platform → serial. A PRESENT agent key wins, including
+    # nil/0/1 (serial for this agent, platform ignored), the EdgeLimiter rule.
+    # ONE number is both the switch and the cap (nil/0/1 = serial; N > 1 = at most
+    # N tool calls in flight).
     def requested_tool_concurrency
-      n = ((profile.respond_to?(:limits) && profile.limits) || {})[:tool_concurrency].to_i
+      limits = (profile.respond_to?(:limits) && profile.limits) || {}
+      n = (limits.key?(:tool_concurrency) ? limits[:tool_concurrency] : platform_tool_concurrency).to_i
       n > 1 ? n : nil
     end
+
+    # Settings["tool_concurrency"], stamped by the Executor per turn. nil = no
+    # platform layer (serial unless the agent says otherwise).
+    attr_accessor :platform_tool_concurrency
 
     def tool_concurrency
       return nil unless Array(requires_approval).empty?

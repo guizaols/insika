@@ -180,7 +180,7 @@ module Insika
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
                     check_compaction check_harvest check_schedules check_guardrail_corpora
-                    check_tool_allowlist_policy check_fencing check_eval_seeding
+                    check_tool_allowlist_policy check_tool_concurrency_pin check_fencing check_eval_seeding
                     check_presentation_tools check_provenance check_customer_confirm]
 
     def safe(check)
@@ -945,6 +945,28 @@ def wrapped_content?(content) = /\A\s*\{\s*"[^"]+"\s*=>/.match?(content.to_s)
     end
 
     def names_tool_allowlist?(raw) = Array(raw["policies"]).any? { |p| p.to_s == "tool_allowlist" }
+
+    # `tool_concurrency: 1` used to be in DEFAULT_LIMITS, so every agent saved
+    # before it got a platform layer carries the old default as if authored, and a
+    # present key wins over Settings["tool_concurrency"]. The fix drops that 1: it
+    # meant serial, which is exactly what an agent without the key and a blank
+    # platform value runs, so nothing changes until the platform sets a number.
+    def check_tool_concurrency_pin
+      return [] unless @profile_source.respond_to?(:all_raw)
+
+      pinned = @profile_source.all_raw.select { |r| (r["limits"] || {})["tool_concurrency"] == 1 }.map { |r| r["id"] }
+      return [] if pinned.empty?
+
+      [Finding.new(check: "tool-concurrency", severity: :warn,
+                   message: "#{pinned.size} agent(s) store tool_concurrency: 1, the old default, so they ignore " \
+                            "the platform tool_concurrency (#{pinned.first(5).join(", ")}#{" …" if pinned.size > 5})",
+                   fix: -> { pinned.each { |id| unpin_tool_concurrency(id) } })]
+    end
+
+    def unpin_tool_concurrency(id)
+      profile = @profile_source.fetch(id)
+      @profile_source.put(profile.with(limits: profile.limits.except(:tool_concurrency))) if profile
+    end
 
     # A stored agent that allows a PRESENTATION tool but no tool declaring
     # `evidence`. The presentation tool shows only cards an evidence tool returned

@@ -103,7 +103,7 @@ lookups.
 DEFAULT_LIMITS = {
   turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
   context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
-  approval_timeout: 3_600, tool_concurrency: 1
+  approval_timeout: 3_600
 }
 ```
 
@@ -187,7 +187,7 @@ exposed by the configured relay/widget environment settings.
 
 ### Why some limits are missing from that list
 
-`chat_rate_limit`, `agent_token_ceiling`, `queue_mode`, `debounce_ms`,
+`chat_rate_limit`, `agent_token_ceiling`, `tool_concurrency`, `queue_mode`, `debounce_ms`,
 `debounce_max_ms`, `steer_max_messages` and `steer_join` are real limits, and none
 of them appears above. That is the rule, not an oversight:
 
@@ -203,7 +203,7 @@ So the two groups read differently on purpose:
 
 | | In `DEFAULT_LIMITS` | Absent |
 |---|---|---|
-| Examples | `turn_timeout`, `tool_concurrency`, `context_budget` | `chat_rate_limit`, `queue_mode`, `debounce_ms` |
+| Examples | `turn_timeout`, `context_budget` | `chat_rate_limit`, `tool_concurrency`, `queue_mode`, `debounce_ms` |
 | Absent from your profile means | the constant above | ask the platform, then off |
 | You set it to `nil`/`0` | back to the constant | **off**, platform ignored |
 
@@ -214,8 +214,11 @@ default**. Raise `tool_concurrency` to overlap independent reads, capped at that
 number in flight. Tools marked `side_effect` still execute one at a time per session:
 
 ```ruby
-limit :tool_concurrency, 4   # nil / 0 / 1 = serial (the default); N = at most N at once
+limit :tool_concurrency, 4   # nil / 0 / 1 = serial; N = at most N at once
 ```
+
+An agent without the key runs with the platform value (Studio > Settings >
+`tool_concurrency`), and serially when that is blank too.
 
 One number is both the switch and the cap. It pays off only when a turn issues
 several **slow, independent reads** (data tools waiting on HTTP). It buys nothing
