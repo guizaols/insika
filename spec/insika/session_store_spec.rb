@@ -428,6 +428,23 @@ RSpec.describe Insika::SessionStore do
       expect(sessions.all_stats.first.flagged).to eq(1)
     end
 
+    it "add_guardrail_flags appends only the flags the turn's user message lacks, keeping reviews" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "x", "task_id" => "t1",
+                                       "guardrail_flags" => [{ "category" => "pii" }] },
+                                     { "role" => "assistant", "content" => "y", "task_id" => "t1" }])
+      sessions.review_guardrail_flag("a", message: 0, flag: 0, status: "resolved")
+      flags = [{ category: "pii" }, { category: "promise", source: :moderator }]
+
+      2.times { sessions.add_guardrail_flags("a", task_id: "t1", flags: flags) }
+
+      stored = sessions.find("a").messages.first["guardrail_flags"]
+      expect(stored).to eq([{ "category" => "pii", "review" => stored.first["review"] },
+                            { "category" => "promise", "source" => "moderator" }])
+      expect(stored.first.dig("review", "status")).to eq("resolved")
+      expect(sessions.all_stats.first.flagged).to eq(1)
+    end
+
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")
