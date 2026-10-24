@@ -1720,7 +1720,7 @@ end
     body = login(app).get("/skills/pedido").body
 
     expect(body).to include('name="agent_ids[]"', 'name="eager_ids[]"')
-    grid = body[body.index("agent-grid")..]
+    grid = body[body.index('class="avail"')..]
     # bia has it always-on, chef only allowed: two checked allow boxes, ONE checked eager
     expect(grid.scan(/name="eager_ids\[\]" value="(\w+)" checked/).flatten).to eq(["bia"])
   end

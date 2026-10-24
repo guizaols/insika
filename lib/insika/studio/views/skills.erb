@@ -124,27 +124,21 @@
               <% if @agents.empty? %>
                 <p class="muted">No agents configured.</p>
               <% else %>
-                <div class="check-grid agent-grid">
-                  <% @agents.each do |a| %>
-                    <% own = Array((@specialized || {})[@selected]).include?(a.id) %>
-                    <div class="agent-check">
-                      <div class="agent-check-name">
-                        <span class="mono"><%= a.id %></span>
-                        <% if own %>
-                          <a class="pill warn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>/skills/<%= Rack::Utils.escape(@selected) %>">own version</a>
-                        <% end %>
-                      </div>
-                      <label class="check tool-check">
-                        <input type="checkbox" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, @selected) %>>
-                        <span class="mono">allowed</span>
-                      </label>
-                      <label class="check tool-check">
-                        <input type="checkbox" name="eager_ids[]" value="<%= a.id %>"<%== " checked" if skill_eager_for?(a, @selected) %>>
-                        <span class="mono">always on</span>
-                      </label>
-                    </div>
-                  <% end %>
-                </div>
+                <table class="avail">
+                  <thead>
+                    <tr><th scope="col">agent</th><th scope="col" class="toggle">allowed</th><th scope="col" class="toggle">always on</th></tr>
+                  </thead>
+                  <tbody>
+                    <% @agents.each do |a| %>
+                      <% own = Array((@specialized || {})[@selected]).include?(a.id) %>
+                      <tr>
+                        <td class="avail-agent"><%= a.id %><% if own %><a class="pill warn" href="/studio/agents/<%= Rack::Utils.escape(a.id) %>/skills/<%= Rack::Utils.escape(@selected) %>">own version</a><% end %></td>
+                        <td class="toggle"><label class="check tool-check"><input type="checkbox" aria-label="<%= a.id %> allowed" name="agent_ids[]" value="<%= a.id %>"<%== " checked" if skill_enabled_for?(a, @selected) %>></label></td>
+                        <td class="toggle"><label class="check tool-check"><input type="checkbox" aria-label="<%= a.id %> always on" name="eager_ids[]" value="<%= a.id %>"<%== " checked" if skill_eager_for?(a, @selected) %>></label></td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
                 <div class="actions"><button type="submit" class="primary" data-turbo-submits-with="Applying…">Apply to agents</button></div>
               <% end %>
             </form>

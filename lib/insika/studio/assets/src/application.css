@@ -551,8 +551,8 @@
     background:var(--surface-2); color:var(--dim);
   }
   .identity .who { display:flex; flex-direction:column; min-width:0; line-height:1.3; }
-  .identity .name { font-weight:600; font-size:var(--text-sm); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .identity .id { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .identity .name { font-weight:600; font-size:var(--text-sm); overflow-wrap:anywhere; }
+  .identity .id { font-family:var(--mono); font-size:var(--text-xs); color:var(--faint); overflow-wrap:anywhere; }
   /* Hue from avatar_hue(id) — the same nine themed ramps the agent cards use. */
   .identity .av-1 { background:var(--av-1-bg); color:var(--av-1-fg); }
   .identity .av-2 { background:var(--av-2-bg); color:var(--av-2-fg); }
@@ -794,7 +794,10 @@
   .drill-item:hover { background:var(--surface-2); text-decoration:none; }
   .drill-item.active { border-color:var(--line-2); background:var(--surface-1); }
   .drill-item-name { font-family:var(--sans); font-size:var(--text-sm); font-weight:600; display:flex; align-items:center; gap:.4rem; min-width:0; }
-  .drill-item-name > span.txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .drill-item-name > span.txt { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+  .drill-item-name .pill { flex:0 0 auto; }
+  /* The agent count sits in a fixed-width column so the counts line up. */
+  .drill-item-sm .drill-item-name .pill:last-child { min-width:4.6rem; justify-content:center; }
   .drill-item.active .drill-item-name { color:var(--fg); }
   .drill-item-sub { font-size:var(--text-xs); color:var(--dim); margin-top:.1rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .drill-item.drill-item-sm { padding:.3rem .6rem; }
@@ -861,7 +864,7 @@
   /* ── Session viewer: transcript | metadata margin ─────── */
   .session-columns { display:flex; flex:1 1 auto; min-height:0; height:100%; }
   .session-transcript { flex:1 1 auto; min-width:0; overflow-y:auto; padding:1.1rem 1.5rem 2.5rem; }
-  .session-margin { flex:0 0 var(--pane-w, 380px); border-left:1px solid var(--line-1); overflow-y:auto;
+  .session-margin { flex:0 0 var(--pane-w, 300px); border-left:1px solid var(--line-1); overflow-y:auto;
     padding:.9rem 1rem 2.5rem; background:color-mix(in srgb,var(--surface-1) 55%,var(--panel)); color:inherit; }
   /* Wide: the margin is a column (the [popover] UA styles undone). Narrow: it is
      a drawer opened by the Details button, so the transcript keeps the width. */
@@ -972,16 +975,19 @@
   /* Skill availability — one card per agent, holding the TWO per-agent decisions
      about the same shared skill: may it load this, and does it always have it. Same
      chip language as the tool matrix; they are the same kind of screen. */
-  .agent-grid.check-grid { grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:.6rem; margin:.8rem 0 0; }
-  .agent-check {
-    display:flex; flex-direction:column; gap:.35rem; min-width:0;
-    padding:.55rem .65rem; border:1px solid var(--line-1); border-radius:var(--radius-sm); background:var(--surface-1);
-    transition:border-color var(--t-fast);
-  }
-  .agent-check:hover { border-color:var(--line-3); }
-  .agent-check-name { display:flex; align-items:center; gap:.5rem; min-width:0; }
-  .agent-check-name > .mono { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--text-sm); }
-  .agent-check-name .pill { flex:0 0 auto; text-decoration:none; }
+  /* Skill availability: one row per agent, the full id always visible. */
+  .avail { width:100%; margin:.8rem 0 0; border:1px solid var(--line-1); border-radius:var(--radius); border-collapse:separate; border-spacing:0; background:var(--panel); overflow:hidden; }
+  .avail th { font-family:var(--mono); font-size:.625rem; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); text-align:left; padding:.55rem .85rem; background:var(--surface-1); border-bottom:1px solid var(--line-1); }
+  .avail td { padding:.4rem .85rem; border-bottom:1px solid var(--line-1); font-size:var(--text-sm); }
+  .avail tr:last-child td { border-bottom:0; }
+  .avail td.avail-agent { font-family:var(--mono); overflow-wrap:anywhere; }
+  .avail td.avail-agent .pill { display:inline-flex; margin-left:.5rem; vertical-align:middle; text-decoration:none; }
+  .avail th.toggle, .avail td.toggle { width:7.5rem; }
+  .avail label.check.tool-check, .avail label.check.tool-check:has(input:checked) { display:inline-flex; width:auto; border:0; background:transparent; padding:0; }
+  /* "Used by": columns of full agent ids instead of a cloud of pills. */
+  .users-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(17rem,1fr)); border:1px solid var(--line-1); border-radius:var(--radius); background:var(--panel); overflow:hidden; }
+  .users-grid a { font-family:var(--mono); font-size:var(--text-sm); color:var(--fg); padding:.5rem .85rem; border-bottom:1px solid var(--line-1); overflow-wrap:anywhere; }
+  .users-grid a:hover { background:var(--surface-1); text-decoration:none; }
   .actions { display:flex; align-items:center; gap:.5rem; margin-top:1rem; flex-wrap:wrap; }
   .inline-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-top:.75rem; }
   .inline-form input[type=text] { width:auto; flex:1; min-width:150px; margin-top:0; }
@@ -1328,7 +1334,7 @@ fieldset.subgroup:has(> label.inherit input:checked) > :not(legend, label.inheri
   .markdown-preview code { background:var(--surface-2); padding:.1rem .35rem; border-radius:4px; }
   /* A channel markup tag in agent text (<carrossel/>): visibly markup, not prose. */
   .tag-token { font-family:var(--mono); font-size:.85em; color:var(--accent); background:var(--surface-2);
-               border:1px solid var(--line-2); padding:0 .3rem; border-radius:4px; white-space:nowrap; }
+               border:1px solid var(--line-2); padding:0 .3rem; border-radius:4px; white-space:normal; overflow-wrap:anywhere; }
   .markdown-preview pre { margin:.6rem 0; }
   .markdown-preview pre code { background:none; padding:0; }
   .markdown-preview blockquote { margin:.6rem 0; padding:.2rem 0 .2rem 1rem; border-left:2px solid var(--accent-bg); color:var(--dim); }
