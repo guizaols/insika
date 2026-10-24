@@ -229,6 +229,9 @@ RSpec.describe "Insika::Executor guardrails" do
       expect(flagged.data).to include(category: "promise", source: "moderator")
       # audit fires after the turn already completed
       expect(event_stream.types.index(:guardrail_flagged)).to be > event_stream.types.index(:task_completed)
+      # and survives a reload: stamped on the turn's user message
+      user = session_store.find("s1").messages.find { _1["role"] == "user" }
+      expect(user["guardrail_flags"]).to contain_exactly(include("category" => "promise", "source" => "moderator"))
     end
 
     it "the real validator does NOT double-flag text the stream filter already redacted (tiers compose)" do

@@ -985,6 +985,7 @@ module Insika
           # flush. AFTER persist_turn (already done), so a flush failure can
           # never un-commit the turn (the ledger swallows store errors).
           st.evidence_ledger&.flush!
+          persist_late_guardrail_flags(task, st)
           emit_guardrail_flags(task, st)
         end
       end
@@ -2749,6 +2750,21 @@ module Insika
       # the state, keeping the Executor decoupled from Safety. an
       # :enforce cut rides the SAME event with `action: "cut"` so the audit can
       # distinguish a cut from a flag.
+      # The after_task flags (OutputValidator, grounding) arrive after persist_turn
+      # stamped the turn's user message, so without this they live only in the live
+      # stream and vanish from the Studio on reload. Best-effort like the ledger
+      # flush: the turn is already committed.
+      def persist_late_guardrail_flags(task, state)
+        return unless task.session_id && state.respond_to?(:guardrail_flags)
+
+        flags = Array(state.guardrail_flags)
+        return if flags.empty?
+
+        @session_store.add_guardrail_flags(task.session_id, task_id: task.id, flags: flags)
+      rescue Insika::StoreError, Insika::NotFoundError
+        nil
+      end
+
       def emit_guardrail_flags(task, state)
         return unless state.respond_to?(:guardrail_flags)
 

@@ -229,6 +229,24 @@ module Insika
       to_session(record)
     end
 
+    # -> Session. Flags raised AFTER the turn was persisted (the after_task
+    # OutputValidator / grounding) join the ones already on the turn's user message.
+    # `flags` is the turn's full list: the persisted ones are its prefix, so only the
+    # tail is appended (reviews on the prefix survive; a rerun is a no-op). amend —
+    # a flag is not conversation activity. NotFoundError for an unknown session.
+    def add_guardrail_flags(id, task_id:, flags:)
+      record = fetch!(id)
+      target = Array(record["messages"]).reverse_each.find do |m|
+        m.is_a?(Hash) && m["role"] == "user" && m["task_id"] == task_id.to_s
+      end
+      existing = target ? Array(target["guardrail_flags"]) : []
+      return to_session(record) if target.nil? || flags.size <= existing.size
+
+      target["guardrail_flags"] = existing + flags.drop(existing.size).map { deep_stringify(_1) }
+      write(record, amend: true)
+      to_session(record)
+    end
+
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
       @store.delete(STATS_SCOPE, key_for(id))
