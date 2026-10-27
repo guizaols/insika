@@ -92,6 +92,15 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(prompts.first).to include("até 6x sem juros")
     end
 
+    it "shows the moderator the caller's context for the turn" do
+      st = state("Seu cupom ainda vale.", guardrails: { "moderator" => "on" })
+      st.caller_context = "<cupom_disponivel>O cliente ainda pode usar cupom.</cupom_disponivel>"
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("O cliente ainda pode usar cupom.")
+    end
+
     it "keeps the head and the tail of instructions past the cap" do
       st = state("ok", guardrails: { "moderator" => "on" })
       text = "POLICY" + ("x" * 20_000) + "MIDDLE" + ("y" * 20_000) + "CONTEXT"

@@ -108,15 +108,17 @@ module Insika
         "" # an odd message shape must not skip the moderation itself
       end
 
-      # The agent's own system text (the pack plus the per-turn context blocks), so a
-      # store policy written there is not judged invented. Without it, every policy the
-      # pack states ("Pix com 3% de desconto", the checkout button) was flagged.
+      # What the agent was told: its system text (the pack) and the caller's context
+      # for this turn (cart, purchase history, an open coupon — prepended to the user
+      # message, so not in the system text). Without them every policy the pack states
+      # ("Pix com 3% de desconto", the checkout button) was flagged as invented.
       # ponytail: fixed cap keeping the head (the pack's policy) and the tail (the
       # per-turn context); a pack past the cap loses its middle.
       INSTRUCTIONS_CAP = 12_000
 
       def agent_instructions(state)
-        text = state.chat ? ModelVisible.instructions_of(state.chat).to_s : ""
+        system = state.chat ? ModelVisible.instructions_of(state.chat).to_s : ""
+        text = [system, state.caller_context.to_s].reject(&:empty?).join("\n\n")
         return text if text.length <= INSTRUCTIONS_CAP
 
         tail = INSTRUCTIONS_CAP / 4

@@ -58,3 +58,12 @@ and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
   real tools/skills/memory.
 - **`run_real.rb`** — real multi-turn conversation with Bia (DeepSeek) from the
   CLI, serialized by the SessionActor; streams events, tools, skills and returns.
+
+## Replays over a production store
+
+- **`replay_moderator.rb`** — replays the output moderator over the replies it
+  already flagged, using the deployed prompt, and says which flags clear and which
+  stand. Read-only (SQLite `mode=ro`), one model call per flag. Run it on the host
+  after a moderator change, for example
+  `railway ssh -s insika -- 'cd /app && bundle exec ruby scripts/replay_moderator.rb /data/insika.db'`.
+  `--help` explains what is rebuilt exactly and what is approximate.
