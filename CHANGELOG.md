@@ -18,8 +18,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 - The output moderator flagged store policy as "invented" because it only saw tool
   results. It now also sees the agent's instructions (the pack's system text plus the
-  caller's context for the turn), capped at 12,000 characters (head and tail kept). Its free-form category
-  is normalized, so `invented policy` and `invented_policy` count as one.
+  caller's context for the turn), capped at 100,000 characters so a whole pack fits
+  (head and tail kept past it). Its free-form category is normalized, so
+  `invented policy` and `invented_policy` count as one.
 - With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the
   backend read the interleaved values as counter resets and inflated turn counts,
   tool counts and the turn-duration percentiles. Each worker now sets
