@@ -61,6 +61,9 @@ module Insika
         unless p[:context].nil? || p[:context].is_a?(String)
           raise Insika::ValidationError, "context must be a string"
         end
+        unless p[:turn_state].nil? || p[:turn_state].is_a?(String)
+          raise Insika::ValidationError, "turn_state must be a string"
+        end
 
         # session_id XOR history (both -> error; neither -> one-shot).
         if p[:session_id] && p[:history]
@@ -236,7 +239,8 @@ module Insika
           event_id: payload[:event_id] || payload["event_id"],
           parts: payload[:parts] || payload["parts"],
           customer: payload[:customer] || payload["customer"],
-          context: payload[:context] || payload["context"]
+          context: payload[:context] || payload["context"],
+          turn_state: payload[:turn_state] || payload["turn_state"]
         }
       end
 

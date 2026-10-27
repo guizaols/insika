@@ -320,8 +320,10 @@ module Insika
     # persists it: next turn the history stays byte-identical to what was cached.
     # A user-role message, not a second system one: chat templates may hoist every
     # system message to the top, which would put the volatile bytes back into the prefix.
+    # The caller's `turn_state` rides here too, for the same reason: it is re-sent
+    # every turn, so a copy kept per turn would only grow the history.
     def add_turn_context(chat, state)
-      volatile = turn_volatile(chat, state.context)
+      volatile = [turn_volatile(chat, state.context), state.caller_state.to_s].reject(&:empty?).join("\n\n")
       chat.add_message(role: :user, content: "<turn_context>\n#{volatile}\n</turn_context>") unless volatile.empty?
       add_security_notice(chat, state.security_notice) if state.security_notice
     end

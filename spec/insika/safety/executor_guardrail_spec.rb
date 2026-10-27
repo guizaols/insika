@@ -119,6 +119,21 @@ RSpec.describe "Insika::Executor guardrails" do
       expect(user["content"]).to eq("#{context}\n\nshow me more")
     end
 
+    it "shows the caller's turn_state to the model in the per-turn layer and never keeps it" do
+      executor = build_executor
+      chat = FakeChat.new
+      command = Insika::Command.build(:send_message, { agent: "example-agent", message: "tem arroz?",
+                                                       context: "<vitrine_enviada>Arroz 5kg</vitrine_enviada>",
+                                                       turn_state: "<categorias>Mercearia, Bebidas</categorias>" })
+      run_turn(executor, task_store.create(command: command.to_h, session_id: "s1", id: "t"), fake_chat: chat)
+
+      turn_context = chat.messages.find { |m| m[:content].to_s.start_with?("<turn_context>") }
+      expect(turn_context[:content]).to include("<categorias>Mercearia, Bebidas</categorias>")
+      stored = session_store.find("s1").messages.map { |m| m["content"].to_s }.join
+      expect(stored).not_to include("categorias")
+      expect(stored).to include("<vitrine_enviada>Arroz 5kg</vitrine_enviada>") # an event stays in history
+    end
+
     it "a clean message runs the normal turn (LLM is called)" do
       executor = build_executor
       chat = FakeChat.new
