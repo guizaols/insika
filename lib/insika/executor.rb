@@ -1000,6 +1000,7 @@ module Insika
       state = TurnState.new(task: task, profile: profile, turn: turn,
                             message: extract_message(task))
       state.caller_context = extract_caller_context(task)
+      state.caller_state = extract_caller_state(task)
       state.shared_conversations = @shared_conversations if @shared_turns[task.id]
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
       stamp_customer_session(task, profile)
@@ -2197,6 +2198,11 @@ module Insika
     def extract_caller_context(task)
       text = rebuild_command(task).payload["context"].to_s.strip
       text.empty? ? nil : text
+    end
+
+    # The caller's per-turn state (`turn_state`): seen by the model this turn only.
+    def extract_caller_state(task)
+      Coercion.presence(rebuild_command(task).payload["turn_state"].to_s.strip)
     end
 
     # What the model is asked and the transcript keeps: the caller's context, then

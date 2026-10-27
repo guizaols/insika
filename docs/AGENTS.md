@@ -664,6 +664,22 @@ customer cannot slip past the guardrail by typing a caller's tags. Optional
 String; absent = the message alone. `POST /v1/responses` takes the same `context`
 next to `input`.
 
+### State that is re-sent every turn: `turn_state`
+
+Some caller text describes the state of things right now, and the caller sends it
+again on every turn: the cart, the selected store, the catalog's categories. Kept in
+`context`, every past turn in the history carries its own stale copy. A long
+conversation then outgrows the context budget, the oldest messages start dropping
+one per turn, and the provider's prefix cache misses the whole history on every request.
+
+Send that text in `turn_state` instead. The model gets it this turn, in the
+per-turn layer after the history (the `<turn_context>` message), and the
+transcript never keeps it. Keep in `context` what happened on this turn and must
+be remembered later, like a showcase that was sent, a button the customer pressed
+or a forwarded message. Like `context`, guardrails and retrieval never read it,
+and the output moderator does. Optional String, on `POST /v1/messages` and
+`POST /v1/responses`.
+
 ## Customer-scoped memory and the right to be forgotten
 
 Memory is naturally **per customer, not per tenant**. A message that carries a

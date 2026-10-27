@@ -10,6 +10,10 @@ module Insika
                   #                      (channel rules, what the customer already saw). The model
                   #                      and the transcript get it ahead of the message; guardrails
                   #                      and retrieval read `message` alone. nil = none.
+                  :caller_state,       # payload `turn_state`: the caller's state for THIS turn
+                  #                      (cart, store, catalog facts), re-sent every turn. The model
+                  #                      gets it in the per-turn layer; the transcript never keeps it,
+                  #                      so history does not pile up a copy per turn. nil = none.
                   :context,            # ContextPackage from the Builder
                   :allowed_tools,      # Resolution from the Policy Engine
                   :allowed_skills,

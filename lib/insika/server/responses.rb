@@ -53,6 +53,11 @@ module Insika
           raise Insika::ValidationError, "context must be a string"
         end
         out[:context] = body[:context] if body[:context]
+        # the caller's per-turn state: the model sees it this turn, the transcript never keeps it
+        unless body[:turn_state].nil? || body[:turn_state].is_a?(String)
+          raise Insika::ValidationError, "turn_state must be a string"
+        end
+        out[:turn_state] = body[:turn_state] if body[:turn_state]
         # WS8: the optional customer_key — per-customer memory scope + purge handle
         (customer = Insika::Coercion.presence(body[:customer])) && (out[:customer] = customer)
         # the optional labels the Studio shows and searches the conversation by

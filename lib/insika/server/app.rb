@@ -443,6 +443,7 @@ module Insika
         payload.merge!(parsed.slice(:shared_conversation, :user_text))
         payload[:origin] = parsed[:origin] if parsed[:origin] # declared, else absent
         payload[:context] = parsed[:context] if parsed[:context]
+        payload[:turn_state] = parsed[:turn_state] if parsed[:turn_state]
         payload[:customer] = parsed[:customer] if parsed[:customer] # WS8: the memory scope handle
         payload.merge!(parsed.slice(*Insika::SessionStore::CUSTOMER_LABELS.map(&:to_sym)))
         payload[:parts] = parsed[:parts] if parsed[:parts] # WS9: multimodal content parts

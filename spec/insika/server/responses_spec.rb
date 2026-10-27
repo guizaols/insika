@@ -33,6 +33,13 @@ RSpec.describe Insika::Server::Responses do
       expect(described_class.parse_request(body, req)).not_to have_key(:customer_name)
     end
 
+    it "keeps an optional String turn_state apart from the input; refuses any other shape" do
+      body = { model: "insika:a", user: "c", input: "oi", turn_state: "<carrinho_vazio/>" }
+      expect(described_class.parse_request(body, req)).to include(message: "oi", turn_state: "<carrinho_vazio/>")
+      expect { described_class.parse_request(body.merge(turn_state: ["x"]), req) }
+        .to raise_error(Insika::ValidationError, /turn_state/)
+    end
+
     it "keeps an optional String context apart from the input; refuses any other shape" do
       body = { model: "insika:a", user: "c", input: "oi", context: "<canal>sms</canal>" }
       expect(described_class.parse_request(body, req)).to include(message: "oi", context: "<canal>sms</canal>")

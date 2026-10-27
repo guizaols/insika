@@ -121,7 +121,7 @@ module Insika
 
       def agent_instructions(state)
         system = state.chat ? ModelVisible.instructions_of(state.chat).to_s : ""
-        text = [system, state.caller_context.to_s].reject(&:empty?).join("\n\n")
+        text = [system, state.caller_state.to_s, state.caller_context.to_s].reject(&:empty?).join("\n\n")
         return text if text.length <= INSTRUCTIONS_CAP
 
         tail = INSTRUCTIONS_CAP / 4

@@ -7,6 +7,20 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ## [Unreleased]
 
+### Added
+
+- A read-only MCP server at `POST /mcp` (Streamable HTTP, protocol `2025-06-18`), behind
+  the gateway bearer and operator-only. It has five tools: `agent_summary`,
+  `list_sessions`, `get_transcript`, `list_flags` and `turn_metrics` (latency, cost and
+  tool health). They leave out imported transcripts (no turns) and simulator/eval
+  sessions by default. See [MCP server](docs/MCP.md).
+- `turn_state` on `POST /v1/messages` and `POST /v1/responses`: caller text for this
+  turn only (cart, store, catalog facts), which goes to the model in the per-turn layer
+  and is never kept in the transcript. Text re-sent every turn in `context` piled up a
+  copy per turn in history, pushed long conversations past the context budget and broke
+  the provider's prefix cache. See "Caller context next to the message" in
+  [Agents](docs/AGENTS.md).
+
 ### Changed
 
 - `tool_concurrency` has a platform layer: Studio > Settings sets it for every agent
@@ -37,10 +51,6 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
-- A read-only MCP server at `POST /mcp` (Streamable HTTP, protocol `2025-06-18`), behind
-  the gateway bearer and operator-only. It has five tools: `agent_summary`, `list_sessions`,
-  `get_transcript`, `list_flags` and `turn_metrics` (latency, cost and tool health). They leave out imported transcripts (no turns)
-  and simulator/eval sessions by default. See [MCP server](docs/MCP.md).
 - Harvest page: each pending or blocked candidate shows its skill text, rationale and origin conversation; a blocked one can be re-gated once the missing piece is fixed; the page says when the loop skips an agent (harvest off, or no grounding matcher).
 - Studio screens for watching conversations and what waits on a person (see
   [Studio](docs/STUDIO.md)):
