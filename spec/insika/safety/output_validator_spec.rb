@@ -101,9 +101,19 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(prompts.first).to include("O cliente ainda pode usar cupom.")
     end
 
+    it "keeps a whole real-sized pack (66k characters)" do
+      st = state("ok", guardrails: { "moderator" => "on" })
+      text = ("x" * 60_000) + "POLICY IN TOOLS.MD" + ("y" * 6_000)
+      st.chat = Struct.new(:messages).new([Struct.new(:role, :content).new(:system, text)])
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("POLICY IN TOOLS.MD")
+    end
+
     it "keeps the head and the tail of instructions past the cap" do
       st = state("ok", guardrails: { "moderator" => "on" })
-      text = "POLICY" + ("x" * 20_000) + "MIDDLE" + ("y" * 20_000) + "CONTEXT"
+      text = "POLICY" + ("x" * 90_000) + "MIDDLE" + ("y" * 90_000) + "CONTEXT"
       st.chat = Struct.new(:messages).new([Struct.new(:role, :content).new(:system, text)])
       prompts = []
       v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })

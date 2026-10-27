@@ -112,9 +112,12 @@ module Insika
       # for this turn (cart, purchase history, an open coupon — prepended to the user
       # message, so not in the system text). Without them every policy the pack states
       # ("Pix com 3% de desconto", the checkout button) was flagged as invented.
-      # ponytail: fixed cap keeping the head (the pack's policy) and the tail (the
-      # per-turn context); a pack past the cap loses its middle.
-      INSTRUCTIONS_CAP = 12_000
+      # ponytail: fixed cap keeping the head (the pack) and the tail (the turn's
+      # context); a pack past the cap loses its middle. 12k cut a real 66k pack down to
+      # its first files and missed the policy in TOOLS.md, so the cap fits a whole
+      # pack. The pack follows the fixed header, so a provider's prefix cache reuses it
+      # turn to turn.
+      INSTRUCTIONS_CAP = 100_000
 
       def agent_instructions(state)
         system = state.chat ? ModelVisible.instructions_of(state.chat).to_s : ""
