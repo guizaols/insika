@@ -78,6 +78,7 @@ module Insika
           config: { gateway_token: @token, tenancy: tenancy }.merge(@config),
           token_store: store,
           outcome_store: @graph.outcome_store,
+          model_metrics_store: @graph.model_metrics_store, # the MCP turn_metrics tool
           # GET/PUT/DELETE /v1/mcp[/:name] — the config surface.
           mcp_store: @rt.component(:mcp_store),
           # POST /v1/conversations/:id/seed answers only while `evals.seeding` is on.

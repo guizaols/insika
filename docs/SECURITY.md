@@ -187,7 +187,11 @@ moderator off. See [`examples/guardrails/`](https://github.com/guizaols/insika/t
   surfaces as a `:guardrail_flagged` event with category `moderator_unavailable`,
   so a degraded tier is distinguishable from a healthy one in the audit stream.
 - **Output** — moderation plus PII/secret redaction on the streamed response, and
-  a post-turn validator.
+  a post-turn validator. The validator's moderator judges a reply against the agent's
+  own instructions (the pack and the turn's context) and the conversation's tool
+  results, so a policy the pack states is not flagged as invented. Flag categories
+  are normalized (`invented policy` → `invented_policy`). Review flags across
+  sessions with the [MCP server](MCP.md).
 
 ```jsonc
 {

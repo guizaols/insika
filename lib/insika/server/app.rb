@@ -8,6 +8,7 @@ require_relative "sse_body"
 require_relative "tenant_auth" # WS1: Bearer -> { role:, tenant_id: } (single/multi-tenant)
 require_relative "a2a/app" # A2A edge adapter (pulls protocol/errors/message/projection/card)
 require_relative "responses" # OpenAI Responses adapter (/v1/responses) — drop-in for the OpenClaw gateway
+require_relative "mcp" # read-only MCP server over the conversations (/mcp, docs/MCP.md)
 
 module Insika
   module Server
@@ -57,7 +58,7 @@ module Insika
                      workflow_registry: nil, onboarding: nil, profiles: nil,
                      channels: nil, logger: nil, token_store: nil, outcome_store: nil,
                      executor: nil, db_path: nil, tool_registry: nil, mcp_store: nil,
-                     settings_store: nil)
+                     settings_store: nil, model_metrics_store: nil)
         @command_bus = command_bus
         # READ for one gate: `POST /v1/conversations/:id/seed` answers only while
         # the platform setting `evals.seeding` is on. nil = no settings = seeding
@@ -120,6 +121,13 @@ module Insika
         # deployment that never wires an McpStore never exposes MCP config
         # over HTTP, same as one that skips provisioning).
         @mcp_store = mcp_store
+        # The read-only MCP SERVER (POST /mcp) — not to be confused with @mcp_store,
+        # the MCP servers the agents call OUT to. Built from the two stores every
+        # deployment has, so it needs no wiring of its own.
+        @mcp_server = Insika::Server::Mcp.new(
+          insights: Insika::SessionInsights.new(session_store: session_store, task_store: task_store),
+          metrics: model_metrics_store # optional: turn_metrics is listed only with it
+        )
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control
       end
@@ -193,6 +201,11 @@ module Insika
           handle_trigger_workflow(req, name)
         in ["POST", ["v1", "responses"]]
           handle_responses(req)
+        in ["POST", ["mcp"]]
+          handle_mcp(req)
+        in ["GET" | "DELETE", ["mcp"]]
+          # no server-initiated stream and no MCP session to end (Streamable HTTP allows both refusals)
+          [405, { "allow" => "POST", "content-type" => "application/json" }, ["{}"]]
         in ["POST", ["v1", "conversations", id, "seed"]]
           handle_seed(req, id)
         in ["POST", ["v1", "outcomes"]] if @outcome_store
@@ -932,6 +945,19 @@ TENANT_SURFACES = [
         )
       rescue ArgumentError
         nil
+      end
+
+      # POST /mcp — one JSON-RPC message in, one out; a notification is 202 with no
+      # body. A batch (an Array) is refused: protocol 2025-06-18 removed batching.
+      def handle_mcp(req)
+        raw = req.body&.read.to_s
+        message = begin
+          JSON.parse(raw)
+        rescue JSON::ParserError => e
+          return json_response(400, @mcp_server.parse_error(e.message))
+        end
+        reply = @mcp_server.handle(message)
+        reply.nil? ? [202, {}, []] : json_response(200, reply)
       end
 
       # GET /v1/sessions/:id — direct read (not a Command). A tenant may only

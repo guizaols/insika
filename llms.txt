@@ -74,6 +74,7 @@ One file per journey, same shape as the onboarding prompt — point Claude Code/
 - [Outcomes and follow-ups](https://raw.githubusercontent.com/guizaols/insika/main/docs/OUTCOMES.md): the outcome funnel over real traffic and its frozen baseline, plus the follow-up tool that lets an agent come back on a promise it made.
 - [Knowledge](https://raw.githubusercontent.com/guizaols/insika/main/docs/KNOWLEDGE.md): extracting durable concepts from finished conversations into a per-agent knowledge base — the concept format, provenance stamping, PII redaction, and what is not shipped yet.
 - [Facts](https://raw.githubusercontent.com/guizaols/insika/main/docs/FACTS.md): distilling finished customer conversations into proposed facts — human-gated in the Studio, written to memory via CAS, nothing ever applied automatically.
+- [MCP server](https://raw.githubusercontent.com/guizaols/insika/main/docs/MCP.md): the read-only `/mcp` endpoint — five tools over real traffic (agent summary, sessions, transcripts, guardrail flags, latency/cost/tool health), how to connect a client, and what counts as real traffic.
 - [Harvest](https://raw.githubusercontent.com/guizaols/insika/main/docs/HARVEST.md): mining SKILLS from real traffic — the negative list, the evidence-ledger grounding filter, the double gate, snapshot-first promotion, all behind a human approval.
 
 ## Reference
