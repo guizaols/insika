@@ -16,6 +16,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- The output moderator flagged store policy as "invented" because it only saw tool
+  results. It now also sees the agent's instructions (the pack plus the turn's
+  context), capped at 12,000 characters (head and tail kept). Its free-form category
+  is normalized, so `invented policy` and `invented_policy` count as one.
 - With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the
   backend read the interleaved values as counter resets and inflated turn counts,
   tool counts and the turn-duration percentiles. Each worker now sets
@@ -32,6 +36,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- A read-only MCP server at `POST /mcp` (Streamable HTTP, protocol `2025-06-18`), behind
+  the gateway bearer and operator-only. It has four tools: `agent_summary`, `list_sessions`,
+  `get_transcript` and `list_flags`. They leave out imported transcripts (no turns)
+  and simulator/eval sessions by default. See [MCP server](docs/MCP.md).
 - Harvest page: each pending or blocked candidate shows its skill text, rationale and origin conversation; a blocked one can be re-gated once the missing piece is fixed; the page says when the loop skips an agent (harvest off, or no grounding matcher).
 - Studio screens for watching conversations and what waits on a person (see
   [Studio](docs/STUDIO.md)):

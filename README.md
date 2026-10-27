@@ -148,6 +148,7 @@ navigates by.
 - [Outcomes and follow-ups](docs/OUTCOMES.md) — what the traffic was worth in business terms, and the tool that comes back on a promise.
 - [Knowledge](docs/KNOWLEDGE.md) — extract durable concepts from finished conversations into a per-agent knowledge base; provenance-stamped, PII-redacted, best-effort with a re-scan recovery path.
 - [Facts](docs/FACTS.md) — distill finished customer conversations into proposed facts; a human approves them into memory (nothing is ever applied automatically).
+- [MCP server](docs/MCP.md) — a read-only MCP endpoint (`/mcp`) to query real traffic, transcripts and guardrail flags from Claude Code or any MCP client.
 - [Harvest](docs/HARVEST.md) — mine real traffic for SKILL proposals; the negative list, the evidence-ledger grounding filter and the double gate hold every proposal to a human approval and the append-only log (nothing is ever applied automatically).
 
 **Reference**
