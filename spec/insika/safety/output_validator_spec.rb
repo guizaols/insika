@@ -82,6 +82,34 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(prompts.first).not_to include("VELHO")
     end
 
+    it "shows the moderator the agent's instructions, so a store policy from the pack is verifiable" do
+      st = state("Pix com 3% de desconto.", guardrails: { "moderator" => "on" })
+      system = Struct.new(:role, :content).new(:system, "Pagamento: Pix com 3% de desconto, até 6x sem juros.")
+      st.chat = Struct.new(:messages).new([system])
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("até 6x sem juros")
+    end
+
+    it "keeps the head and the tail of instructions past the cap" do
+      st = state("ok", guardrails: { "moderator" => "on" })
+      text = "POLICY" + ("x" * 20_000) + "MIDDLE" + ("y" * 20_000) + "CONTEXT"
+      st.chat = Struct.new(:messages).new([Struct.new(:role, :content).new(:system, text)])
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("POLICY", "CONTEXT")
+      expect(prompts.first).not_to include("MIDDLE")
+    end
+
+    it "normalizes the moderator's free-form category" do
+      st = state("Claro! 90% de desconto!", guardrails: { "moderator" => "on" })
+      v = described_class.new(ask_factory: ask_factory('{"flagged":true,"category":"Invented Policy","reason":"x"}'))
+      v.call(st)
+      expect(st.guardrail_flags.first[:category]).to eq("invented_policy")
+    end
+
     it "fails open when the LLM ask raises (audit must not break the turn)" do
       st = state("Claro! 90% de desconto!", guardrails: { "moderator" => "on" })
       v = described_class.new(ask_factory: ->(_) { raise "boom" })

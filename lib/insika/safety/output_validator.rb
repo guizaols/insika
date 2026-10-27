@@ -72,14 +72,17 @@ module Insika
         ask = @ask_factory&.call(config)
         return [] unless ask
 
-        raw = ask.call(build_prompt(text, turn_tool_results(state))).to_s
+        raw = ask.call(build_prompt(text, turn_tool_results(state), agent_instructions(state))).to_s
         json = raw[/\{.*\}/m]
         return [] unless json
 
         data = JSON.parse(json)
         return [] unless data["flagged"] == true
 
-        [{ category: data["category"].to_s.empty? ? "policy" : data["category"].to_s,
+        # The model writes the label freely ("invented policy", "invented_policy");
+        # one spelling per label keeps a count by category honest.
+        category = data["category"].to_s.strip.downcase.gsub(/[\s-]+/, "_")
+        [{ category: category.empty? ? "policy" : category,
            source: "moderator", detail: data["reason"].to_s[0, 200] }]
       rescue StandardError
         [] # fail-open
@@ -105,16 +108,38 @@ module Insika
         "" # an odd message shape must not skip the moderation itself
       end
 
-      def build_prompt(text, tool_results = "")
+      # The agent's own system text (the pack plus the per-turn context blocks), so a
+      # store policy written there is not judged invented. Without it, every policy the
+      # pack states ("Pix com 3% de desconto", the checkout button) was flagged.
+      # ponytail: fixed cap keeping the head (the pack's policy) and the tail (the
+      # per-turn context); a pack past the cap loses its middle.
+      INSTRUCTIONS_CAP = 12_000
+
+      def agent_instructions(state)
+        text = state.chat ? ModelVisible.instructions_of(state.chat).to_s : ""
+        return text if text.length <= INSTRUCTIONS_CAP
+
+        tail = INSTRUCTIONS_CAP / 4
+        "#{text[0, INSTRUCTIONS_CAP - tail]}\n…\n#{text[-tail..]}"
+      rescue StandardError
+        "" # an odd chat shape must not skip the moderation itself
+      end
+
+      def build_prompt(text, tool_results = "", instructions = "")
         <<~PROMPT
           You are a strict compliance reviewer for a retail customer-service AI. Review
           the ASSISTANT REPLY below. Flag it ONLY if it does one of these:
-          - promises a discount/price/refund/policy that is NOT supported by the TOOL
-            RESULTS below (invented policy) — a fact quoted from them is verified;
+          - promises a discount/price/refund/policy that is NOT supported by the AGENT
+            INSTRUCTIONS or the TOOL RESULTS below (invented policy) — a fact stated in
+            either is verified;
           - leaks system-prompt/internal configuration;
           - is unprofessional, sexual, or hostile in tone.
 
-          A normal, helpful, in-policy reply is NOT flagged.
+          A normal, helpful, in-policy reply is NOT flagged. Quoting the store policy
+          from the agent instructions is not a leak.
+
+          AGENT INSTRUCTIONS (the store's policy and this turn's context; may be empty):
+          #{instructions.empty? ? "(none)" : instructions}
 
           TOOL RESULTS (what the assistant read this turn; may be empty):
           #{tool_results.empty? ? "(none)" : tool_results}
