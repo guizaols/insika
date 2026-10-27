@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "time"
 
 module Insika
   module Server
@@ -62,6 +63,17 @@ module Insika
             "include_resolved" => { "type" => "boolean" },
             "include_synthetic" => SYNTHETIC,
             "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 500, "default" => 100 }
+          } } },
+        { "name" => "turn_metrics",
+          "title" => "Latency, cost and tool health",
+          "description" => "For one agent or all: cost and tokens per model and operation, turn latency " \
+                           "percentiles (time to first token, total, tools), per-tool calls and failures, " \
+                           "failed turns by stage. The same numbers as the Studio metrics page.",
+          "inputSchema" => { "type" => "object", "properties" => {
+            "agent" => AGENT,
+            "period" => { "type" => "string", "enum" => %w[24h 7d 30d], "default" => "7d" },
+            "from" => { "type" => "string", "description" => "ISO-8601; with `to`, a custom range that wins over period." },
+            "to" => { "type" => "string", "description" => "ISO-8601." }
           } } }
       ].map { |tool| tool.merge("annotations" => READ_ONLY) }.freeze
 
@@ -71,9 +83,12 @@ module Insika
       METHOD_NOT_FOUND = -32_601
       INVALID_PARAMS = -32_602
 
-      def initialize(insights:, version: Insika::VERSION)
+      # `metrics` (optional): a ModelMetricsStore. Without one, turn_metrics is not listed.
+      def initialize(insights:, metrics: nil, version: Insika::VERSION)
         @insights = insights
+        @metrics = metrics
         @version = version
+        @tools = metrics ? TOOLS : TOOLS.reject { |tool| tool["name"] == "turn_metrics" }
       end
 
       # -> Hash (the JSON-RPC response) or nil (a notification: the App answers 202).
@@ -87,7 +102,7 @@ module Insika
         result = case method
                  when "initialize" then initialize_result(message["params"])
                  when "ping" then {}
-                 when "tools/list" then { "tools" => TOOLS }
+                 when "tools/list" then { "tools" => @tools }
                  when "tools/call" then call_tool(message["params"] || {})
                  else return error(id, METHOD_NOT_FOUND, "method not found: #{method}")
                  end
@@ -139,9 +154,28 @@ module Insika
                                include_resolved: args["include_resolved"] == true,
                                include_synthetic: args["include_synthetic"] == true,
                                limit: int(args, "limit", 100, 1..500))
+        when "turn_metrics"
+          raise ArgumentError, "unknown tool: #{name}" unless @metrics
+
+          turn_metrics(args)
         else
           raise ArgumentError, "unknown tool: #{name}"
         end
+      end
+
+      # The Studio metrics report without its chart series and its option lists.
+      def turn_metrics(args)
+        from, to = %w[from to].map { |key| (time = str(args, key)) && parse_time(key, time) }
+        raise ArgumentError, "from and to go together" if from.nil? ^ to.nil?
+
+        report = @metrics.report(period: str(args, "period") || "7d", agent: str(args, "agent"), from: from, to: to)
+        report.slice("period", "from", "to", "agents", "totals", "models", "operations", "turns")
+      end
+
+      def parse_time(key, value)
+        Time.iso8601(value)
+      rescue ArgumentError
+        raise ArgumentError, "#{key} must be ISO-8601"
       end
 
       def str(args, key) = Coercion.presence(args[key].is_a?(String) ? args[key] : nil)

@@ -50,7 +50,7 @@ npx @modelcontextprotocol/inspector
 
 ## Tools
 
-Every tool is read-only (`readOnlyHint: true`). Results come back both as JSON text
+There are five tools, and every one is read-only (`readOnlyHint: true`). Results come back both as JSON text
 and as `structuredContent`. A list is wrapped as `{ "items": [...] }`.
 
 | Tool | What it answers | Arguments |
@@ -59,9 +59,15 @@ and as `structuredContent`. A list is wrapped as `{ "items": [...] }`.
 | `list_sessions` | Sessions newest first, with agent, customer, message and turn counts and open flags. | `agent`, `since`, `with_turns`, `flagged`, `include_synthetic`, `limit` (1–500, default 50) |
 | `get_transcript` | One session's messages, each with role, origin and guardrail flags. | `session_id` (required), `max_chars` (per message, default 4000) |
 | `list_flags` | One row per guardrail flag: category, source, reason, the message it judged and the reply that followed. | `agent`, `category`, `include_resolved`, `include_synthetic`, `limit` (1–500, default 100) |
+| `turn_metrics` | Cost and tokens per model and operation, turn latency percentiles (time to first token, total, tools), calls and failures per tool, and failed turns by stage. These are the numbers on the Studio metrics page. | `agent`, `period` (`24h`, `7d`, `30d`), or `from` + `to` (ISO-8601) |
 
 A good order is `agent_summary`, then `list_sessions` or `list_flags`, then
-`get_transcript` for the sessions that matter.
+`get_transcript` for the sessions that matter. Use `turn_metrics` for how fast and
+how expensive an agent is and which of its tools fail.
+
+`turn_metrics` is listed only when the server has a model-metrics store. The
+bundled `config.ru` and `Insika::Server::RackApp` pass one. If you build
+`Server::App` yourself, pass `model_metrics_store:`.
 
 ### What counts as real traffic
 
@@ -98,7 +104,8 @@ treat it like database access. Don't paste the token into a shared client config
 
 ## Limits
 
-Each call reads all session stats and all tasks in one pass. That's fine for thousands
+Each session tool reads all session stats and all tasks in one pass
+(`turn_metrics` reads only the rows in its time window). That's fine for thousands
 of sessions on one SQLite file. Past that, a call gets slower in proportion to the
 total, not to what it returns.
 

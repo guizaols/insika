@@ -58,7 +58,7 @@ module Insika
                      workflow_registry: nil, onboarding: nil, profiles: nil,
                      channels: nil, logger: nil, token_store: nil, outcome_store: nil,
                      executor: nil, db_path: nil, tool_registry: nil, mcp_store: nil,
-                     settings_store: nil)
+                     settings_store: nil, model_metrics_store: nil)
         @command_bus = command_bus
         # READ for one gate: `POST /v1/conversations/:id/seed` answers only while
         # the platform setting `evals.seeding` is on. nil = no settings = seeding
@@ -125,7 +125,8 @@ module Insika
         # the MCP servers the agents call OUT to. Built from the two stores every
         # deployment has, so it needs no wiring of its own.
         @mcp_server = Insika::Server::Mcp.new(
-          insights: Insika::SessionInsights.new(session_store: session_store, task_store: task_store)
+          insights: Insika::SessionInsights.new(session_store: session_store, task_store: task_store),
+          metrics: model_metrics_store # optional: turn_metrics is listed only with it
         )
         @heartbeat = config.fetch(:heartbeat, 15)
         @sync_timeout = config.fetch(:sync_timeout, 10) # synchronous control

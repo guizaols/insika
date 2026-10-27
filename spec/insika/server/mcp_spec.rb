@@ -91,6 +91,40 @@ RSpec.describe Insika::Server::Mcp do
     expect([status, body["error"]["code"]]).to eq([400, -32_700])
   end
 
+  context "with a metrics store" do
+    let(:metrics) { Insika::ModelMetricsStore.new(store: backend) }
+    let(:app) do
+      Insika::Server::App.new(command_bus: ServerBusDouble.new, event_stream: ServerEventStreamDouble.new,
+                              session_store: sessions, task_store: tasks, model_metrics_store: metrics,
+                              config: { sync_timeout: 0.05, gateway_token: token })
+    end
+
+    before do
+      metrics.record_turn(task_id: "t-1", row: { "at" => Time.now.utc.iso8601, "agent" => "shop", "status" => "completed",
+                                                 "total_ms" => 1200, "tools" => [["search", true, 300]] })
+    end
+
+    it "lists turn_metrics as a fifth tool" do
+      expect(rpc("tools/list")["result"]["tools"].map { _1["name"] }).to include("turn_metrics")
+    end
+
+    it "returns turn latency and tool health for an agent" do
+      turns = rpc("tools/call", { "name" => "turn_metrics", "arguments" => { "agent" => "shop" } })
+              .dig("result", "structuredContent", "turns")
+      expect(turns).to include("count" => 1, "failures" => 0)
+      expect(turns["tools"].first).to include("tool" => "search", "calls" => 1)
+    end
+
+    it "rejects a lone from" do
+      error = rpc("tools/call", { "name" => "turn_metrics", "arguments" => { "from" => "2026-10-01T00:00:00Z" } })["error"]
+      expect(error["code"]).to eq(-32_602)
+    end
+  end
+
+  it "has no turn_metrics without a metrics store" do
+    expect(rpc("tools/call", { "name" => "turn_metrics" })["error"]["code"]).to eq(-32_602)
+  end
+
   it "has no server-initiated stream" do
     env = Rack::MockRequest.env_for("/mcp", method: "GET")
     env["HTTP_AUTHORIZATION"] = "Bearer #{token}"
