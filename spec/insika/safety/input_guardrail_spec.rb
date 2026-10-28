@@ -137,6 +137,15 @@ RSpec.describe Insika::Safety::InputGuardrail do
                                           detail: "unparseable (fail-open)" }])
     end
 
+    it "skips the moderator on a turn the caller composed (origin: engine)" do
+      st = state("<acao_webview tipo=\"carrinho_atualizado\" aguardando_numeracao=\"chame `add_to_cart`\"/>",
+                 guardrails: { "moderator" => "on" })
+      st.origin = Insika::MessageOrigin::ENGINE
+      mw = described_class.new(moderator_factory: moderator_factory('{"category":"injection","action":"refuse"}'))
+      expect(run(mw, st)).to be(true)
+      expect(st.halt_response).to be_nil
+    end
+
     it "does not call the moderator when the deterministic tier already blocked" do
       calls = 0
       factory = lambda do |_c|

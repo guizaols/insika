@@ -43,7 +43,10 @@ module Insika
         end
         return block(state, config, category: hit[:category], source: :deterministic, detail: hit[:matched]) if hit
 
-        if config.moderator? && (mod = build_moderator(config))
+        # A caller-composed turn (`origin: engine`: a cart event, a takeover) carries
+        # the caller's own orders to the agent. The moderator read them as a customer
+        # injecting and the turn came back as the injection refusal.
+        if config.moderator? && state.origin != MessageOrigin::ENGINE && (mod = build_moderator(config))
           verdict = mod.classify(state.message.to_s)
           if verdict.block?
             category = moderator_category(verdict)

@@ -1001,6 +1001,7 @@ module Insika
                             message: extract_message(task))
       state.caller_context = extract_caller_context(task)
       state.caller_state = extract_caller_state(task)
+      state.origin = command_origin(task)&.downcase
       state.shared_conversations = @shared_conversations if @shared_turns[task.id]
       state.tenant = memory_tenant(task) # WRITE-path memory scope (`remember`); =chat
       stamp_customer_session(task, profile)
