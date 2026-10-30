@@ -1,0 +1,21 @@
+# Every push to staging asks the private deploy repo to build and roll out that exact
+# commit. Only the dispatch lives here; build, image and cluster access stay private.
+# The token is fine-grained, scoped to Actions on that one repo, and is never exposed
+# to pull requests from forks (this workflow only runs on push).
+name: Deploy staging
+
+on:
+  push:
+    branches: [staging]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    if: github.repository == 'guizaols/insika'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the staging deploy
+        env:
+          GH_TOKEN: ${{ secrets.INSIKA_DEPLOY_DISPATCH_TOKEN }}
+        run: gh workflow run staging.yaml -R oitedi/insika-deploy -f ref="$GITHUB_SHA"
