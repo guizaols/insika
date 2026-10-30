@@ -82,6 +82,38 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(prompts.first).not_to include("VELHO")
     end
 
+    it "shows the moderator the earlier turns' conversation, never this turn's" do
+      st = state("Sobrou só a paleta, e esse corte não existe no catálogo.", guardrails: { "moderator" => "on" })
+      msg = Struct.new(:role, :content)
+      st.chat = Struct.new(:messages).new([
+                                            msg.new(:system, "pack"),
+                                            msg.new(:user, "uma compra de 269 reais"),
+                                            msg.new(:assistant, "Paleta bovina não aparece no catálogo da loja."),
+                                            msg.new(:user, "ESTE TURNO"),
+                                            msg.new(:assistant, "Sobrou só a paleta.")
+                                          ])
+      st.chat_baseline = 3
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      earlier = prompts.first[/EARLIER CONVERSATION \(before.*?ASSISTANT REPLY:/m]
+      expect(earlier).to include("user: uma compra de 269 reais", "assistant: Paleta bovina não aparece")
+      expect(earlier).not_to include("ESTE TURNO", "pack")
+    end
+
+    it "keeps the most recent earlier turns when they exceed the cap" do
+      st = state("ok", guardrails: { "moderator" => "on" })
+      msg = Struct.new(:role, :content)
+      old = Array.new(20) { msg.new(:assistant, "VELHO" + ("x" * 590)) }
+      st.chat = Struct.new(:messages).new([*old, msg.new(:user, "RECENTE")])
+      st.chat_baseline = st.chat.messages.size
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("user: RECENTE")
+      expect(prompts.first.length).to be < 12_000
+    end
+
     it "shows the moderator the agent's instructions, so a store policy from the pack is verifiable" do
       st = state("Pix com 3% de desconto.", guardrails: { "moderator" => "on" })
       system = Struct.new(:role, :content).new(:system, "Pagamento: Pix com 3% de desconto, até 6x sem juros.")

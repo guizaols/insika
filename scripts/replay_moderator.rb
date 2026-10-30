@@ -21,10 +21,13 @@
 # What is rebuilt, and how close it is to the original turn:
 #   · the reply and the user message (which carries the caller's context: cart,
 #     purchase history, coupon) are the stored ones, exact;
-#   · tool results are the session's tool messages up to that reply, exact when
-#     the session stores them;
-#   · the system text is the agent's prompt files AS THEY ARE NOW — production does
-#     not keep each turn's prompt, so a pack edited since the turn makes it approximate.
+#   · tool results and the earlier conversation are the session's messages up to
+#     that reply, exact when the session stores them;
+#   · the caller state (shopping list, store, cart) is the turn task's turn_state,
+#     exact while the task is kept;
+#   · the system text is the agent's prompt files plus its eager skills AS THEY
+#     ARE NOW — production does not keep each turn's prompt, so a pack edited
+#     since the turn makes it approximate.
 
 if %w[-h --help].include?(ARGV[0]) || ARGV.empty?
   puts File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
@@ -68,6 +71,18 @@ pack = rows.("config:agent_files").to_h do |agent, record|
   [agent, files.join("\n\n")]
 end
 
+# The eager skills ride in the system text every turn (grocery-core's "busque antes
+# de negar" is what the moderator holds a "não existe no catálogo" against). The
+# agent's own copy of a skill wins over the shared one.
+# ponytail: eager only; a skill triggered by the turn's message is left out.
+shared_skills = rows.("config:skills").to_h { |name, s| [name, s["content"].to_s] }
+agent_skills = rows.("config:agent_skills").to_h { |agent, r| [agent, r.fetch("skills", {})] }
+rows.("config:agents").each do |agent, cfg|
+  eager = Array(cfg["skills_eager"]) & Array(cfg["skills"])
+  bodies = eager.filter_map { |n| agent_skills.dig(agent, n, "content") || shared_skills[n] }
+  pack[agent] = [pack[agent], *bodies].compact.join("\n\n") unless bodies.empty?
+end
+
 text_of = lambda do |m|
   c = m.is_a?(Hash) ? m["content"] : nil
   c.is_a?(Array) ? c.filter_map { |p| p.is_a?(Hash) ? p["text"] : p.to_s }.join("\n") : c.to_s
@@ -78,6 +93,12 @@ end
 validator = Insika::Safety::OutputValidator.new
 Msg = Struct.new(:role, :content)
 Chat = Struct.new(:messages)
+
+turn_tasks = Hash.new { |h, k| h[k] = [] }
+rows.("tasks").map(&:last).sort_by { |t| t["created_at"].to_s }.each do |t|
+  payload = t.dig("command", "payload") || {}
+  turn_tasks[payload["session_id"]] << payload if payload["session_id"]
+end
 
 puts "moderator: #{model_ref} · store: #{path}"
 results = Hash.new(0)
@@ -95,13 +116,19 @@ rows.("sessions").each do |_key, session|
 
       following = messages[(i + 1)..].take_while { |n| n["role"] != "user" }
       reply = following.select { |n| n["role"] == "assistant" }.map { |n| text_of.(n) }.reject(&:empty?).last.to_s
-      tools = messages[0..(i + following.size)].select { |n| n["role"] == "tool" }.map { |n| Msg.new(:tool, text_of.(n)) }
+      earlier = messages[0...i].map { |n| Msg.new(n["role"].to_s, text_of.(n)) }
+      tools = following.select { |n| n["role"] == "tool" }.map { |n| Msg.new(:tool, text_of.(n)) }
 
       state = Insika::TurnState.new(task: nil, profile: nil, turn: 1, message: "")
-      state.chat = Chat.new([Msg.new(:system, pack.fetch(agent, "")), *tools])
+      state.chat = Chat.new([Msg.new(:system, pack.fetch(agent, "")), *earlier, *tools])
+      state.chat_baseline = 1 + earlier.size
       state.caller_context = text_of.(m) # the stored user message: context blocks + what the customer typed
+      # the turn's caller state (shopping list, store, cart) lives on the task, not in the message
+      task = turn_tasks[session["id"]].reverse.find { |c| !c["message"].to_s.empty? && state.caller_context.end_with?(c["message"].to_s) }
+      state.caller_state = task&.fetch("turn_state", nil)
       prompt = validator.send(:build_prompt, reply,
-                              validator.send(:turn_tool_results, state), validator.send(:agent_instructions, state))
+                              validator.send(:turn_tool_results, state), validator.send(:agent_instructions, state),
+                              validator.send(:earlier_conversation, state))
 
       verdict = begin
         JSON.parse(ask.(prompt)[/\{.*\}/m] || "{}")
