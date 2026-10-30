@@ -80,7 +80,10 @@ ENV BUNDLE_DEPLOYMENT=1 \
 # (single-tenant container) root is acceptable; non-root hardening (fsGroup/
 # init-chown) is left for k8s. See docs/DEPLOY.md.
 # libpq for the opt-in Postgres store (INSIKA_DATABASE_URL; the pg gem links it).
-RUN apt-get update -qq && apt-get install --no-install-recommends -y libpq5 && rm -rf /var/lib/apt/lists/* && \
+# apt-get upgrade pulls the Debian security fixes the base tag has not picked up
+# yet (e.g. perl-base CVEs flagged CRITICAL by a container scan).
+RUN apt-get update -qq && apt-get upgrade -y --no-install-recommends && \
+    apt-get install --no-install-recommends -y libpq5 && rm -rf /var/lib/apt/lists/* && \
     mkdir -p /data
 WORKDIR /app
 COPY --from=builder /usr/local/bundle /usr/local/bundle
