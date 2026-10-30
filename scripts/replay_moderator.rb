@@ -25,8 +25,9 @@
 #     that reply, exact when the session stores them;
 #   · the caller state (shopping list, store, cart) is the turn task's turn_state,
 #     exact while the task is kept;
-#   · the system text is the agent's prompt files AS THEY ARE NOW — production does
-#     not keep each turn's prompt, so a pack edited since the turn makes it approximate.
+#   · the system text is the agent's prompt files plus its eager skills AS THEY
+#     ARE NOW — production does not keep each turn's prompt, so a pack edited
+#     since the turn makes it approximate.
 
 if %w[-h --help].include?(ARGV[0]) || ARGV.empty?
   puts File.read(__FILE__).lines.drop(1).drop_while { |l| l.strip.empty? }
@@ -68,6 +69,18 @@ end
 pack = rows.("config:agent_files").to_h do |agent, record|
   files = record.fetch("files", {}).sort.map { |name, file| "## #{name}\n#{file['content']}" }
   [agent, files.join("\n\n")]
+end
+
+# The eager skills ride in the system text every turn (grocery-core's "busque antes
+# de negar" is what the moderator holds a "não existe no catálogo" against). The
+# agent's own copy of a skill wins over the shared one.
+# ponytail: eager only; a skill triggered by the turn's message is left out.
+shared_skills = rows.("config:skills").to_h { |name, s| [name, s["content"].to_s] }
+agent_skills = rows.("config:agent_skills").to_h { |agent, r| [agent, r.fetch("skills", {})] }
+rows.("config:agents").each do |agent, cfg|
+  eager = Array(cfg["skills_eager"]) & Array(cfg["skills"])
+  bodies = eager.filter_map { |n| agent_skills.dig(agent, n, "content") || shared_skills[n] }
+  pack[agent] = [pack[agent], *bodies].compact.join("\n\n") unless bodies.empty?
 end
 
 text_of = lambda do |m|
