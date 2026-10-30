@@ -101,6 +101,17 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(earlier).not_to include("ESTE TURNO", "pack")
     end
 
+    it "shows the moderator this turn's customer message, so a price the customer typed is verifiable" do
+      st = state("O R$ 3,99 é da foto da oferta — no catálogo ela está R$ 7,99.", guardrails: { "moderator" => "on" })
+      st.message = "Tapioca Da Terrinha, 500g, pacote, R$ 3,99"
+      st.chat = Struct.new(:messages).new([])
+      st.chat_baseline = 0
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("user (this turn): Tapioca Da Terrinha, 500g, pacote, R$ 3,99")
+    end
+
     it "keeps the most recent earlier turns when they exceed the cap" do
       st = state("ok", guardrails: { "moderator" => "on" })
       msg = Struct.new(:role, :content)

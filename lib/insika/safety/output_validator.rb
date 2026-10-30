@@ -136,8 +136,11 @@ module Insika
       # search that found no paleta, 100 messages back, past the tool-results cap) was
       # flagged as invented when repeated. Text only, no tool results: a 300-message
       # session is ~25k of replies against ~150k of tool output.
-      # ponytail: fixed cap keeping the most recent turns, each message cut short; a
-      # fact older than the window is still flagged when repeated.
+      # This turn's customer message closes it, whole: a price the customer typed now
+      # ("Tapioca 500g, R$ 3,99") is in neither the earlier turns nor the caller's
+      # context, and the reply that answered it was flagged.
+      # ponytail: fixed cap keeping the most recent turns, each earlier message cut
+      # short; a fact older than the window is still flagged when repeated.
       CONVERSATION_CAP = 8000
       MESSAGE_CAP = 600
 
@@ -145,11 +148,12 @@ module Insika
         chat = state.chat
         return "" unless chat.respond_to?(:messages) && state.chat_baseline
 
-        joined = Array(chat.messages).first(state.chat_baseline)
-                                     .select { |m| %w[user assistant].include?(m.role.to_s) }
-                                     .reject { |m| m.content.to_s.strip.empty? }
-                                     .map { |m| "#{m.role}: #{m.content.to_s[0, MESSAGE_CAP]}" }
-                                     .join("\n")
+        lines = Array(chat.messages).first(state.chat_baseline)
+                                    .select { |m| %w[user assistant].include?(m.role.to_s) }
+                                    .reject { |m| m.content.to_s.strip.empty? }
+                                    .map { |m| "#{m.role}: #{m.content.to_s[0, MESSAGE_CAP]}" }
+        lines << "user (this turn): #{state.message}" unless state.message.to_s.strip.empty?
+        joined = lines.join("\n")
         joined.length > CONVERSATION_CAP ? joined[-CONVERSATION_CAP..] : joined
       rescue StandardError
         "" # an odd message shape must not skip the moderation itself
@@ -174,7 +178,7 @@ module Insika
           TOOL RESULTS (what the assistant read this turn; may be empty):
           #{tool_results.empty? ? "(none)" : tool_results}
 
-          EARLIER CONVERSATION (before this turn; may be empty):
+          EARLIER CONVERSATION (before this reply, ending with this turn's customer message; may be empty):
           #{conversation.empty? ? "(none)" : conversation}
 
           ASSISTANT REPLY:
