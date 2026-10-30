@@ -72,7 +72,8 @@ module Insika
         ask = @ask_factory&.call(config)
         return [] unless ask
 
-        raw = ask.call(build_prompt(text, turn_tool_results(state), agent_instructions(state))).to_s
+        raw = ask.call(build_prompt(text, turn_tool_results(state), agent_instructions(state),
+                                    earlier_conversation(state))).to_s
         json = raw[/\{.*\}/m]
         return [] unless json
 
@@ -130,13 +131,37 @@ module Insika
         "" # an odd chat shape must not skip the moderation itself
       end
 
-      def build_prompt(text, tool_results = "", instructions = "")
+      # What the customer and the agent said BEFORE this turn. A fact the customer gave
+      # ("um pedido de R$ 269") or one the agent already told on an earlier turn (a
+      # search that found no paleta, 100 messages back, past the tool-results cap) was
+      # flagged as invented when repeated. Text only, no tool results: a 300-message
+      # session is ~25k of replies against ~150k of tool output.
+      # ponytail: fixed cap keeping the most recent turns, each message cut short; a
+      # fact older than the window is still flagged when repeated.
+      CONVERSATION_CAP = 8000
+      MESSAGE_CAP = 600
+
+      def earlier_conversation(state)
+        chat = state.chat
+        return "" unless chat.respond_to?(:messages) && state.chat_baseline
+
+        joined = Array(chat.messages).first(state.chat_baseline)
+                                     .select { |m| %w[user assistant].include?(m.role.to_s) }
+                                     .reject { |m| m.content.to_s.strip.empty? }
+                                     .map { |m| "#{m.role}: #{m.content.to_s[0, MESSAGE_CAP]}" }
+                                     .join("\n")
+        joined.length > CONVERSATION_CAP ? joined[-CONVERSATION_CAP..] : joined
+      rescue StandardError
+        "" # an odd message shape must not skip the moderation itself
+      end
+
+      def build_prompt(text, tool_results = "", instructions = "", conversation = "")
         <<~PROMPT
           You are a strict compliance reviewer for a retail customer-service AI. Review
           the ASSISTANT REPLY below. Flag it ONLY if it does one of these:
           - promises a discount/price/refund/policy that is NOT supported by the AGENT
-            INSTRUCTIONS or the TOOL RESULTS below (invented policy) — a fact stated in
-            either is verified;
+            INSTRUCTIONS, the TOOL RESULTS or the EARLIER CONVERSATION below (invented
+            policy) — a fact stated in any of them is verified;
           - leaks system-prompt/internal configuration;
           - is unprofessional, sexual, or hostile in tone.
 
@@ -148,6 +173,9 @@ module Insika
 
           TOOL RESULTS (what the assistant read this turn; may be empty):
           #{tool_results.empty? ? "(none)" : tool_results}
+
+          EARLIER CONVERSATION (before this turn; may be empty):
+          #{conversation.empty? ? "(none)" : conversation}
 
           ASSISTANT REPLY:
           #{text}
