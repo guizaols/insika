@@ -18,4 +18,6 @@ jobs:
       - name: Dispatch the staging deploy
         env:
           GH_TOKEN: ${{ secrets.INSIKA_DEPLOY_DISPATCH_TOKEN }}
-        run: gh workflow run staging.yaml -R oitedi/insika-deploy -f ref="$GITHUB_SHA"
+        # --ref names the deploy repo's branch: without it gh looks up the default
+        # branch, which the Actions-only token cannot read.
+        run: gh workflow run staging.yaml -R oitedi/insika-deploy --ref main -f ref="$GITHUB_SHA"
