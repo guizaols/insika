@@ -40,6 +40,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   that had fallen past the 6,000-character tool-results cap. It now also sees the
   earlier turns' customer and agent messages (most recent 8,000 characters, each cut
   at 600), and a fact stated there counts as verified.
+- The output moderator never saw the customer's message of the turn it judged (only
+  the caller's context blocks), so a reply answering a price the customer had just
+  typed was flagged as unsupported. That message now closes the conversation it sees,
+  uncut.
 - With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the
   backend read the interleaved values as counter resets and inflated turn counts,
   tool counts and the turn-duration percentiles. Each worker now sets

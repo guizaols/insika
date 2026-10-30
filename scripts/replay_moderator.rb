@@ -19,8 +19,8 @@
 # are skipped.
 #
 # What is rebuilt, and how close it is to the original turn:
-#   · the reply and the user message (which carries the caller's context: cart,
-#     purchase history, coupon) are the stored ones, exact;
+#   · the reply and the user message are the stored ones, exact; the turn task
+#     splits the message from the caller's context (cart, purchase history, coupon);
 #   · tool results and the earlier conversation are the session's messages up to
 #     that reply, exact when the session stores them;
 #   · the caller state (shopping list, store, cart) is the turn task's turn_state,
@@ -122,9 +122,11 @@ rows.("sessions").each do |_key, session|
       state = Insika::TurnState.new(task: nil, profile: nil, turn: 1, message: "")
       state.chat = Chat.new([Msg.new(:system, pack.fetch(agent, "")), *earlier, *tools])
       state.chat_baseline = 1 + earlier.size
-      state.caller_context = text_of.(m) # the stored user message: context blocks + what the customer typed
-      # the turn's caller state (shopping list, store, cart) lives on the task, not in the message
-      task = turn_tasks[session["id"]].reverse.find { |c| !c["message"].to_s.empty? && state.caller_context.end_with?(c["message"].to_s) }
+      stored = text_of.(m) # the stored user message: context blocks + what the customer typed
+      # the turn's task splits it back, and carries the caller state (shopping list, store, cart)
+      task = turn_tasks[session["id"]].reverse.find { |c| !c["message"].to_s.empty? && stored.end_with?(c["message"].to_s) }
+      state.message = task ? task["message"].to_s : stored
+      state.caller_context = task&.fetch("context", nil)
       state.caller_state = task&.fetch("turn_state", nil)
       prompt = validator.send(:build_prompt, reply,
                               validator.send(:turn_tool_results, state), validator.send(:agent_instructions, state),
