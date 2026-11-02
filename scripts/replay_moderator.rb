@@ -13,6 +13,8 @@
 #   --model   the moderator model (default: the platform utility_model, else
 #             DEEPSEEK_MODEL); credentials come from the usual *_API_KEY env vars
 #   --all     also replay resolved flags (default: open moderator flags only)
+#   --at      SESSION:INDEX — replay the reply to that user message, flagged or not
+#             (to check a miss)
 #
 # Read-only (SQLite mode=ro): nothing is written to the store. One model call per
 # flag. Deterministic flags (injection, PII) never went through the moderator and
@@ -44,6 +46,7 @@ path = ARGV[0]
 agent_filter = ARGV[ARGV.index("--agent") + 1] if ARGV.include?("--agent")
 model_arg = ARGV[ARGV.index("--model") + 1] if ARGV.include?("--model")
 include_resolved = ARGV.include?("--all")
+at_session, at_index = ARGV[ARGV.index("--at") + 1].split(":") if ARGV.include?("--at")
 
 db = SQLite3::Database.new("file:#{path}?mode=ro", flags: SQLite3::Constants::Open::READONLY | SQLite3::Constants::Open::URI)
 rows = ->(scope) { db.execute("SELECT key, value FROM kv WHERE scope = ?", [scope]).map { |k, v| [k, JSON.parse(v)] } }
@@ -109,10 +112,15 @@ rows.("sessions").each do |_key, session|
 
   messages = Array(session["messages"])
   messages.each_with_index do |m, i|
-    Array(m["guardrail_flags"]).each do |flag|
+    flags = if at_session
+              session["id"] == at_session && i == at_index.to_i ? [{ "source" => "moderator", "category" => "(none)" }] : []
+            else
+              Array(m["guardrail_flags"])
+            end
+    flags.each do |flag|
       next unless flag["source"] == "moderator"
       next if flag["category"] == "moderator_unavailable"
-      next unless include_resolved || Insika::SessionStore.open_flag?(flag)
+      next unless at_session || include_resolved || Insika::SessionStore.open_flag?(flag)
 
       following = messages[(i + 1)..].take_while { |n| n["role"] != "user" }
       reply = following.select { |n| n["role"] == "assistant" }.map { |n| text_of.(n) }.reject(&:empty?).last.to_s
