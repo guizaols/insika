@@ -44,6 +44,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   the caller's context blocks), so a reply answering a price the customer had just
   typed was flagged as unsupported. That message now closes the conversation it sees,
   uncut.
+- The output moderator let "Pedido enviado" pass when no tool had placed the order:
+  its prompt only asked about invented prices and policy. It now also flags a reply
+  that says something was done (order placed or sent, payment confirmed, handoff
+  opened) with no tool result showing it.
 - With `INSIKA_WORKERS > 1`, every worker exported the same metric series, so the
   backend read the interleaved values as counter resets and inflated turn counts,
   tool counts and the turn-duration percentiles. Each worker now sets
