@@ -48,6 +48,13 @@ module Insika
         # injecting and the turn came back as the injection refusal.
         if config.moderator? && state.origin != MessageOrigin::ENGINE && (mod = build_moderator(config))
           verdict = mod.classify(state.message.to_s)
+          # A moderator injection verdict follows `injection:` like the regex tier: on
+          # flag the model answers with the security notice. Blocking it sent the canned
+          # refusal to a customer asking to start the conversation over.
+          if verdict.block? && verdict.category == "injection" && config.injection == :flag
+            flag_injection(state, state.message, source: "moderator", detail: verdict.reason)
+            return nxt.call(state)
+          end
           if verdict.block?
             category = moderator_category(verdict)
             return block(state, config, category: category, source: :moderator,
@@ -69,13 +76,12 @@ module Insika
         Detectors.scan_input(state.message.to_s, categories: categories, corpus: config.corpus)
       end
 
-      # `security_notice` is the matched phrase; the ChatBuilder turns it into a
+      # `security_notice` is the suspect text; the ChatBuilder turns it into a
       # per-turn message the transcript never keeps.
-      def flag_injection(state, matched)
-        detail = matched.to_s[0, 200]
-        state.security_notice = detail
+      def flag_injection(state, matched, source: "deterministic", detail: matched)
+        state.security_notice = matched.to_s[0, 200]
         state.guardrail_flags = Array(state.guardrail_flags) +
-                                [{ category: "injection", source: "deterministic", action: "flag", detail: detail }]
+                                [{ category: "injection", source: source, action: "flag", detail: detail.to_s[0, 200] }]
       end
 
       def build_moderator(config)

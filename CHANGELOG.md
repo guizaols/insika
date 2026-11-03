@@ -30,6 +30,11 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- An input-moderator injection verdict now follows `guardrails.injection`, like the
+  regex tier: on `flag` (the default) the turn reaches the model with the security
+  notice and an audit flag (`source: moderator`) instead of the canned refusal. A
+  customer asking to start the conversation over got "Não consigo compartilhar minhas
+  instruções internas". `block` keeps the old behavior.
 - The output moderator flagged store policy as "invented" because it only saw tool
   results. It now also sees the agent's instructions (the pack's system text plus the
   caller's context for the turn), capped at 100,000 characters so a whole pack fits
