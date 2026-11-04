@@ -234,7 +234,7 @@ module Insika
             @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY key", [scope])
           end
         rows = rows.select { |key, _| key.start_with?(prefix) } if prefix && !upper
-        rows.map { |key, raw| [key, @serializer.parse(decode(raw))] }
+        parse_rows(rows)
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
@@ -254,7 +254,7 @@ module Insika
         if prefix && !upper
           return @db.execute("SELECT key, value FROM kv WHERE scope = ? ORDER BY rowid DESC", [scope])
                     .select { |key, _| key.start_with?(prefix) }.drop(offset).first(limit)
-                    .map { |key, raw| [key, @serializer.parse(decode(raw))] }
+                    .then { |page| parse_rows(page) }
         end
 
         keys = (upper ? @db.execute(RECENT_KEYS_PREFIX_SQL, [scope, prefix, upper, limit, offset])
@@ -265,7 +265,7 @@ module Insika
                       [scope, *batch]).each { |key, raw| values[key] = raw }
         end
         # a key deleted between the two reads simply drops out of the page
-        keys.filter_map { |key| (raw = values[key]) && [key, @serializer.parse(decode(raw))] }
+        parse_rows(keys.filter_map { |key| (raw = values[key]) && [key, raw] })
       rescue ::SQLite3::Exception => e
         raise Insika::StoreError, e.message
       end
@@ -316,6 +316,19 @@ module Insika
       end
 
       private
+
+      PARSE_YIELD_EVERY = 200
+
+      # [[key, raw]] -> [[key, value]], yielding to the reactor every
+      # PARSE_YIELD_EVERY rows: the read itself is one quick statement, but
+      # parsing thousands of values (the Studio home on a busy day) held the
+      # reactor for seconds and starved every other turn on the worker.
+      def parse_rows(rows)
+        rows.each_with_index.map do |(key, raw), i|
+          Async::Task.current?&.yield if i.positive? && (i % PARSE_YIELD_EVERY).zero?
+          [key, @serializer.parse(decode(raw))]
+        end
+      end
 
       # A BLOB is a value an earlier release stored deflated; JSON is always text.
       def decode(raw)
