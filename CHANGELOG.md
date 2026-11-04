@@ -37,6 +37,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   without yielding, so under load a big store stalled the worker past Falcon's 30s health
   check and the worker was SIGKILLed, cutting every stream it served (about once a
   minute). The scan now yields every 100 tasks.
+- SQLite bulk reads (`entries`, `recent`) yield every 200 rows while parsing. Opening
+  the Studio home on a busy store held the worker for 5 to 15s, and every turn on that
+  worker waited.
 - An input-moderator injection verdict now follows `guardrails.injection`, like the
   regex tier: on `flag` (the default) the turn reaches the model with the security
   notice and an audit flag (`source: moderator`) instead of the canned refusal. A

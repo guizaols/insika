@@ -14,6 +14,20 @@ RSpec.describe Insika::Stores::SQLite do
     after { store.close }
 
     it_behaves_like "an Insika store"
+
+    # Bulk reads parse every value; on a big scope that held the worker's
+    # reactor for seconds (the Studio home under load).
+    it "yields to the reactor while parsing a bulk read" do
+      500.times { |i| store.set("s", "k#{i}", { "i" => i }) }
+      ticks = 0
+      Sync do |task|
+        task.async { loop { ticks += 1; sleep 0 } }
+        expect(store.entries("s").size).to eq(500)
+        expect(store.recent("s", nil, 500).size).to eq(500)
+        task.children.each(&:stop)
+      end
+      expect(ticks).to be >= 4
+    end
   end
 
   context "with a file in tmpdir" do
