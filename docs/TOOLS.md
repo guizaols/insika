@@ -26,6 +26,10 @@ handshake fallback) — never a frozen snapshot. See [MCP servers](#mcp-servers)
 Code tools **win name collisions** — you cannot register a data tool whose name
 shadows a code tool.
 
+**Adding a tool for a customer?** Start with
+[Adding a tool, step by step](#adding-a-tool-step-by-step). Most customer tools
+are an HTTP call, and those need no code and no deploy.
+
 ## Data tools: a tool is a row
 
 A data tool is defined entirely by config — this is the operator-facing kind, and
@@ -442,6 +446,160 @@ instance's credentials; it does not validate a separate HTTP data tool or every
 remote tool's execution permissions. When replacing an HTTP tool with MCP,
 remove the old tool from the agent's permissions and update prompt references
 to the actual MCP tool names. Keep the egress allowlist restricted to required hosts.
+
+## Adding a tool, step by step
+
+The recipe for the common case: a customer has an HTTP API and an agent should call it.
+No Ruby, no rebuild, no restart.
+
+### 1. Pick the kind
+
+| The customer has… | Use | Deploy? |
+|---|---|---|
+| an HTTP/REST endpoint | a **data tool** (this recipe) | no |
+| an MCP server | an [MCP instance](#mcp-servers) — every tool it lists appears | no |
+| logic that must run inside the process (files, shell, subagents) | a **code tool**, shipped as a [plugin](PLUGINS.md) | yes |
+
+When in doubt, it is a data tool.
+
+### 2. Write the manifest
+
+Keep one JSON file per customer in your own repo, so every change is reviewed and
+versioned. `defaults` holds what the customer's tools share; each tool overrides it.
+
+```jsonc
+// tools/acme.json
+{
+  "version": 1,
+  "defaults": {
+    "base_url": "https://api.acme.com",
+    "path_template": "/v2/{endpoint}",
+    "headers": { "Authorization": "Bearer {{secret.ACME_API_TOKEN}}" },
+    "secret_headers": ["Authorization"],
+    "group": "acme"
+  },
+  "tools": [
+    {
+      "name": "acme_order_status",
+      "description": "Status and tracking of one order. Call when the customer asks where an order is.",
+      "endpoint": "orders/{{order_id}}",
+      "parameters": {
+        "type": "object",
+        "properties": { "order_id": { "type": "string", "description": "Order number, digits only" } },
+        "required": ["order_id"]
+      }
+    },
+    {
+      "name": "acme_cancel_order",
+      "description": "Cancel an order that has not shipped yet.",
+      "method": "POST",
+      "endpoint": "orders/{{order_id}}/cancel",
+      "parameters": {
+        "type": "object",
+        "properties": { "order_id": { "type": "string" } },
+        "required": ["order_id"]
+      }
+    }
+  ]
+}
+```
+
+What each piece does:
+
+- `name`: lowercase, digits and `_` only. Prefix it with the customer (`acme_…`)
+  so names never collide across customers.
+- `description`: the only thing the model reads to decide **when** to call. Say what
+  it returns and when to use it.
+- `parameters`: JSON Schema, see [the schema is the contract](#parameters-the-schema-is-the-contract).
+  Every `{{param}}` in the URL, query or body must be declared here.
+- URL: either a full `"url"` on the tool, or `defaults.base_url` +
+  `defaults.path_template` with `{endpoint}` filled from each tool's `"endpoint"`.
+- `method`: defaults to `GET`. `side_effect` follows it (GET/HEAD → false, anything
+  else → true) — set it explicitly when that is wrong.
+- `group`: lets you enable all of a customer's tools for an agent at once (step 4).
+- Other optional keys: `query`, `body`, `timeout` (seconds, default 30), `tags`,
+  `response` (default returns the raw body; `{ "extract": "json_path", "path": "$.results" }`
+  keeps only part of it).
+- The tool may also come in OpenAI form (`{ "function": { name, description, parameters } }`)
+  or MCP form (`inputSchema`), so a spec the customer already has can be pasted in.
+
+### 3. Set the secret, then import
+
+`{{secret.ACME_API_TOKEN}}` is read from the **server's environment variable**
+`ACME_API_TOKEN` at import time. The token never goes in the file. So:
+
+1. Add `ACME_API_TOKEN` to the deployment's environment.
+2. If the API host is not public HTTPS, add it to `INSIKA_EGRESS_HOSTS` (see
+   [Egress](#egress-the-ssrf-guard)).
+3. Import:
+
+```bash
+curl -sS -X POST "$INSIKA_URL/v1/tools/manifest" \
+  -H "Authorization: Bearer $INSIKA_GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data @tools/acme.json
+```
+
+The response lists what happened per tool:
+
+```json
+{ "version": 1, "created": ["acme_order_status"], "updated": [],
+  "errors": [{ "tool": "acme_cancel_order", "error": "secret 'ACME_API_TOKEN' not configured in the deployment" }] }
+```
+
+A bad tool lands in `errors[]` and does not block the others. Fix it and re-run the
+same command: import is an upsert by `name`, so re-importing is safe and is also how
+you **edit** a tool. The change is live right away, on every worker within ~2 s.
+
+The secret value is copied into the store at import. After rotating a token, set the
+new env value **and re-import** the manifest.
+
+### 4. Enable it for the agent
+
+A registered tool is not offered to any agent until the agent allows it. Pick one:
+
+- **Studio** → the agent → **Tools** → tick the tools (or the whole section) →
+  **Save tools**.
+- **Allow the group once** (recommended): add `acme` to the agent's
+  `tools_allow_groups`. Every future tool imported with `"group": "acme"` is then
+  enabled with no extra step.
+- **API**: `POST /v1/commands/set_agent_tools` with
+  `{ "id": "<agent>", "allow": [...], "deny": [...], "allow_groups": [...] }`.
+  `allow` and `deny` **replace** the current lists (a missing `deny` clears it), so
+  send the full lists, not just the new tool.
+
+If the agent has **neither** `tools_allow` nor `tools_allow_groups` set (both
+`null`), it already sees every tool, including the new one. An empty list `[]`
+means none.
+
+Tell the agent about it, too: if its instructions name the tools it should use,
+add the new one there.
+
+### 5. Test it
+
+1. Open the agent in Studio and send a message that should trigger the tool.
+2. Check the session **trace**, not the reply: a healthy call shows the backend's
+   status code (e.g. `200`). A blocked or failed call returns `{ error: … }` to the
+   model, and the model can still write a plausible answer.
+3. Run `insika doctor` — its `data-tools` check reports any stored tool that no
+   longer validates.
+
+If it does not show up, follow [the tool is missing](#troubleshooting-the-tool-is-missing).
+
+### 6. Change or remove
+
+- **Change**: edit the JSON and re-import (step 3).
+- **Remove**: Studio Tools panel → remove, or
+  `POST /v1/commands/delete_data_tool` with `{ "name": "acme_cancel_order" }`.
+  Removing a tool from the manifest file does **not** delete it from the server.
+- **Unused tools**: `insika tools:report` lists tools an agent carries but never
+  calls ([usage report](#the-usage-report--insika-toolsreport)).
+
+### Studio instead of a manifest
+
+The Studio Tools editor writes the same row, good for a quick one-off. Two
+differences: `{{secret.*}}` and `{{env.*}}` do not work there (type the real header
+value; it is masked on read), and nothing is versioned in your repo.
 
 ## MCP servers
 
