@@ -210,11 +210,17 @@ module Insika
       to_task(record)
     end
 
-    # -> [Task] with one of the given statuses. O(n) scan at boot;
-    # acceptable (one node, local SQLite).
+    # -> [Task] with one of the given statuses. O(n) scan, at boot AND on every
+    # tick sweep. It yields every SCAN_YIELD_EVERY records: store reads never
+    # yield, so a big store otherwise froze the worker past Falcon's 30s
+    # health check and got it SIGKILLed mid-load.
+    # ponytail: still a full scan per tick; a status index if task counts keep growing.
+    SCAN_YIELD_EVERY = 100
+
     def with_status(*statuses)
       wanted = statuses.flatten
-      @store.list(SCOPE, KEY_PREFIX).filter_map do |key|
+      @store.list(SCOPE, KEY_PREFIX).each_with_index.filter_map do |key, i|
+        Async::Task.current?&.yield if (i % SCAN_YIELD_EVERY).zero? && defined?(Async::Task)
         record = @store.get(SCOPE, key)
         next if record.nil?
 

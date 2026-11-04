@@ -115,6 +115,7 @@ this section is the single source of truth for what changing it means.
 | `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
 | `INSIKA_TICK_INTERVAL` | `60` | seconds between tick passes — outbox drain + stale recovery sweep (process model, item 5). `0` disables |
 | `INSIKA_TICK_STALE_AFTER` | `900` | seconds a `:queued`/`:running` task must sit untouched before the tick sweeps it. Must exceed the largest `turn_timeout` of the deployment |
+| `INSIKA_STALL_LOG_MS` | unset (off) | diagnostic: a worker whose reactor does not yield for this many ms logs a `[stall]` line with the stack holding it, once a second. Falcon SIGKILLs a worker stuck 30s; `5000` shows what gets there |
 | `INSIKA_GATEWAY_TOKEN` | falls back to `ADMIN_TOKEN` | Bearer for `/v1/responses` and `/v1/agents` (the API contract) |
 | `ADMIN_TOKEN` | `local-demo` | login token for `/studio` (**change in production**) |
 | `INSIKA_ENV` | `RACK_ENV`, else `local` | environment name on the Studio banner; `production`/`prod` hides the banner |
