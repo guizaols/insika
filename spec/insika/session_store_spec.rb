@@ -338,6 +338,17 @@ RSpec.describe Insika::SessionStore do
 
       expect(sessions.each_id.to_a).to eq(["a"])
     end
+
+    it "yields to the reactor while enumerating" do
+      250.times { |i| sessions.create(id: "s#{i}") }
+      ticks = 0
+      Sync do |task|
+        task.async { loop { ticks += 1; sleep 0 } }
+        sessions.each_id { |id| sessions.find(id) }
+        task.children.each(&:stop)
+      end
+      expect(ticks).to be >= 2
+    end
   end
 
   describe "backend error propagation" do

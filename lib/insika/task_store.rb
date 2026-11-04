@@ -254,7 +254,8 @@ module Insika
     def each_id
       return enum_for(:each_id) unless block_given?
 
-      @store.list(SCOPE, KEY_PREFIX).each do |key|
+      @store.list(SCOPE, KEY_PREFIX).each_with_index do |key, i|
+        Async::Task.current?&.yield if i.positive? && (i % SCAN_YIELD_EVERY).zero? && defined?(Async::Task)
         yield key.delete_prefix(KEY_PREFIX)
       end
     end

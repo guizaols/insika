@@ -40,6 +40,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 - SQLite bulk reads (`entries`, `recent`) yield every 200 rows while parsing. Opening
   the Studio home on a busy store held the worker for 5 to 15s, and every turn on that
   worker waited.
+- `SessionStore#each_id` and `TaskStore#each_id` yield every 100 ids. The distill
+  sweep read every session through them and held the worker for 5 to 6s under load;
+  harvest and retention walk the same path.
 - An input-moderator injection verdict now follows `guardrails.injection`, like the
   regex tier: on `flag` (the default) the turn reaches the model with the security
   notice and an audit flag (`source: moderator`) instead of the canned refusal. A
