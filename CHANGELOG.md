@@ -9,6 +9,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- `INSIKA_STALL_LOG_MS`: when set, a worker logs a `[stall]` line with the stack of
+  whatever holds its reactor longer than that many milliseconds. Off by default. See
+  [Deploy](docs/DEPLOY.md).
 - A read-only MCP server at `POST /mcp` (Streamable HTTP, protocol `2025-06-18`), behind
   the gateway bearer and operator-only. It has five tools: `agent_summary`,
   `list_sessions`, `get_transcript`, `list_flags` and `turn_metrics` (latency, cost and
@@ -30,6 +33,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- The tick's recovery sweep no longer freezes a worker. It read every task one by one
+  without yielding, so under load a big store stalled the worker past Falcon's 30s health
+  check and the worker was SIGKILLed, cutting every stream it served (about once a
+  minute). The scan now yields every 100 tasks.
 - An input-moderator injection verdict now follows `guardrails.injection`, like the
   regex tier: on `flag` (the default) the turn reaches the model with the security
   notice and an audit flag (`source: moderator`) instead of the canned refusal. A
