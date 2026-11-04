@@ -174,4 +174,10 @@ BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 # --graceful-stop above this deadline so the controller does not cut it short.
 Insika::Shutdown.install(executor: W::EXECUTOR)
 
+# Diagnostic: log the reactor's stack when it stops yielding (opt-in).
+if (stall_ms = ENV["INSIKA_STALL_LOG_MS"].to_i).positive?
+  require_relative "lib/insika/stall_watchdog"
+  Insika::StallWatchdog.start(threshold_ms: stall_ms)
+end
+
 run BOOTED_APP
