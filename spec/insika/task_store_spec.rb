@@ -184,6 +184,19 @@ RSpec.describe Insika::TaskStore do
     it "returns [] when there are no tasks" do
       expect(tasks.running_or_interrupted).to eq([])
     end
+
+    # The tick sweep scans every task: without yielding, a big store froze the
+    # worker past Falcon's 30s health check and it was SIGKILLed.
+    it "yields to the reactor while scanning" do
+      250.times { |i| tasks.create(command: command, id: "t#{i}") }
+      ticks = 0
+      Sync do |task|
+        task.async { loop { ticks += 1; sleep 0 } }
+        tasks.running_or_interrupted
+        task.children.each(&:stop)
+      end
+      expect(ticks).to be >= 2
+    end
   end
 
   describe "type boundary and queries" do
