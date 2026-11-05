@@ -40,6 +40,11 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 - SQLite bulk reads (`entries`, `recent`) yield every 200 rows while parsing. Opening
   the Studio home on a busy store held the worker for 5 to 15s, and every turn on that
   worker waited.
+- The home's "tool(s) failing in 24h" chip opens the Models page's Tool health table,
+  which now lists the newest sessions where each tool failed (the session page shows the
+  error). It used to open the Tools page, which has no failures on it.
+- The home's "customer(s) waiting for a reply" chip counts every waiting conversation.
+  It stopped at 8, the size of the card below it.
 - `SessionStore#each_id` and `TaskStore#each_id` yield every 100 ids. The distill
   sweep read every session through them and held the worker for 5 to 6s under load;
   harvest and retention walk the same path.

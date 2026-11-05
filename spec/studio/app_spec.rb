@@ -3935,6 +3935,18 @@ end
     expect(waiting).not_to include("w-fresh", "w-answered", "w-old")
   end
 
+  it "the waiting chip counts every waiting conversation, not just the 8 the card lists" do
+    now = Time.now.utc
+    sessions = (1..10).to_h do |i|
+      ["w#{i}", StoredSession.new(id: "w#{i}", updated_at: (now - 30 * 60).iso8601, vars: { "agent" => "bia" },
+                                  messages: [{ "role" => "user", "content" => "oi" }])]
+    end
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/home").body
+    expect(body).to include("10 customer(s) waiting for a reply")
+    expect(body[/Waiting for a reply.*?<\/section>/m].scan("<tr><td>").size).to eq(8)
+  end
+
   it "the agent page's Performance tab shows 24h / 7d / 30d for that agent only" do
     now = Time.now.utc
     backend = Insika::Stores::Memory.new

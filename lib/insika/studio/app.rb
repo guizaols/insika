@@ -1666,7 +1666,7 @@ end
         [counts[:refinement], "refinement run(s) to review", "/studio/refinement", "info"],
         [counts[:false_positives], "guardrail false positive(s) reported", "/studio/inbox?type=false_positive", "err"],
         [Array(@stalled).size, "customer(s) waiting for a reply", "/studio/chats", "warn"],
-        [failing, "tool(s) failing in 24h", "/studio/tools", "err"]
+        [failing, "tool(s) failing in 24h", "/studio/models?period=24h#tool-health", "err"]
       ].select { |n, *| n.positive? }.map { |n, text, href, tone| ["#{n} #{text}", href, tone] }
     end
 
@@ -2808,7 +2808,7 @@ end
         next unless t && t >= stalled_from && t <= stalled_to && last_role(s) == "user"
 
         { id: s.id, agent: session_agent(s), waiting: t }
-      end.sort_by { |row| row[:waiting] }.first(8)
+      end.sort_by { |row| row[:waiting] } # all of them: the attention chip counts; the card shows 8
       @daily = Array(@day&.fetch("daily"))
       cold_floor = now - COLD_AGENT_DAYS * 86_400
       @cold_agents = profiles ? profiles.all.map { |p| p.id.to_s }.sort.reject do |id|
