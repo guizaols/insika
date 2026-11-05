@@ -166,9 +166,9 @@
     </section>
 
     <section class="card">
-      <div class="section-head"><h2>Waiting for a reply</h2><span class="muted">customer spoke last, 10+ min ago · 24h</span></div>
+      <div class="section-head"><h2>No agent reply</h2><span class="muted">the agent did not answer the last message, 10+ min ago · 24h · replies sent outside Insika are not seen</span></div>
       <% if @stalled.empty? %>
-        <div class="empty">No conversation is waiting.</div>
+        <div class="empty">Every customer message got an agent reply.</div>
       <% else %>
         <table class="grid">
           <thead><tr><th>conversation</th><th>agent</th><th class="num">waiting</th></tr></thead>
