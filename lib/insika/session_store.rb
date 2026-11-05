@@ -108,11 +108,12 @@ module Insika
 
     # -> Session (SHALLOW merge: an existing nested key is replaced wholesale,
     # not merged). NotFoundError if absent.
-    def update_vars(id, vars)
+    # amend: a backfill, not activity — the session keeps its place and time.
+    def update_vars(id, vars, amend: false)
       record = fetch!(id)
       record["vars"] = record["vars"].merge(deep_stringify(vars))
-      record["updated_at"] = timestamp
-      write(record)
+      record["updated_at"] = timestamp unless amend
+      write(record, amend: amend)
       to_session(record)
     end
 
