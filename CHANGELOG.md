@@ -43,8 +43,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 - The home's "tool(s) failing in 24h" chip opens the Models page's Tool health table,
   which now lists the newest sessions where each tool failed (the session page shows the
   error). It used to open the Tools page, which has no failures on it.
-- The home's "customer(s) waiting for a reply" chip counts every waiting conversation.
-  It stopped at 8, the size of the card below it.
+- The home's "waiting for a reply" chip and card are now "no agent reply", and the chip
+  counts every such conversation (it stopped at 8, the size of the card). Insika only sees
+  what reaches it: a reply the host sent on its own, by a human or a template, is not there,
+  so "waiting" claimed more than it knew.
 - `SessionStore#each_id` and `TaskStore#each_id` yield every 100 ids. The distill
   sweep read every session through them and held the worker for 5 to 6s under load;
   harvest and retention walk the same path.
