@@ -198,16 +198,22 @@ module Insika
       end
     end
 
+    FAILED_SESSIONS = 5 # newest sessions listed per failing tool
+
     # Turn latency (each window's p50/p95) and per-tool health over turn rows.
     def turn_summary(turns)
       windows = TURN_WINDOWS.to_h do |window|
         values = turns.filter_map { |row| row[window] }.sort
         [window, { "measured" => values.size, "p50" => percentile(values, 50), "p95" => percentile(values, 95) }]
       end
-      tools = turns.flat_map { |row| Array(row["tools"]) }.group_by(&:first).sort.map do |name, calls|
-        ms = calls.filter_map { |call| call[2] }.sort
-        { "tool" => name, "calls" => calls.size, "failures" => calls.count { |call| call[1] == false },
-          "p50_ms" => percentile(ms, 50), "p95_ms" => percentile(ms, 95) }
+      # each call carries its turn's session, so a failing tool links to where it failed
+      calls = turns.flat_map { |row| Array(row["tools"]).map { |call| call.first(3) + [row["session"]] } }
+      tools = calls.group_by(&:first).sort.map do |name, list|
+        ms = list.filter_map { |call| call[2] }.sort
+        failed = list.select { |call| call[1] == false }
+        { "tool" => name, "calls" => list.size, "failures" => failed.size,
+          "p50_ms" => percentile(ms, 50), "p95_ms" => percentile(ms, 95),
+          "failed_sessions" => failed.filter_map(&:last).uniq.first(FAILED_SESSIONS) }
       end
       failed = turns.select { |row| row["status"] == "failed" }
       { "count" => turns.size, "failures" => failed.size,

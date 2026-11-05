@@ -9,6 +9,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- `INSIKA_STALL_LOG_MS`: when set, a worker logs a `[stall]` line with the stack of
+  whatever holds its reactor longer than that many milliseconds. Off by default. See
+  [Deploy](docs/DEPLOY.md).
 - A read-only MCP server at `POST /mcp` (Streamable HTTP, protocol `2025-06-18`), behind
   the gateway bearer and operator-only. It has five tools: `agent_summary`,
   `list_sessions`, `get_transcript`, `list_flags` and `turn_metrics` (latency, cost and
@@ -30,6 +33,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- The tick's recovery sweep no longer freezes a worker. It read every task one by one
+  without yielding, so under load a big store stalled the worker past Falcon's 30s health
+  check and the worker was SIGKILLed, cutting every stream it served (about once a
+  minute). The scan now yields every 100 tasks.
+- SQLite bulk reads (`entries`, `recent`) yield every 200 rows while parsing. Opening
+  the Studio home on a busy store held the worker for 5 to 15s, and every turn on that
+  worker waited.
+- The home's "tool(s) failing in 24h" chip opens the Models page's Tool health table,
+  which now lists the newest sessions where each tool failed (the session page shows the
+  error). It used to open the Tools page, which has no failures on it.
+- The home's "waiting for a reply" chip and card are now "no agent reply", and the chip
+  counts every such conversation (it stopped at 8, the size of the card). Insika only sees
+  what reaches it: a reply the host sent on its own, by a human or a template, is not there,
+  so "waiting" claimed more than it knew.
+- `SessionStore#each_id` and `TaskStore#each_id` yield every 100 ids. The distill
+  sweep read every session through them and held the worker for 5 to 6s under load;
+  harvest and retention walk the same path.
 - An input-moderator injection verdict now follows `guardrails.injection`, like the
   regex tier: on `flag` (the default) the turn reaches the model with the security
   notice and an audit flag (`source: moderator`) instead of the canned refusal. A

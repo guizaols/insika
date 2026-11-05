@@ -3923,16 +3923,28 @@ end
     expect(body).to include('<turbo-frame id="home-ops" target="_top" data-live-home-target="ops">')
   end
 
-  it "home lists conversations waiting for a reply: customer spoke last, 10+ minutes ago, within 24h" do
+  it "home lists conversations with no agent reply: customer spoke last, 10+ minutes ago, within 24h" do
     now = Time.now.utc
     mk = ->(id, ago, role) { StoredSession.new(id: id, updated_at: (now - ago).iso8601, vars: { "agent" => "bia" },
                                                messages: [{ "role" => "user", "content" => "oi" }, { "role" => role, "content" => "x" }]) }
     app, = build_app(sessions: { "w-waiting" => mk.("w-waiting", 30 * 60, "user"), "w-fresh" => mk.("w-fresh", 60, "user"),
                                  "w-answered" => mk.("w-answered", 30 * 60, "assistant"), "w-old" => mk.("w-old", 2 * 86_400, "user") })
     body = login(app).get("/home").body
-    waiting = body[/Waiting for a reply.*?<\/section>/m]
+    waiting = body[/No agent reply.*?<\/section>/m]
     expect(waiting).to include("w-waiting")
     expect(waiting).not_to include("w-fresh", "w-answered", "w-old")
+  end
+
+  it "the no-agent-reply chip counts every waiting conversation, not just the 8 the card lists" do
+    now = Time.now.utc
+    sessions = (1..10).to_h do |i|
+      ["w#{i}", StoredSession.new(id: "w#{i}", updated_at: (now - 30 * 60).iso8601, vars: { "agent" => "bia" },
+                                  messages: [{ "role" => "user", "content" => "oi" }])]
+    end
+    app, = build_app(sessions: sessions)
+    body = login(app).get("/home").body
+    expect(body).to include("10 customer message(s) with no agent reply")
+    expect(body[/No agent reply.*?<\/section>/m].scan("<tr><td>").size).to eq(8)
   end
 
   it "the agent page's Performance tab shows 24h / 7d / 30d for that agent only" do

@@ -325,10 +325,14 @@ module Insika
       written
     end
 
+    # Callers read each id (distill, harvest, retention sweeps), and store reads
+    # never yield: yield every 100 ids so a big store does not hold the worker
+    # past Falcon's 30s health check.
     def each_id
       return enum_for(:each_id) unless block_given?
 
-      @store.list(SCOPE, KEY_PREFIX).each do |key|
+      @store.list(SCOPE, KEY_PREFIX).each_with_index do |key, i|
+        Async::Task.current?&.yield if i.positive? && (i % 100).zero? && defined?(Async::Task)
         yield key.delete_prefix(KEY_PREFIX)
       end
     end

@@ -2737,7 +2737,8 @@ module Insika
       usage ||= {}
       @model_metrics_store.record_turn(task_id: task.id, row: timing.metrics.merge(
         "at" => Time.now.utc.iso8601(6), "agent" => profile.id.to_s, "status" => status,
-        "stage" => stage&.to_s, "model" => usage[:model]&.to_s, "provider" => usage[:provider]&.to_s
+        "stage" => stage&.to_s, "model" => usage[:model]&.to_s, "provider" => usage[:provider]&.to_s,
+        "session" => task.session_id&.to_s
       ).compact)
     end
 

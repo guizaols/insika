@@ -1665,8 +1665,8 @@ end
         [counts[:harvest], "mined skill(s) to review", "/studio/harvest", "info"],
         [counts[:refinement], "refinement run(s) to review", "/studio/refinement", "info"],
         [counts[:false_positives], "guardrail false positive(s) reported", "/studio/inbox?type=false_positive", "err"],
-        [Array(@stalled).size, "customer(s) waiting for a reply", "/studio/chats", "warn"],
-        [failing, "tool(s) failing in 24h", "/studio/tools", "err"]
+        [Array(@stalled).size, "customer message(s) with no agent reply", "/studio/chats", "warn"],
+        [failing, "tool(s) failing in 24h", "/studio/models?period=24h#tool-health", "err"]
       ].select { |n, *| n.positive? }.map { |n, text, href, tone| ["#{n} #{text}", href, tone] }
     end
 
@@ -2801,14 +2801,15 @@ end
         { agent: agent, conversations: list.size, today: list.count { |s| (t = utc_time(s.updated_at)) && t >= now - 86_400 },
           messages: list.sum { |s| message_count(s) } }
       end.sort_by { |row| [-row[:today], -row[:conversations], row[:agent]] }.first(8)
-      # Stalled: the customer spoke last, 10+ minutes ago, within the last 24h.
+      # Stalled: the customer spoke last, 10+ minutes ago, within the last 24h. Only what
+      # reached the engine: a reply the host sent on its own (a human, a template) is not here.
       stalled_from, stalled_to = now - 86_400, now - STALLED_AFTER
       @stalled = agent_sessions(window, @agent).filter_map do |s|
         t = utc_time(s.updated_at)
         next unless t && t >= stalled_from && t <= stalled_to && last_role(s) == "user"
 
         { id: s.id, agent: session_agent(s), waiting: t }
-      end.sort_by { |row| row[:waiting] }.first(8)
+      end.sort_by { |row| row[:waiting] } # all of them: the attention chip counts; the card shows 8
       @daily = Array(@day&.fetch("daily"))
       cold_floor = now - COLD_AGENT_DAYS * 86_400
       @cold_agents = profiles ? profiles.all.map { |p| p.id.to_s }.sort.reject do |id|
