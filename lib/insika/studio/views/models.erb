@@ -141,15 +141,16 @@
     </table></div>
   </section>
   <% unless turns["tools"].empty? %>
-  <section class="card model-panel model-detail">
+  <section class="card model-panel model-detail" id="tool-health">
     <div class="section-head"><h2>Tool health</h2><span class="muted">every call in these turns</span></div>
     <div class="model-table-scroll"><table class="grid">
-      <thead><tr><th>tool</th><th class="num">calls</th><th class="num">ok %</th><th class="num">p50 (ms)</th><th class="num">p95 (ms)</th></tr></thead>
+      <thead><tr><th>tool</th><th class="num">calls</th><th class="num">ok %</th><th class="num">p50 (ms)</th><th class="num">p95 (ms)</th><th>recent failures</th></tr></thead>
       <tbody>
         <% turns["tools"].sort_by { |t| -t["failures"] }.each do |t| %>
           <tr><td><%= t["tool"] %></td><td class="num"><%= t["calls"] %></td>
             <td class="num"><%= format("%.1f", (t["calls"] - t["failures"]) * 100.0 / t["calls"]) %></td>
-            <% %w[p50_ms p95_ms].each do |k| %><td class="num"><%= t[k].nil? ? "—" : t[k] %></td><% end %></tr>
+            <% %w[p50_ms p95_ms].each do |k| %><td class="num"><%= t[k].nil? ? "—" : t[k] %></td><% end %>
+            <td><%== Array(t["failed_sessions"]).map { |sid| %(<a class="mono" href="/studio/sessions/#{Rack::Utils.escape(sid)}" title="#{Rack::Utils.escape_html(sid)}">#{Rack::Utils.escape_html(sid[0, 14])}</a>) }.join(" ") %></td></tr>
         <% end %>
       </tbody>
     </table></div>

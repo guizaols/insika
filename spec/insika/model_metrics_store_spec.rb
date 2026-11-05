@@ -56,7 +56,7 @@ RSpec.describe "Durable model metrics" do
       end
 
       it "reports turn latency and tool health with the same filters, and drops a turn with its task" do
-        store.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "sales", "model" => "flash",
+        store.record_turn(task_id: "t", row: { "at" => now.iso8601, "agent" => "sales", "model" => "flash", "session" => "s1",
           "ttft_ms" => 100, "total_ms" => 900, "tools" => [["search", true, 10], ["cart", false, 40]] })
         tasks.create(id: "t2", command: {})
         store.record_turn(task_id: "t2", row: { "at" => now.iso8601, "agent" => "support", "ttft_ms" => 300,
@@ -71,8 +71,8 @@ RSpec.describe "Durable model metrics" do
         expect(turns["windows"]["ttft_ms"]).to eq("measured" => 2, "p50" => 100, "p95" => 300)
         expect(turns["windows"]["queue_ms"]).to eq("measured" => 0, "p50" => nil, "p95" => nil)
         expect(turns["tools"]).to eq([
-          { "tool" => "cart", "calls" => 1, "failures" => 1, "p50_ms" => 40, "p95_ms" => 40 },
-          { "tool" => "search", "calls" => 2, "failures" => 0, "p50_ms" => 10, "p95_ms" => 20 }
+          { "tool" => "cart", "calls" => 1, "failures" => 1, "p50_ms" => 40, "p95_ms" => 40, "failed_sessions" => ["s1"] },
+          { "tool" => "search", "calls" => 2, "failures" => 0, "p50_ms" => 10, "p95_ms" => 20, "failed_sessions" => [] }
         ])
         expect(store.report(agent: "sales", now: now)["turns"]["count"]).to eq(1)
 

@@ -173,7 +173,7 @@
         <table class="grid">
           <thead><tr><th>conversation</th><th>agent</th><th class="num">waiting</th></tr></thead>
           <tbody>
-            <% @stalled.each do |row| %>
+            <% @stalled.first(8).each do |row| %>
               <tr><td><a class="mono" href="/studio/sessions/<%= Rack::Utils.escape(row[:id]) %>" title="<%= row[:id] %>"><%= row[:id][0, 20] %></a></td>
                 <td><%= row[:agent].empty? ? "—" : row[:agent] %></td><td class="num"><%= time_ago(row[:waiting].iso8601) %></td></tr>
             <% end %>
