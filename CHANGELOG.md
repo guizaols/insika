@@ -33,6 +33,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- Studio: the agent page's Performance tab loads on its own when first opened. It reads
+  30 days of model and turn metrics, which made the agent page, and every save that
+  returns to it, take seconds on a busy store.
 - Studio: Turbo no longer prefetches links on hover. Each Studio page reads every
   session's stats, so moving the mouse over the chat list fired one request per row
   and stalled the page for seconds.

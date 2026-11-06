@@ -3981,9 +3981,13 @@ end
     end
     sess = StoredSession.new(id: "s-bia", updated_at: now.iso8601, vars: { "agent" => "bia" }, messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "s-bia" => sess }, model_metrics_store: metrics)
-    body = login(app).get("/agents/bia").body
-    perf = body[/id="performance".*?<\/section>/m]
-
+    client = login(app)
+    # the page only carries the lazy frame; its numbers come from the frame's own GET
+    tab = client.get("/agents/bia").body[/id="performance".*?<\/section>/m]
+    expect(tab).to include('src="/studio/agents/bia/performance" loading="lazy"')
+    expect(tab).not_to include("<td>Cost</td>")
+    perf = client.get("/agents/bia/performance").body
+    expect(perf).to include(%(<turbo-frame id="agent-performance">))
     expect(perf).to match(%r{<td>Cost</td><td class="num">\$0.25</td><td class="num">\$0.75</td><td class="num">\$0.75</td>})
     expect(perf).to match(%r{<td>Turns</td><td class="num">1</td><td class="num">2</td><td class="num">2</td>})
     expect(perf).to match(%r{<td>Conversations</td><td class="num">1</td>})
