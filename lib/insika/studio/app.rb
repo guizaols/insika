@@ -367,6 +367,12 @@ module Studio
             r.get { render_agent_detail }
           end
 
+          # The Performance tab's lazy frame (see _agent_performance.erb).
+          r.get "performance" do
+            agent_performance(id, Array(insika[:outcome_store]&.all(agent: id)))
+            render("_agent_performance", layout: false)
+          end
+
           # Config/model → :update_agent (patch merge).
           r.post "config" do
             check_csrf!
@@ -2013,9 +2019,8 @@ end
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
-      # one read of this agent's outcomes, shared by the performance and History tabs
+      # one read of this agent's outcomes for the History tab
       mine = Array(outcomes&.all(agent: id))
-      agent_performance(id, mine)
       agent_changes(id, mine)
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
