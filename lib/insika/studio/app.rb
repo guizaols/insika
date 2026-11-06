@@ -367,10 +367,28 @@ module Studio
             r.get { render_agent_detail }
           end
 
-          # The Performance tab's lazy frame (see _agent_performance.erb).
+          # The heavy tabs' lazy frames (_agent_performance/_tools/_history.erb): the
+          # agent page, and every save that lands back on it, skips them.
           r.get "performance" do
             agent_performance(id, Array(insika[:outcome_store]&.all(agent: id)))
             render("_agent_performance", layout: false)
+          end
+
+          r.get "tools" do
+            @agent_own = @agent
+            load_tool_catalog
+            render("_agent_tools", layout: false)
+          end
+
+          r.get "history" do
+            # Sessions stamp their agent (vars["agent"]); keep this agent's only.
+            # ponytail: scans the 200 most recent sessions; a per-agent index if an
+            # agent's conversations fall out of that window.
+            @recent_sessions = agent_sessions(recent_sessions(limit: 200), id).first(8)
+            @agent = Insika::AgentDefaults.apply_safely(@agent, platform_agent_defaults)
+            load_prompt_files(id)
+            agent_changes(id, Array(insika[:outcome_store]&.all(agent: id)))
+            render("_agent_history", layout: false)
           end
 
           # Config/model → :update_agent (patch merge).
@@ -1991,18 +2009,9 @@ end
         request.params["tab"]
       end
       @config_group = CONFIG_SECTIONS.include?(request.params["cfg"]) ? request.params["cfg"] : "model"
-      store = insika[:agent_file_store]
-      @prompt_files = Array(@agent.prompt_files).map do |name|
-        {
-          name: name.to_s,
-          content: store&.read(id, name).to_s,
-          updated_at: store&.updated_at(id, name),
-          versions: store ? store.versions(id, name) : []
-        }
-      end
+      load_prompt_files(id)
       @all_skills = insika[:skill_catalog]&.all(agent: id) || []
       @agent_skills = @agent.skills.nil? ? nil : Array(@agent.skills).map(&:to_s)
-      load_tool_catalog
       # v2 config surfaces: generation params + model fence. AgentProfile.build
       # string-keys these hashes, so the form helpers read plain string keys.
       @params = @agent.params
@@ -2012,16 +2021,9 @@ end
       mem = insika[:memory_store]
       @facts = mem ? mem.facts(tenant: id) : []
       @notes = mem ? mem.notes(tenant: id, limit: 20) : []
-      # Sessions stamp their agent (vars["agent"]); keep this agent's only.
-      # ponytail: scans the 200 most recent sessions; a per-agent index if an
-      # agent's conversations fall out of that window.
-      @recent_sessions = agent_sessions(recent_sessions(limit: 200), id).first(8)
       # WS7: last outcome + per-day series for THIS agent. The grid already
       # shows the last-outcome pill; the series is the period view.
       outcomes = insika[:outcome_store]
-      # one read of this agent's outcomes for the History tab
-      mine = Array(outcomes&.all(agent: id))
-      agent_changes(id, mine)
       @latest_outcome = outcomes&.latest_per_agent&.[](id)
       @outcome_series = outcomes ? outcomes.series(agent: id) : {}
       # the per-agent cache-hit series (nil store -> the view's
@@ -2037,6 +2039,20 @@ end
         render("agent_detail", locals: { frame_only: true }, layout: false)
       else
         view("agent_detail", locals: { frame_only: false })
+      end
+    end
+
+    # The agent's prompt files with their versions: the Prompts tab and the History
+    # tab's change marks both read them.
+    def load_prompt_files(id)
+      store = insika[:agent_file_store]
+      @prompt_files = Array(@agent.prompt_files).map do |name|
+        {
+          name: name.to_s,
+          content: store&.read(id, name).to_s,
+          updated_at: store&.updated_at(id, name),
+          versions: store ? store.versions(id, name) : []
+        }
       end
     end
 
