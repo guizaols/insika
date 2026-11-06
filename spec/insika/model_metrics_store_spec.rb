@@ -80,6 +80,37 @@ RSpec.describe "Durable model metrics" do
         expect(store.report(now: now)["turns"]["count"]).to eq(2)
       end
 
+      it "windows: 24h from the rows, 7d/30d add the kept days, percentiles within 5%" do
+        { "d0" => 0, "d1" => 3 * 86_400, "d2" => 5 * 86_400, "d3" => 20 * 86_400, "d4" => 40 * 86_400 }.each_with_index do |(id, ago), i|
+          tasks.create(id: id, command: {})
+          at = (now - ago).iso8601
+          store.record(task_id: id, entry: { "type" => "llm_usage", "request_id" => "r", "at" => at, "agent" => "sales", "cost" => 1.0 })
+          store.record(task_id: id, entry: { "type" => "llm_request", "request_id" => "r", "at" => at, "agent" => "sales",
+                                             "duration_ms" => 1000 * (i + 1), "status" => "succeeded" })
+          store.record_turn(task_id: id, row: { "at" => at, "agent" => "sales", "status" => i == 2 ? "failed" : "completed",
+                                                "total_ms" => 1000 * (i + 1), "tools" => [["search", i != 1, 100]] })
+        end
+        tasks.create(id: "other", command: {})
+        store.record_turn(task_id: "other", row: { "at" => (now - 3 * 86_400).iso8601, "agent" => "support", "total_ms" => 5 })
+
+        perf = store.windows(agent: "sales", now: now)
+        expect(perf.transform_values { _1["totals"]["requests"] }).to eq("24h" => 1, "7d" => 3, "30d" => 4)
+        expect(perf["30d"]["totals"]["cost"]).to eq(4.0)
+        expect(perf["7d"]["turns"]).to include("count" => 3, "failures" => 1, "failure_stages" => { "unknown" => 1 })
+        expect(perf["7d"]["turns"]["tools"]).to eq([{ "tool" => "search", "calls" => 3, "failures" => 1,
+                                                      "p50_ms" => 102, "p95_ms" => 102, "failed_sessions" => [] }]) # 100 ms, within 5%
+        expect(perf["30d"]["totals"]["p95_ms"]).to be_within(200).of(4000)
+        expect(perf["30d"]["turns"]["windows"]["total_ms"]).to include("measured" => 4)
+        expect(perf["24h"]["turns"]["windows"]["total_ms"]).to eq("measured" => 1, "p50" => 1000, "p95" => 1000)
+
+        # the closed days are kept once, for every agent; the next read uses them, not
+        # their rows (so a task deleted later still counts, like the home's days)
+        expect(@backend.entries(Insika::ModelMetricsStore::WINDOW_DAY_SCOPE).map(&:first)).to include("support|2026-09-21", "*|2026-09-21")
+        expect(store.windows(agent: "support", now: now)["7d"]["turns"]["count"]).to eq(1)
+        tasks.delete("d1")
+        expect(store.windows(agent: "sales", now: now)).to eq(perf)
+      end
+
       it "home reads once: last 24h, the 24h before, and one bucket per UTC day" do
         record("llm_usage", id: "now", cost: 0.5, agent: "sales")
         record("llm_request", id: "now", duration_ms: 3, status: "succeeded", agent: "sales")
