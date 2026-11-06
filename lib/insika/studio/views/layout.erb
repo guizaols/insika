@@ -8,6 +8,10 @@
       to the plain swap. The CSS owns the actual transition (application.css,
       ::view-transition-*), including the prefers-reduced-motion kill switch. %>
   <meta name="view-transition" content="same-origin">
+  <%# Turbo 8 prefetches a link on hover. A Studio page reads every session's
+      stats, so sweeping the mouse over the 100-row chat list fired 100 of them
+      and queued the worker for seconds. Visits load on click only. %>
+  <meta name="turbo-prefetch" content="false">
   <meta name="csp-nonce" content="<%= csp_nonce %>">
   <title>Insika Studio</title>
   <link rel="icon" type="image/svg+xml" href="<%= asset_path("favicon.svg") %>">

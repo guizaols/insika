@@ -33,6 +33,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- Studio: Turbo no longer prefetches links on hover. Each Studio page reads every
+  session's stats, so moving the mouse over the chat list fired one request per row
+  and stalled the page for seconds.
 - The tick's recovery sweep no longer freezes a worker. It read every task one by one
   without yielding, so under load a big store stalled the worker past Falcon's 30s health
   check and the worker was SIGKILLed, cutting every stream it served (about once a
