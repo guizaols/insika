@@ -3899,6 +3899,26 @@ end
     expect(body).to include('class="barchart"')                 # SVG activity chart
   end
 
+  it "overview home recent conversations show the customer name, phone and agent" do
+    sess = StoredSession.new(id: "sess-home-named", updated_at: "2026-07-21T00:00:00Z", messages: [],
+                             vars: { "agent" => "bia", "customer" => "c-1", "customer_name" => "Maria", "customer_phone" => "5511999" })
+    app, = build_app(sessions: { "sess-home-named" => sess })
+    rail = login(app).get("/home").body[%r{<ul class="convo-rail".*?</ul>}m]
+    expect(rail).to include("Maria")
+    expect(rail).to include("bia · 5511999 · 0 msg")
+  end
+
+  it "home row endpoint renders one rail row for live_home, 404 for an unknown id" do
+    sess = StoredSession.new(id: "t:sess-live", updated_at: "2026-07-21T00:00:00Z", messages: [],
+                             vars: { "agent" => "bia", "customer_name" => "Maria" })
+    app, = build_app(sessions: { "t:sess-live" => sess })
+    client = login(app)
+    body = client.get("/home/row/t%3Asess-live").body
+    expect(body).to start_with("<li data-session-id=\"t:sess-live\"")
+    expect(body).to include("Maria", "bia · 0 msg")
+    expect(client.get("/home/row/nope").status).to eq(404)
+  end
+
   it "overview home shows 24h cost, outcomes, turn health, the agent ranking and cold agents" do
     now = Time.now.utc
     backend = Insika::Stores::Memory.new

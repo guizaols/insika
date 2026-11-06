@@ -1,0 +1,14 @@
+<%# One row of the home "Recent conversations" rail. Rendered by home.erb and
+    by GET /studio/home/row/:id, which live_home fetches for a session the page
+    didn't know — so a live row shows the same name/agent/phone. Local: s. %>
+<li data-session-id="<%= s.id %>">
+  <a href="/studio/sessions/<%= Rack::Utils.escape(s.id) %>">
+    <span class="avatar sm <%= avatar_class(s.id) %>"><%= s.id[0, 2].upcase %></span>
+    <span class="convo-main">
+      <% name = presence(session_customer_label(s)) %>
+      <span class="convo-id<%= " mono" unless name %>" title="<%= s.id %>"><%= name || s.id[0, 20] %></span>
+      <span class="convo-sub"><%= [presence(session_agent(s)), session_customer_phone(s)].compact.map { "#{_1} · " }.join %><%= Array(s.messages).size %> msg · <%= time_ago(s.updated_at) %></span>
+    </span>
+    <span class="presence<%= " present" if session_fresh?(s) %>" title="touched in the last 5 minutes"></span>
+  </a>
+</li>
