@@ -299,6 +299,13 @@ module Studio
 
       r.on "home" do
         r.is { r.get { render_home } }
+        # GET /studio/home/row/:id — one rail row, for a session live_home
+        # learned about from the event stream (events carry only the id).
+        r.get "row", String do |sid|
+          s = insika[:session_store]&.find(utf8(Rack::Utils.unescape_path(sid)))
+          next_404 unless s
+          render("_recent_row", locals: { s: s })
+        end
       end
 
       r.on "models" do
