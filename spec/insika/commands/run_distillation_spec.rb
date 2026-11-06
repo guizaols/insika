@@ -52,7 +52,7 @@ RSpec.describe Insika::Commands::RunDistillation do
   def seed_session(id: "acme:sess_1", customer: "c-1", agent: "store-support",
                    messages: 4, updated_at: "2026-08-10T00:00:00Z")
     sessions.create(id: id)
-    sessions.update_vars(id, "customer" => customer, "agent" => agent)
+    sessions.update_vars(id, { "customer" => customer, "agent" => agent })
     messages.times do |i|
       sessions.append_messages(id, { "role" => "user", "content" => "message #{i}" })
     end

@@ -2808,6 +2808,7 @@ end
     app, = build_app
     body = login(app).get("/agents").body
     expect(body).to include('<meta name="view-transition" content="same-origin">')
+    expect(body).to include('<meta name="turbo-prefetch" content="false">')
     # one sprite, one source of truth: the transcript chips (ERB partial + the
     # live SSE controller) clone from it
     expect(body).to include('id="chip-icons"')

@@ -155,7 +155,7 @@ RSpec.describe "the model-visible conformance suite " do
 
     it "the eager body, lazy table, memory block and request label all reach the system text — and the trace" do
       memory_store.put_fact(tenant: "chat:s1", key: "size", value: "M")
-      session_store.update_vars("s1", "channel" => "relay") # Request provider label
+      session_store.update_vars("s1", { "channel" => "relay" }) # Request provider label
 
       executor = build_executor(context_builder: builder)
       chat = CapturingChat.new
