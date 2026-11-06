@@ -12,6 +12,14 @@ module Insika
     # One row per closed UTC day the home charts: cost and requests, keyed "agent|YYYY-MM-DD"
     # ("*" = every agent). See #home.
     DAY_SCOPE = "model_metrics_day"
+    # One row per closed UTC day per agent ("agent|YYYY-MM-DD"; "*" = every agent,
+    # and marks the day as kept) of what #windows adds up: counts, and latencies as
+    # histograms so days merge into a 7d/30d percentile. No session ids.
+    # ponytail: never pruned, like DAY_SCOPE; a task deleted later still counts.
+    WINDOW_DAY_SCOPE = "model_metrics_window_day"
+    # Each histogram bucket is 10% wider than the one before, so a merged percentile
+    # lands within 5% of the exact one.
+    BUCKET_GROWTH = 1.1
     TURN_WINDOWS = %w[ttft_ms total_ms first_balloon_ms queue_ms prep_ms tools_ms].freeze
     PERIODS = { "24h" => 86_400, "7d" => 7 * 86_400, "30d" => 30 * 86_400 }.freeze
     VALUES = %w[cost input_tokens output_tokens cache_read_tokens cache_write_tokens thinking_tokens].freeze
@@ -60,16 +68,25 @@ module Insika
       nil
     end
 
-    # One agent's (or everyone's) totals and turn summary for each fixed period,
-    # from a single read of the 30-day rows. -> { "24h" => { "totals", "turns" }, ... }
+    # One agent's (or everyone's) totals and turn summary for each fixed period.
+    # 24h is exact, from the rows. 7d and 30d are today plus the 7 (or 30) whole
+    # UTC days before it: the rows since yesterday's start, plus the older days
+    # kept in WINDOW_DAY_SCOPE. A period costs 48h of rows however busy the store,
+    # and its latency percentiles come from per-day histograms (see #histogram).
+    # -> { "24h" => { "totals", "turns" }, ... }
     def windows(agent: nil, now: Time.now.utc)
-      from = now - PERIODS.values.max
-      rows = request_rows(from, now).select { |row| agent.nil? || row["agent"] == agent }
-      turns = turn_rows(from, now, agent: agent, provider: nil, model: nil)
+      today = Time.utc(now.year, now.month, now.day)
+      raw_from = today - 86_400
+      rows = request_rows(raw_from, now).select { |row| agent.nil? || row["agent"] == agent }
+      turns = turn_rows(raw_from, now, agent: agent, provider: nil, model: nil)
+      day_ago = now - 86_400
+      kept = window_days(agent, today - PERIODS.values.max, raw_from)
       PERIODS.to_h do |period, seconds|
-        cut = now - seconds
-        [period, { "totals" => summarize(rows.select { |row| Time.iso8601(row["completed_at"]) >= cut }),
-                   "turns" => turn_summary(turns.select { |row| Time.iso8601(row["at"]) >= cut }) }]
+        next [period, { "totals" => summarize(rows.select { |row| Time.iso8601(row["completed_at"]) >= day_ago }),
+                        "turns" => turn_summary(turns.select { |row| Time.iso8601(row["at"]) >= day_ago }) }] if seconds <= 86_400
+
+        days = kept.select { |day, _| day >= today - seconds }.map(&:last)
+        [period, { "totals" => merged_totals(rows, days), "turns" => merged_turns(turns, days) }]
       end
     end
 
@@ -219,6 +236,124 @@ module Insika
       { "count" => turns.size, "failures" => failed.size,
         "failure_stages" => failed.group_by { |row| row["stage"] || "unknown" }.transform_values(&:size).sort.to_h,
         "windows" => windows, "tools" => tools }
+    end
+
+    COUNTS = %w[requests attempts failures failed_attempts retries measured_requests].freeze
+
+    # The kept days in [from, to), oldest first: [[day, summary], ...]. A day nobody
+    # kept yet is summarized from its rows once, for every agent at the same time.
+    def window_days(agent, from, to)
+      days = []
+      (days << from; from += 86_400) while from < to
+      done = @store.entries(WINDOW_DAY_SCOPE, "*|").to_h { |key, value| [key.delete_prefix("*|"), value] }
+      tag = "#{agent || '*'}|"
+      kept = agent ? @store.entries(WINDOW_DAY_SCOPE, tag).to_h { |key, value| [key.delete_prefix(tag), value] } : done
+      fresh = keep_window_days(days.reject { |day| done.key?(day.strftime("%F")) })
+      days.map do |day|
+        key = day.strftime("%F")
+        [day, fresh.dig(key, agent || "*") || kept[key] || day_summary([], [])]
+      end
+    end
+
+    # -> { "YYYY-MM-DD" => { agent => summary, "*" => summary } } for the given days.
+    def keep_window_days(days)
+      return {} if days.empty?
+
+      from, to = days.min, days.max + 86_400
+      wanted = days.to_set { |day| day.strftime("%F") }
+      by_day = ->(list, field) { list.group_by { |row| Time.iso8601(row[field]).utc.strftime("%F") } }
+      rows = by_day.(request_rows(from, to), "completed_at")
+      turns = by_day.(rows_between(TURN_SCOPE, "at", from, to), "at")
+      fresh = wanted.to_h do |key|
+        day_rows, day_turns = rows.fetch(key, []), turns.fetch(key, [])
+        agents = (day_rows + day_turns).filter_map { |row| row["agent"] }.uniq
+        [key, agents.to_h do |name|
+          [name, day_summary(day_rows.select { |row| row["agent"] == name }, day_turns.select { |row| row["agent"] == name })]
+        end.merge("*" => day_summary(day_rows, day_turns))]
+      end
+      @store.transaction do
+        fresh.each { |key, summaries| summaries.each { |name, summary| @store.set(WINDOW_DAY_SCOPE, "#{name}|#{key}", summary) } }
+      end
+      fresh
+    rescue StandardError
+      fresh || {} # a failed write only means the next read summarizes those days again
+    end
+
+    def day_summary(rows, turns)
+      calls = turns.flat_map { |row| Array(row["tools"]) }
+      failed = turns.select { |row| row["status"] == "failed" }
+      { "totals" => summarize(rows).except("p50_ms", "p90_ms", "p95_ms")
+                                   .merge("durations" => histogram(rows.filter_map { |row| row["duration_ms"] })),
+        "turns" => { "count" => turns.size, "failures" => failed.size,
+                     "failure_stages" => failed.group_by { |row| row["stage"] || "unknown" }.transform_values(&:size),
+                     "windows" => TURN_WINDOWS.to_h { |window| [window, histogram(turns.filter_map { |row| row[window] })] },
+                     "tools" => calls.group_by(&:first).transform_values do |list|
+                       { "calls" => list.size, "failures" => list.count { |call| call[1] == false },
+                         "ms" => histogram(list.filter_map { |call| call[2] }) }
+                     end } }
+    end
+
+    # The rows' summary plus the kept days', in #summarize's shape.
+    def merged_totals(rows, days)
+      result = summarize(rows)
+      totals = days.map { |day| day["totals"] }
+      COUNTS.each { |field| result[field] += totals.sum { |t| t[field].to_i } }
+      VALUES.each do |field|
+        values = [result[field], *totals.map { |t| t[field] }].compact
+        result[field] = values.empty? ? nil : values.sum
+        result["unknown_#{field}_requests"] += totals.sum { |t| t["unknown_#{field}_requests"].to_i }
+      end
+      hist = merge_histograms([histogram(rows.filter_map { |row| row["duration_ms"] }), *totals.map { |t| t["durations"] }])
+      [50, 90, 95].each { |pct| result["p#{pct}_ms"] = histogram_percentile(hist, pct) }
+      result
+    end
+
+    # The turns' summary plus the kept days', in #turn_summary's shape. Failed
+    # sessions come from the recent turns only (days keep no session ids).
+    def merged_turns(turns, days)
+      result = turn_summary(turns)
+      kept = days.map { |day| day["turns"] }
+      result["count"] += kept.sum { |t| t["count"].to_i }
+      result["failures"] += kept.sum { |t| t["failures"].to_i }
+      result["failure_stages"] = ([result["failure_stages"]] + kept.map { |t| t["failure_stages"] || {} })
+                                 .reduce { |a, b| a.merge(b) { |_, x, y| x + y } }.sort.to_h
+      result["windows"] = TURN_WINDOWS.to_h do |window|
+        hist = merge_histograms([histogram(turns.filter_map { |row| row[window] }), *kept.map { |t| t.dig("windows", window) }])
+        [window, { "measured" => hist.values.sum, "p50" => histogram_percentile(hist, 50), "p95" => histogram_percentile(hist, 95) }]
+      end
+      recent = result["tools"].to_h { |tool| [tool["tool"], tool] }
+      calls = turns.flat_map { |row| Array(row["tools"]) }.group_by(&:first)
+      names = (recent.keys + kept.flat_map { |t| (t["tools"] || {}).keys }).uniq.sort
+      result["tools"] = names.map do |name|
+        days_tool = kept.filter_map { |t| t.dig("tools", name) }
+        hist = merge_histograms([histogram(Array(calls[name]).filter_map { |call| call[2] }), *days_tool.map { |t| t["ms"] }])
+        { "tool" => name, "calls" => recent.dig(name, "calls").to_i + days_tool.sum { |t| t["calls"] },
+          "failures" => recent.dig(name, "failures").to_i + days_tool.sum { |t| t["failures"] },
+          "p50_ms" => histogram_percentile(hist, 50), "p95_ms" => histogram_percentile(hist, 95),
+          "failed_sessions" => recent.dig(name, "failed_sessions") || [] }
+      end
+      result
+    end
+
+    # Latencies as { bucket => count }; bucket 0 holds values under 1 ms, bucket k
+    # the values in [GROWTH^(k-1), GROWTH^k). String keys, as JSON stores them.
+    def histogram(values)
+      values.each_with_object(Hash.new(0)) do |ms, hist|
+        hist[ms < 1 ? "0" : (Math.log(ms) / Math.log(BUCKET_GROWTH)).floor.succ.to_s] += 1
+      end
+    end
+
+    def merge_histograms(list) = list.compact.reduce({}) { |a, b| a.merge(b) { |_, x, y| x + y } }
+
+    # Nearest rank over a histogram: the bucket's midpoint (geometric), in ms.
+    def histogram_percentile(hist, pct)
+      total = hist.values.sum
+      return nil if total.zero?
+
+      rank = (total * pct / 100.0).ceil
+      seen = 0
+      bucket = hist.keys.map(&:to_i).sort.find { |k| (seen += hist[k.to_s]) >= rank }
+      bucket.zero? ? 0 : (BUCKET_GROWTH**(bucket - 0.5)).round
     end
 
     # Nearest rank on a sorted list; nil when empty.
