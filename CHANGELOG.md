@@ -38,6 +38,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   (`model_metrics_window_day`), so a read costs about 48h of rows. Counts and cost
   stay exact; latency percentiles merge per-day histograms and land within 5%. The
   two columns now cover today plus the 7 (or 30) whole days before it.
+- Studio: the agent page's Tools and History tabs load on their own when first opened,
+  like Performance. With hundreds of catalog tools, Tools alone was 870KB of the page.
 - Studio: the agent page's Performance tab loads on its own when first opened. It reads
   30 days of model and turn metrics, which made the agent page, and every save that
   returns to it, take seconds on a busy store.

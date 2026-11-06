@@ -750,7 +750,7 @@ end
     skills.write("doces", "---\nname: doces\n---\nantes", agent: "bia")
     skills.write("doces", "---\nname: doces\n---\ndepois", agent: "bia")
     app, = build_app(skill_store: skills)
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/history").body
     expect(body).to include('<span class="muted">skill</span> doces', "- antes", "+ depois",
                             'href="/studio/agents/bia/skills/doces"')
   end
@@ -817,7 +817,7 @@ end
 
     it "marks the change, shows its diff and compares the two weeks around it" do
       app, = changed_app(10, [[20, "paid"], [12, "paid"], [11, "lead"], [9, "paid"], [6, "paid"], [5, "lead"]])
-      body = login(app).get("/agents/bia").body
+      body = login(app).get("/agents/bia/history").body
       expect(body).to include("All outcomes per day, last 30 days")
       expect(body).to include('class="change-mark"')
       expect(body).to include('<span class="del">- Be chatty.</span>')
@@ -830,7 +830,7 @@ end
     it "counts the funnel's primary outcome and says when a window is incomplete" do
       # outcome kinds map to the primary stage through advance_on (pix_paid -> paid)
       app, = changed_app(2, [[20, "pix_paid"], [5, "pix_paid"], [1, "lead"]], funnel: FUNNEL_DECL)
-      body = login(app).get("/agents/bia").body
+      body = login(app).get("/agents/bia/history").body
       expect(body).to include("Primary outcome · paid per day")
       expect(body).to include("<title>#{days_ago(5).strftime('%b %-d')} · 1 outcome")
       expect(body).to include("<title>#{days_ago(1).strftime('%b %-d')} · 0 outcomes</title>") # the lead is not counted
@@ -1817,15 +1817,15 @@ end
 
   it "lists the tools-by-agent matrix" do
     app, = build_app
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/tools").body
     expect(body).to include("menu")               # tool from the catalog
     expect(body).to include('name="all_tools"')
   end
 
   it "renders the matrix affordances: filter box, live counter, switch toggle" do
     app, = build_app
-    body = login(app).get("/agents/bia").body
-    expect(body).to include('data-controller="list-filter"')
+    body = login(app).get("/agents/bia/tools").body
+    expect(body).to include('data-controller="toggle-counter list-filter"')
     expect(body).to include('data-toggle-counter-target="count"')
     expect(body).to include('class="switch"')
   end
@@ -1834,7 +1834,7 @@ end
     app, = build_app(agents: [profile("bia", tools_allow: %w[menu])],
                      tools: [SkillEntry.new(name: "menu", description: "m"),
                              SkillEntry.new(name: "calc", description: "c")])
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/tools").body
     expect(body).to match(/id="only-on" checked/)
     expect(body).to include("only-on-scope")
     expect(body).to include('<span class="count">1/2</span>')
@@ -1843,7 +1843,7 @@ end
   it "renders a denied tool as LOCKED (disabled, deny wins) — can't be granted here" do
     denied = Insika::AgentProfile.build(id: "bia", tools_allow: nil, tools_deny: %w[menu])
     app, = build_app(agents: [denied])
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/tools").body
     expect(body).to include("locked")
     # the denied tool's checkbox is disabled so it never enters the submitted allowlist
     expect(body).to match(/name="tools\[\]" value="menu"[^>]*disabled/)
@@ -1944,7 +1944,7 @@ end
       chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: %w[calc], kits: %w[grocery])
       app, = build_app(agents: [chef], settings: kit_settings,
                        tools: [SkillEntry.new(name: "menu", description: "m"), SkillEntry.new(name: "calc", description: "c")])
-      body = login(app).get("/agents/chef").body
+      body = login(app).get("/agents/chef/tools").body
       expect(body).to match(/name="tools\[\]" value="menu"[^>]*checked[^>]*disabled/)
       expect(body).to include("from kit grocery")
       expect(body).to include('<span class="count">2/2</span>') # kit tool counts as on
@@ -1953,7 +1953,7 @@ end
     it "warns that kits add nothing to an agent allowed every tool" do
       chef = Insika::AgentProfile.build(id: "chef", model: "m", tools_allow: nil, kits: %w[grocery])
       app, = build_app(agents: [chef], settings: kit_settings)
-      expect(login(app).get("/agents/chef").body).to include("already gets every tool")
+      expect(login(app).get("/agents/chef/tools").body).to include("already gets every tool")
     end
 
     it "the agent page lists its kits and shows kit skills locked on" do
@@ -2307,7 +2307,7 @@ end
       "s-chef" => StoredSession.new(id: "s-chef-000001", messages: [], vars: { "agent" => "chef" }, updated_at: "2026-10-08T11:00:00Z")
     }
     app, = build_app(sessions: sessions)
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/history").body
     expect(body).to include("/studio/sessions/s-bia-0000001")
     expect(body).not_to include("/studio/sessions/s-chef-000001")
   end
@@ -3058,7 +3058,7 @@ end
     it "the Tools tab shows a whole-server grant: its tools on and locked, the server switch on" do
       bia = Insika::AgentProfile.build(id: "bia", model: "m", tools_allow: %w[menu], tools_allow_groups: %w[mcp:metabase])
       app, = build_app(agents: [bia], tools: catalog)
-      body = login(app).get("/agents/bia").body
+      body = login(app).get("/agents/bia/tools").body
       expect(body).to match(/name="tools\[\]" value="execute_sql"[^>]*checked[^>]*disabled/)
       expect(body).to match(/name="tool_groups\[\]" value="mcp:metabase"[^>]*checked/)
     end
@@ -3084,8 +3084,13 @@ end
 
     it "the agent page has a Tools tab with the access matrix" do
       app, = build_app(tools: catalog)
-      body = login(app).get("/agents/bia").body
-      expect(body).to include('href="#tools"', 'name="all_tools"', 'action="/studio/agents/bia/tools"')
+      client = login(app)
+      # the page carries the tab and its lazy frame; the matrix comes from the frame's GET
+      expect(client.get("/agents/bia").body).to include('href="#tools"', 'src="/studio/agents/bia/tools" loading="lazy"')
+      body = client.get("/agents/bia/tools").body
+      expect(body).to include('<turbo-frame id="agent-tools">', 'name="all_tools"', 'action="/studio/agents/bia/tools"')
+      # the save still lands on the whole agent page, not inside the tab's frame
+      expect(body).to include('data-turbo-frame="agent-detail"')
     end
 
     it "saving the agent's tools dispatches set_agent_tools and lands back on the Tools tab" do
@@ -3115,7 +3120,7 @@ end
     app, = build_app(tools: tools, data_tools: [data_tool(name: "cep")])
     client = login(app)
     expect(client.get("/tools").body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
-    response = client.get("/agents/bia")
+    response = client.get("/agents/bia/tools")
     expect(response.status).to eq(200)
     expect(response.body).to include("Native tools", "HTTP tools", "MCP: metabase", "MCP: other")
     tools.each do |tool|
@@ -3194,7 +3199,7 @@ end
     sess = StoredSession.new(id: "sess-abc123456789", updated_at: "t", messages: [{ "role" => "user", "content" => "oi" }],
                              vars: { "agent" => "bia" })
     app, = build_app(sessions: { "sess-abc123456789" => sess })
-    body = login(app).get("/agents/bia").body
+    body = login(app).get("/agents/bia/history").body
     expect(body).to include("/studio/sessions/sess-abc123456789")
   end
 
