@@ -1420,7 +1420,7 @@ module Insika
         # holding a completed answer for an operator would strand it unpublished.
         state.actor&.drain!
 
-        output.publish(without_prompt_echo(state, turn_answer(response, asked, output, filter)))
+        output.publish(TextToolCall.strip_markup(without_prompt_echo(state, turn_answer(response, asked, output, filter))))
       end
     end
 
@@ -1924,21 +1924,40 @@ module Insika
       return unless response.role == :assistant && !response.tool_call?
       return unless chat.messages.last.equal?(response)
 
-      parsed = TextToolCall.parse(response.content, chat.tools.keys.map(&:to_s)) or return
+      parsed = TextToolCall.parse(response.content, chat.tools.keys.map(&:to_s))
+      # Unrecoverable markup: keep it out of the history, or the model reads itself
+      # calling tools that way and does it again. The answer is cut at publish.
+      return drop_text_tool_markup(state, chat, response) unless parsed
+
       calls = parsed[:calls].to_h do |call|
         id = "call_text_#{SecureRandom.hex(6)}"
         [id, RubyLLM::ToolCall.new(id: id, name: call[:name], arguments: call[:arguments])]
       end
-      chat.messages.pop
-      chat.add_message(RubyLLM::Message.new(
-        role: :assistant, content: parsed[:text], tool_calls: calls, model: response.model,
-        tokens: response.tokens, thinking: response.thinking, raw_reasoning: response.raw_reasoning
-      ))
+      replace_last_message(chat, response, parsed[:text], calls)
       names = calls.values.map(&:name)
       # One line per recovery in the deploy log: it is how the rate of text tool
       # calls is measured per agent.
       warn "[insika] text tool call recovered agent=#{state.profile&.id} tools=#{names.join(',')}"
       emit(:tool_call_recovered, { tools: names }, task: state.task) if state.task
+    end
+
+    def drop_text_tool_markup(state, chat, response)
+      content = response.content
+      return unless content.is_a?(String)
+
+      clean = TextToolCall.strip_markup(content)
+      return if clean == content
+
+      replace_last_message(chat, response, clean, nil)
+      warn "[insika] text tool markup dropped agent=#{state.profile&.id}"
+    end
+
+    def replace_last_message(chat, response, content, tool_calls)
+      chat.messages.pop
+      chat.add_message(RubyLLM::Message.new(
+        role: :assistant, content: content, tool_calls: tool_calls, model: response.model,
+        tokens: response.tokens, thinking: response.thinking, raw_reasoning: response.raw_reasoning
+      ))
     end
 
     def chat_usage_since(chat, before, response = nil)
