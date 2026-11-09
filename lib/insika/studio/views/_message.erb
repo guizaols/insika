@@ -36,12 +36,18 @@
   <%# A tool-call step with no prose renders no bubble at all — only its chips.
       An empty bubble would be noise between "the model spoke" and "it called". %>
   <% show_bubble = !(m["content"].to_s.empty? && calls.any?) %>
+  <%# An empty assistant message that ENDS the turn is a deliberate silence (a
+      halting tool such as call_support already answered): say so instead of
+      drawing an empty bubble that reads as a broken reply. %>
+  <% silent = role == "assistant" && calls.empty? && m["content"].to_s.strip.empty? %>
+  <% show_bubble &&= !silent %>
   <div class="msg <%= role %>">
     <div class="msg-meta">
       <span class="msg-role"><%= role %></span>
       <% if origin %><span class="origin"><%= origin %></span><% end %>
       <% if steered %><span class="origin">steered</span><% end %>
       <% unless at.empty? %><time class="stamp" datetime="<%= m["at"] %>"><%= at %></time><% end %>
+      <% if silent %><span class="origin">no reply sent</span><% end %>
     </div>
     <% if show_bubble %>
       <div class="bubble">

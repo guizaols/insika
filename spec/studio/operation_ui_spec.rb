@@ -48,6 +48,15 @@ RSpec.describe "Studio operation screens" do
     expect(response.body).not_to include('operation-head', '<b>Ada</b>')
   end
 
+  it "marks a turn that ended in silence instead of drawing an empty bubble" do
+    sessions.create(id: "chat-1", vars: { "agent" => "support" })
+    sessions.append_messages("chat-1", [{ "role" => "user", "content" => "Falar com humano" },
+                                        { "role" => "assistant", "content" => "" }])
+    body = request("GET", "/sessions/chat-1").body
+    expect(body).to include("no reply sent")
+    expect(body).not_to match(%r{<div class="content md" data-controller="markdown">\s*</div>})
+  end
+
   it "shows execution errors before the collapsed command and model diagnostics" do
     tasks.create(id: "task-1", session_id: "chat-1", command: { type: "send_message" })
     tasks.begin_execution("task-1")
