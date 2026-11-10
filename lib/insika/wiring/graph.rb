@@ -381,7 +381,8 @@ module Insika
         executor.harvest_engine = Insika::HarvestEngine.new(
           store: spine.backend, harvest_store: spine.harvest_store,
           session_store: spine.session_store, runner: run_harvest,
-          profiles: profiles, window: Insika::HarvestEngine::DEFAULT_WINDOW
+          profiles: profiles, window: Insika::HarvestEngine::DEFAULT_WINDOW,
+          per_pass: tick_env("INSIKA_HARVEST_PER_PASS") || Insika::HarvestEngine::DEFAULT_PER_PASS
         )
         # WS6 operator alerts: answers budget_warning / breaker_open /
         # delivery_failed per agent (`alerts.webhook`) via the outbox+claim
