@@ -179,6 +179,57 @@ RSpec.describe Insika::HarvestEngine do
     end
   end
 
+  describe "agents take turns" do
+    let(:profiles) do
+      %w[store-a store-b store-c].to_h do |id|
+        [id, Insika::AgentProfile.build(
+          id: id, model: "m", harvest: { "enabled" => true },
+          grounding: { "matcher" => { "sku" => '\bSKU\d{4}\b' } }
+        )]
+      end
+    end
+    # a runner that settles what it mines, as RunHarvest does
+    let(:runner) do
+      Class.new do
+        def initialize(calls, harvest_store) = (@calls = calls; @harvest_store = harvest_store)
+        def call(command)
+          @calls << command.payload
+          command.payload[:session_ids].each { |id| @harvest_store.mark_mined(id) }
+          { mined: true, run_id: "run-x" }
+        end
+      end.new(calls, harvest_store)
+    end
+    subject(:engine) do
+      described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                          runner: runner, window: 0, idle_hours: idle_hours, profiles: profiles)
+    end
+
+    it "one agent's backlog never holds the others: each pass serves the next agent" do
+      %w[1 2 3].each { |n| seed_session(id: "a:#{n}", agent: "store-a", updated_at: "2026-07-0#{n}T00:00:00Z") }
+      seed_session(id: "b:1", agent: "store-b", updated_at: "2026-08-01T00:00:00Z")
+      seed_session(id: "c:1", agent: "store-c", updated_at: "2026-08-02T00:00:00Z")
+
+      5.times { engine.run_once }
+
+      expect(calls.map { |p| p[:session_ids].first }).to eq(%w[a:1 b:1 c:1 a:2 a:3])
+    end
+
+    it "a session that is never settled holds only its own agent's turn" do
+      stuck = Class.new do
+        def initialize(calls) = (@calls = calls)
+        def call(command) = (@calls << command.payload; { mined: true, run_id: "r" })
+      end.new(calls)
+      e = described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                              runner: stuck, window: 0, idle_hours: idle_hours, profiles: profiles)
+      seed_session(id: "a:huge", agent: "store-a", updated_at: "2026-07-01T00:00:00Z")
+      seed_session(id: "b:1", agent: "store-b", updated_at: "2026-08-01T00:00:00Z")
+
+      4.times { e.run_once }
+
+      expect(calls.map { |p| p[:session_ids].first }).to eq(%w[a:huge b:1 a:huge b:1])
+    end
+  end
+
   describe "#start" do
     it "returns false when idle_hours <= 0 — the engine default OFF switch (parity)" do
       e = described_class.new(store: backend, harvest_store: harvest_store,

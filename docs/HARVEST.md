@@ -38,7 +38,15 @@ miner gets the transcript slices (masked), the session's evidence-ledger ids,
 the agent's current skill names and the candidates still open (name and
 description), so it does not re-propose an idea under another name.
 Simulator and eval sessions (`sim-…`, `eval-…`) are never mined: they are
-not customers. Then the filters, each drop counted and logged:
+not customers.
+
+The transcript is bounded so one long conversation cannot spend the budget:
+each message keeps its first 2,000 characters, and a pass's transcripts share
+half of `miner.budget.tokens` (at about 3 characters a token; 150,000
+characters without a budget). Over its share, a transcript loses its middle
+and keeps the opening and the end, with a line saying how many messages were
+left out. Messages keep their original numbers, so evidence turns still
+point at the right message. Then the filters, each drop counted and logged:
 
 1. **The negative list** — the versioned rules file (seed, imported
    per store by `insika harvest:negative import --agent ID --file F`) and the
@@ -104,7 +112,14 @@ back, re-promoted is three readable rows.
 - **The harvest costs provider money**: one miner call per window plus one
   full golden replay per gated candidate. The `budget` cap, the recorded run
   cost and the manual trigger bound it; the automated loop mines one session
-  per claim window.
+  per claim window (5 minutes), and agents take turns: each pass serves the
+  next agent with a due session, its oldest one first.
+- **The budget is checked after the call.** A pass that spent more than
+  `miner.budget.tokens` fails and proposes nothing, but the call is already
+  paid. When that pass read a single session, the session is marked
+  `outcome: "budget_exceeded"` and the loop does not pick it again (`--full`
+  re-mines it). A failed window of several sessions stays unmarked, since the
+  sessions may fit one at a time.
 
 ## The operator surface
 
