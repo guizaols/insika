@@ -16,6 +16,7 @@ module Insika
   class HarvestEngine
     SCOPE = "harvest_engine"
     KEY = "claim"
+    CURSOR_KEY = "cursor" # the agent the last pass served
     DEFAULT_WINDOW = 300 # seconds — the O(n) scan never rides the 60 s loop
     DEFAULT_IDLE_HOURS = 24
     DEFAULT_MIN_MESSAGES = 3
@@ -64,7 +65,7 @@ module Insika
       return { claimed: false } unless harvestable?
       return { claimed: false } unless claim_window
 
-      session = due_sessions.first # one model call per pass; the window paces
+      session = next_session(due_sessions) # one model call per pass; the window paces
       return { claimed: true, mined: 0, skipped: 0, errors: 0 } if session.nil?
 
       begin
@@ -144,6 +145,20 @@ module Insika
         due << { id: id, agent: session.vars["agent"].to_s, updated_at: session.updated_at }
       end
       due.sort_by { |s| s[:updated_at].to_s }
+    end
+
+    # Agents take turns: each pass serves the agent after the last one served
+    # (by id, wrapping), and mines that agent's oldest due session. Oldest
+    # first across the whole deployment let one agent's backlog hold every
+    # other store for as long as it lasted.
+    def next_session(due)
+      return nil if due.empty?
+
+      agents = due.map { |s| s[:agent] }.uniq.sort
+      last = @store.get(SCOPE, CURSOR_KEY)&.dig("agent").to_s
+      agent = agents.find { |a| a > last } || agents.first
+      @store.set(SCOPE, CURSOR_KEY, { "agent" => agent })
+      due.find { |s| s[:agent] == agent }
     end
 
     def harvest_declared?(profile)

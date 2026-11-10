@@ -33,6 +33,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- The harvest loop no longer stalls on one session it cannot afford. A session whose
+  mining pass went over `harvest.miner.budget` stayed unmarked, so it was the oldest
+  due session on every pass: the loop paid for the same call every 5 minutes and mined
+  nothing else. Such a session is now marked `outcome: "budget_exceeded"`. Agents also
+  take turns (one agent's backlog no longer holds the others), and the transcript sent
+  to the miner is bounded by the budget. See [Harvest](docs/HARVEST.md).
 - The agent Performance tab's 7d and 30d columns no longer read 30 days of every
   agent's metrics. Each closed UTC day is summarized once per agent
   (`model_metrics_window_day`), so a read costs about 48h of rows. Counts and cost

@@ -313,12 +313,16 @@ module Insika
 
     # ---- the per-session marker (D10 - the re-scan discipline) ----------------
 
-    def mark_mined(session_ref, candidates: 0)
+    # `outcome` names a pass that settled the session without mining it
+    # ("budget_exceeded"): the marker still takes it out of the scan, so one
+    # session the loop cannot afford never holds the head of the queue.
+    def mark_mined(session_ref, candidates: 0, outcome: nil)
       ref = session_ref.to_s
       return {} if ref.empty?
 
       record = { "session_ref" => ref, "mined_at" => timestamp,
                  "candidates" => Integer(candidates) }
+      record["outcome"] = outcome.to_s if outcome
       @store.set(SCOPE, "session:#{ref}", record)
       record
     end
