@@ -208,11 +208,13 @@ module Insika
         ids = window_session_ids(agent, p, config)
         ids = ids.reject { |sid| Insika::SessionStore.synthetic?(sid) } # sims/evals are not customers
         ids = ids.reject { |sid| @harvest_store.mined?(sid) } unless EnvSchema.truthy?(p[:full])
-        ids = ids.first(Harvest::Miner::MAX_SESSIONS)
 
+        # The cap counts ELIGIBLE sessions: capping first took the newest
+        # five, which on a live store are still open or too short, and a
+        # window over hundreds of mineable sessions came back empty.
         min_messages = (config["min_messages"] || DEFAULT_MIN_MESSAGES).to_i
         idle_hours = (config["idle_hours"] || DEFAULT_IDLE_HOURS).to_i
-        ids.filter_map do |sid|
+        ids.lazy.filter_map do |sid|
           session = @session_store.find(sid)
           next unless session
 
@@ -226,7 +228,7 @@ module Insika
 
           evidence = (session.evidence || {})["ids"] || []
           { id: sid.to_s, messages: messages, evidence: Array(evidence).map(&:to_s) }
-        end
+        end.first(Harvest::Miner::MAX_SESSIONS)
       end
 
       def window_session_ids(agent, p, config)
