@@ -214,6 +214,43 @@ RSpec.describe Insika::HarvestEngine do
       expect(calls.map { |p| p[:session_ids].first }).to eq(%w[a:1 b:1 c:1 a:2 a:3])
     end
 
+    it "per_pass mines several sessions in one pass, still taking turns" do
+      e = described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                              runner: runner, window: 300, idle_hours: idle_hours, profiles: profiles,
+                              per_pass: 4)
+      %w[1 2 3].each { |n| seed_session(id: "a:#{n}", agent: "store-a", updated_at: "2026-07-0#{n}T00:00:00Z") }
+      seed_session(id: "b:1", agent: "store-b", updated_at: "2026-08-01T00:00:00Z")
+
+      summary = e.run_once
+
+      expect(calls.map { |p| p[:session_ids].first }).to eq(%w[a:1 b:1 a:2 a:3])
+      expect(summary).to eq(claimed: true, mined: 4, skipped: 0, errors: 0)
+    end
+
+    it "per_pass stops when the due sessions run out" do
+      e = described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                              runner: runner, window: 300, idle_hours: idle_hours, profiles: profiles,
+                              per_pass: 10)
+      seed_session(id: "a:1", agent: "store-a")
+      expect(e.run_once[:mined]).to eq(1)
+    end
+
+    it "starts no new session after half the window, so a pass never runs into the next claim" do
+      now = [0.0]
+      slow = Class.new do
+        def initialize(calls, now) = (@calls = calls; @now = now)
+        def call(command) = (@calls << command.payload; @now[0] += 100; { mined: true, run_id: "r" })
+      end.new(calls, now)
+      e = described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                              runner: slow, window: 300, idle_hours: idle_hours, profiles: profiles,
+                              per_pass: 5, clock: -> { now[0] })
+      %w[1 2 3 4 5].each { |n| seed_session(id: "a:#{n}", agent: "store-a", updated_at: "2026-07-0#{n}T00:00:00Z") }
+
+      e.run_once
+
+      expect(calls.size).to eq(2) # 0s and 100s start; at 200s half the window is gone
+    end
+
     it "a session that is never settled holds only its own agent's turn" do
       stuck = Class.new do
         def initialize(calls) = (@calls = calls)

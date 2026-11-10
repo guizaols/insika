@@ -9,6 +9,9 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- `INSIKA_HARVEST_PER_PASS`: how many sessions the harvest loop mines per 5-minute
+  pass (default 1), one model call each, agents taking turns. See
+  [Harvest](docs/HARVEST.md).
 - `INSIKA_STALL_LOG_MS`: when set, a worker logs a `[stall]` line with the stack of
   whatever holds its reactor longer than that many milliseconds. Off by default. See
   [Deploy](docs/DEPLOY.md).
@@ -33,6 +36,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- A manual harvest run (`insika harvest`, the Studio button) no longer comes back
+  empty on a live store. It capped the window at the five newest sessions before
+  checking them, and those are usually still open or too short; the cap now counts
+  eligible sessions.
 - The harvest loop no longer stalls on one session it cannot afford. A session whose
   mining pass went over `harvest.miner.budget` stayed unmarked, so it was the oldest
   due session on every pass: the loop paid for the same call every 5 minutes and mined

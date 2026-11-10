@@ -136,6 +136,7 @@ module Insika
       spec(name: "INSIKA_PARITY_CRITERION", type: :path, description: "The frozen parity criterion file (required in shadow mode)."),
       spec(name: "INSIKA_HARVEST_CRITERION", type: :path, description: "The frozen harvest conversion criterion file (strict-loaded before any promotion)."),
       spec(name: "INSIKA_HARVEST_NEGATIVE", type: :path, description: "The negative-list seed file the harvest CLI imports into agent profiles."),
+      spec(name: "INSIKA_HARVEST_PER_PASS", type: :integer, description: "Sessions the harvest loop mines per 5-minute pass, one model call each, agents taking turns (default 1)."),
       spec(name: "INSIKA_WIDGET_ORIGINS", type: :csv, description: "Exact-match origins allowed to embed the web widget. Unset -> the widget channel is not mounted."),
       spec(name: "INSIKA_WIDGET_AGENTS", type: :csv, description: "Agent ids a widget visitor may address. Unset -> the widget channel is not mounted."),
       spec(name: "INSIKA_MCP_STDIO", type: :boolean, description: "Allow stdio MCP instances to spawn a child process (arbitrary command execution by config). Unset -> stdio instances save but refuse to start."),

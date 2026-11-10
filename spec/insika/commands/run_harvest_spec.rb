@@ -249,6 +249,41 @@ RSpec.describe Insika::Commands::RunHarvest do
     end
   end
 
+  describe "the manual window" do
+    it "the five-session cap counts eligible sessions, not the newest ones" do
+      # older and mineable
+      %w[old_1 old_2].each_with_index do |n, i|
+        seed_session(id: "acme:#{n}")
+        seed_task(session_id: "acme:#{n}", at: "2026-08-0#{i + 1}T00:00:00Z")
+      end
+      # the five newest: still open (fresh) or too short
+      3.times do |i|
+        seed_session(id: "acme:fresh_#{i}", updated_at: Time.now.utc.iso8601)
+        seed_task(session_id: "acme:fresh_#{i}", at: "2026-08-2#{i}T00:00:00Z")
+      end
+      2.times do |i|
+        seed_session(id: "acme:short_#{i}", messages: 2)
+        seed_task(session_id: "acme:short_#{i}", at: "2026-08-1#{i}T00:00:00Z")
+      end
+
+      result = handler.call(cmd("agent" => "store-support"))
+
+      expect(fake_miner.calls.size).to eq(1)
+      expect(harvest_store.find_run(result[:run_id]).status).to eq("completed")
+      expect(harvest_store.mined?("acme:old_1")).to be(true)
+      expect(harvest_store.mined?("acme:old_2")).to be(true)
+    end
+
+    it "still caps a window at five sessions" do
+      7.times do |i|
+        seed_session(id: "acme:s#{i}")
+        seed_task(session_id: "acme:s#{i}", at: "2026-08-0#{i + 1}T00:00:00Z")
+      end
+      handler.call(cmd("agent" => "store-support"))
+      expect(fake_miner.calls.first[:message_counts].size).to eq(5)
+    end
+  end
+
   describe "the transcript cap (one long conversation cannot spend the budget)" do
     def seed_transcript(id, contents)
       session_store.create(id: id, vars: { "agent" => "store-support" })

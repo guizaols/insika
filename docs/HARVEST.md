@@ -114,6 +114,10 @@ back, re-promoted is three readable rows.
   cost and the manual trigger bound it; the automated loop mines one session
   per claim window (5 minutes), and agents take turns: each pass serves the
   next agent with a due session, its oldest one first.
+  `INSIKA_HARVEST_PER_PASS` raises the sessions per pass (one model call
+  each, still taking turns); no new session starts once half the window has
+  gone. A manual run caps its window at five sessions that are eligible
+  (idle and long enough), never the five newest.
 - **The budget is checked after the call.** A pass that spent more than
   `miner.budget.tokens` fails and proposes nothing, but the call is already
   paid. When that pass read a single session, the session is marked

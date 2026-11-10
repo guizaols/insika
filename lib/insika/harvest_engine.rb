@@ -5,7 +5,8 @@ require "time"
 module Insika
   # the trigger — finds due sessions and mines them. It
   # spawns a worker fiber (supervisor child, `Tick#start` shape) whose loop
-  # claims a window and runs ONE due session's harvest ON the worker fiber —
+  # claims a window and runs due sessions' harvests (one per pass unless
+  # INSIKA_HARVEST_PER_PASS raises it) ON the worker fiber —
   # off the tick's critical path and off every customer turn's path (D2: the
   # mining model call never blocks a customer turn).
   #
@@ -20,10 +21,14 @@ module Insika
     DEFAULT_WINDOW = 300 # seconds — the O(n) scan never rides the 60 s loop
     DEFAULT_IDLE_HOURS = 24
     DEFAULT_MIN_MESSAGES = 3
+    DEFAULT_PER_PASS = 1 # sessions mined per pass (INSIKA_HARVEST_PER_PASS)
 
     def initialize(store:, harvest_store:, session_store:, runner:,
                    profiles: nil, logger: nil, window: DEFAULT_WINDOW,
-                   idle_hours: DEFAULT_IDLE_HOURS, sleeper: nil)
+                   idle_hours: DEFAULT_IDLE_HOURS, sleeper: nil,
+                   per_pass: DEFAULT_PER_PASS, clock: nil)
+      @per_pass = [per_pass.to_i, 1].max
+      @clock = clock || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
       @store = store
       @harvest_store = harvest_store
       @session_store = session_store
@@ -59,32 +64,42 @@ module Insika
       true
     end
 
-    # One pass. -> { claimed: false } | { claimed: true, mined: N,
-    #   skipped: N, errors: N }
+    # One pass: up to `per_pass` sessions, one model call each, taking turns
+    # between agents. No new session starts after half the window has gone,
+    # so a slow provider cannot run a pass into the next worker's claim.
+    # -> { claimed: false } | { claimed: true, mined: N, skipped: N, errors: N }
     def run_once
       return { claimed: false } unless harvestable?
       return { claimed: false } unless claim_window
 
-      session = next_session(due_sessions) # one model call per pass; the window paces
-      return { claimed: true, mined: 0, skipped: 0, errors: 0 } if session.nil?
+      summary = { claimed: true, mined: 0, skipped: 0, errors: 0 }
+      due = due_sessions
+      deadline = @clock.call + @window / 2.0
+      @per_pass.times do |i|
+        break if i.positive? && @clock.call >= deadline
 
-      begin
-        outcome = @runner.call(Insika::Command.build(:run_harvest,
-                                                     { agent: session[:agent],
-                                                       session_ids: [session[:id]] }))
-        if outcome[:mined]
-          { claimed: true, mined: 1, skipped: 0, errors: 0 }
-        else
-          { claimed: true, mined: 0, skipped: 1, errors: 0 }
-        end
-      rescue StandardError
-        # a broken session must not hold the pass; the marker discipline
-        # keeps it re-runnable.
-        { claimed: true, mined: 0, skipped: 0, errors: 1 }
+        session = next_session(due)
+        break if session.nil?
+
+        due.delete(session)
+        summary[mine(session)] += 1
       end
+      summary
     end
 
     private
+
+    # -> :mined | :skipped | :errors
+    def mine(session)
+      outcome = @runner.call(Insika::Command.build(:run_harvest,
+                                                   { agent: session[:agent],
+                                                     session_ids: [session[:id]] }))
+      outcome[:mined] ? :mined : :skipped
+    rescue StandardError
+      # a broken session must not hold the pass; the marker discipline
+      # keeps it re-runnable.
+      :errors
+    end
 
     # The engine is inert unless the switch is on (idle_hours > 0) AND at
     # least one profile declares an enabled harvest (the loop-stop: the
