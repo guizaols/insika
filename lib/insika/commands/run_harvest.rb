@@ -22,6 +22,13 @@ module Insika
       DEFAULT_MIN_MESSAGES = 3
       DEFAULT_MAX_PROPOSALS = 10
       DEFAULT_IDLE_HOURS = 24
+      # The transcript the miner reads is bounded, so one long conversation
+      # cannot spend the whole budget. A message keeps its first
+      # MAX_MESSAGE_CHARS; a pass's transcripts share TRANSCRIPT_CHARS, or
+      # half the budget's tokens (at ~3 chars a token) when a budget is set.
+      MAX_MESSAGE_CHARS = 2_000
+      TRANSCRIPT_CHARS = 150_000
+      CHARS_PER_TOKEN = 3
 
       def initialize(profiles:, harvest_store:, session_store:, task_store:,
                      skill_store: nil, tool_trace_store: nil, settings_store: nil,
@@ -95,6 +102,14 @@ module Insika
             @harvest_store.fail_run(run.id, error: "mining budget exceeded: " \
                                                  "spent #{result[:cost]['spent']} > " \
                                                  "#{budget_cap(config)['tokens']}")
+            # A lone session over the cap costs the same on every retry: left
+            # unmarked, it is the oldest due session forever and the loop
+            # pays for it every window while no other session is mined. A
+            # wider window may fit once split, so only a single session is
+            # settled (`full` re-mines it).
+            if sessions.size == 1
+              @harvest_store.mark_mined(sessions.first[:id], candidates: 0, outcome: "budget_exceeded")
+            end
             emit(:harvest_mined, agent: agent, run_id: run.id, candidates: 0,
                                  rejected: empty_rejected, cost: result[:cost])
             return { mined: true, run_id: run.id, candidates: 0,
@@ -277,11 +292,12 @@ module Insika
       def build_prompt(config, sessions, agent)
         base = Coercion.presence(config["prompt"]) || Harvest::DEFAULT_PROMPT
         current_skills = current_skill_names(agent)
+        share = transcript_chars(config) / [sessions.size, 1].max
         blocks = sessions.map do |s|
           evidence = s[:evidence].join(", ")
           lines = ["## Session #{s[:id]} (#{s[:messages].size} messages; " \
                    "evidence ids: #{evidence.empty? ? '(none)' : evidence})"]
-          lines << render_transcript(s[:messages])
+          lines << render_transcript(s[:messages], share)
           lines.join("\n")
         end
         <<~PROMPT
@@ -316,11 +332,42 @@ module Insika
         (@skill_store.names | @skill_store.names(agent: agent)).sort
       end
 
-      def render_transcript(messages)
-        redacted, = Insika::Safety::Detectors.redact(
-          messages.each_with_index.map { |m, i| "[#{i}] #{m['role']}: #{m['content']}" }.join("\n")
-        )
-        redacted
+      def transcript_chars(config)
+        cap = budget_cap(config)
+        cap ? cap["tokens"] * CHARS_PER_TOKEN / 2 : TRANSCRIPT_CHARS
+      end
+
+      # Each line keeps its original [index], so `evidence_turns` still points
+      # at the right message after a cut. Redaction runs per message BEFORE
+      # any cut, so a truncation never splits a value the detectors would
+      # have caught. Over the share, the middle goes: the opening says what
+      # the customer wanted, the end says how it went.
+      def render_transcript(messages, max_chars = TRANSCRIPT_CHARS)
+        lines = messages.each_with_index.map do |m, i|
+          text, = Insika::Safety::Detectors.redact(m["content"].to_s)
+          "[#{i}] #{m['role']}: #{clip(text)}"
+        end
+        fit(lines, max_chars).join("\n")
+      end
+
+      def clip(text)
+        return text if text.length <= MAX_MESSAGE_CHARS
+
+        "#{text[0, MAX_MESSAGE_CHARS]} [… #{text.length - MAX_MESSAGE_CHARS} chars cut]"
+      end
+
+      def fit(lines, max_chars)
+        return lines if lines.sum { |l| l.length + 1 } <= max_chars
+
+        head = take_within(lines, max_chars / 3)
+        tail = take_within(lines.drop(head.size).reverse, max_chars - max_chars / 3).reverse
+        omitted = lines.size - head.size - tail.size
+        head + ["[… #{omitted} messages omitted to fit the mining budget …]"] + tail
+      end
+
+      def take_within(lines, limit)
+        used = 0
+        lines.take_while { |l| (used += l.length + 1) <= limit }
       end
 
       # The safety order: negative list (D4) -> grounding (D3) -> dedup. A

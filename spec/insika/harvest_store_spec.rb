@@ -261,6 +261,14 @@ RSpec.describe Insika::HarvestStore do
       expect(marker["candidates"]).to eq(2)
       expect(marker["mined_at"]).not_to be_nil
       expect(store.mined?("acme:sess_1")).to be(true)
+      expect(marker).not_to have_key("outcome")
+    end
+
+    it "an outcome names a pass that settled the session without mining it" do
+      marker = store.mark_mined("acme:sess_1", outcome: "budget_exceeded")
+      expect(marker["outcome"]).to eq("budget_exceeded")
+      expect(marker["candidates"]).to eq(0)
+      expect(store.mined?("acme:sess_1")).to be(true)
     end
 
     context "with a session source" do

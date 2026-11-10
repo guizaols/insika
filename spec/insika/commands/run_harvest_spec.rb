@@ -220,7 +220,25 @@ RSpec.describe Insika::Commands::RunHarvest do
       run = harvest_store.find_run(result[:run_id])
       expect(run.status).to eq("failed")
       expect(run.error).to match(/budget exceeded: spent 100 > 50/)
-      expect(harvest_store.mined?("acme:sess_1")).to be(false) # markers never written
+    end
+
+    it "a lone session over the cap is settled, so it never holds the loop's queue again" do
+      seed_session(id: "acme:sess_1")
+      seed_task(session_id: "acme:sess_1", at: "2026-08-10T00:00:00Z")
+      handler.call(cmd("agent" => "store-support", "session_ids" => ["acme:sess_1"]))
+      marker = backend.get("harvest", "session:acme:sess_1")
+      expect(marker["outcome"]).to eq("budget_exceeded")
+
+      handler.call(cmd("agent" => "store-support", "session_ids" => ["acme:sess_1"]))
+      expect(fake_miner.calls.size).to eq(1) # settled: the second pass pays nothing
+    end
+
+    it "a wider window over the cap leaves its sessions unmarked — split, they may fit" do
+      seed_session(id: "acme:sess_1")
+      seed_session(id: "acme:sess_2")
+      handler.call(cmd("agent" => "store-support", "session_ids" => %w[acme:sess_1 acme:sess_2]))
+      expect(harvest_store.mined?("acme:sess_1")).to be(false)
+      expect(harvest_store.mined?("acme:sess_2")).to be(false)
     end
 
     it "the budget cap is recorded on the run for the gate to read" do
@@ -228,6 +246,62 @@ RSpec.describe Insika::Commands::RunHarvest do
       seed_task(session_id: "acme:sess_1", at: "2026-08-10T00:00:00Z")
       result = handler.call(cmd("agent" => "store-support", "last_sessions" => 10))
       expect(harvest_store.find_run(result[:run_id]).budget).to eq("tokens" => 50)
+    end
+  end
+
+  describe "the transcript cap (one long conversation cannot spend the budget)" do
+    def seed_transcript(id, contents)
+      session_store.create(id: id, vars: { "agent" => "store-support" })
+      contents.each { |c| session_store.append_messages(id, { "role" => "user", "content" => c }) }
+      record = session_store.find(id).to_h.merge("updated_at" => "2026-08-10T00:00:00Z")
+      record["evidence"] = { "ids" => %w[SKU0001], "ungrounded" => 0 }
+      backend.set("sessions", "session:#{id}", record)
+    end
+
+    def mined_prompt(session_ids)
+      handler.call(cmd("agent" => "store-support", "session_ids" => session_ids))
+      fake_miner.calls.first[:prompt]
+    end
+
+    it "a long message keeps its head and says how much was cut" do
+      seed_transcript("acme:long", ["a" * 5_000, "short one", "last"])
+      prompt = mined_prompt(["acme:long"])
+      expect(prompt).to include("[0] user: #{'a' * 2_000} [… 3000 chars cut]")
+      expect(prompt).not_to include("a" * 2_001)
+      expect(prompt).to include("[1] user: short one")
+    end
+
+    it "redacts before cutting, so a cut never splits a value the detectors catch" do
+      # the 2_000-char cut lands inside the CPF: cut first, and "123.456.7" survives
+      seed_transcript("acme:pii", ["#{'x' * 1_990} 123.456.789-09 ok", "b", "c"])
+      prompt = mined_prompt(["acme:pii"])
+      expect(prompt).not_to include("123.456")
+    end
+
+    context "with a budget" do
+      let(:harvest_config) do
+        { "enabled" => true, "min_messages" => 3,
+          "miner" => { "model" => "deepseek-v4-flash", "budget" => { "tokens" => 4_000 } } }
+      end
+
+      it "over the share, the middle goes and the indices still name the original messages" do
+        seed_transcript("acme:huge", Array.new(100) { |i| "message #{i} #{'z' * 200}" })
+        prompt = mined_prompt(["acme:huge"])
+        expect(prompt).to include("[0] user: message 0 ")
+        expect(prompt).to include("[99] user: message 99 ")
+        expect(prompt).to match(/\[… \d+ messages omitted to fit the mining budget …\]/)
+        expect(prompt).not_to include("[50] user:")
+        transcript = prompt[/## Session acme:huge.*?(?=\n## Skills)/m]
+        expect(transcript.length).to be < 4_000 * 3 / 2 + 200 # the share, plus the header line
+      end
+
+      it "the share is split between the sessions of a window" do
+        seed_transcript("acme:one", Array.new(60) { |i| "one #{i} #{'z' * 200}" })
+        seed_transcript("acme:two", Array.new(60) { |i| "two #{i} #{'z' * 200}" })
+        prompt = mined_prompt(%w[acme:one acme:two])
+        expect(prompt.scan("messages omitted to fit").size).to eq(2)
+        expect(prompt).to include("[59] user: one 59").and include("[59] user: two 59")
+      end
     end
   end
 
