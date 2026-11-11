@@ -243,6 +243,22 @@ RSpec.describe Insika::Shutdown do
       expect(interrupts).to eq([:stop])
     end
 
+    it "closes the event streams after the drain, before the interrupt" do
+      executor = build_executor
+      stream = Insika::EventStream.new
+      watch = stream.subscribe(session_id: "s1") # a Studio live view: never ends on its own
+      order = []
+      allow(stream).to receive(:close_all).and_wrap_original { |m| order << :close_all; m.call }
+      shutdown = described_class.new(executor: executor, event_streams: stream, timeout: 0.1,
+                                     logger: nil, interrupt: -> { order << :stop })
+
+      shutdown.signal_received
+      Thread.new { shutdown.watch }.join(2)
+
+      expect(order).to eq(%i[close_all stop])
+      expect(watch.to_enum(:each).to_a).to eq([]) # closed: iterating returns at once
+    end
+
     it "a second signal skips the wait and interrupts immediately" do
       executor = build_executor
       interrupts = []

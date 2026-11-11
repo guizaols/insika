@@ -152,6 +152,12 @@ module Insika
       sub
     end
 
+    # Ends every open subscription. A Studio live view (`/studio/events`) never
+    # ends on its own, so a stopping worker waited on it until it was killed.
+    # The shutdown calls this once the turns are drained; the browser's
+    # EventSource reconnects to the next container by itself.
+    def close_all = @subscriptions.values.flatten.each(&:close)
+
     private
 
     TERMINAL = %i[task_completed task_failed task_cancelled].freeze

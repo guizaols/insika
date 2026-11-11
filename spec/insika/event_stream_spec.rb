@@ -156,6 +156,15 @@ RSpec.describe Insika::EventStream do
     end
   end
 
+  it "close_all ends every open subscription, any session or none" do
+    subs = [stream.subscribe, stream.subscribe(session_id: "s1"), stream.subscribe(session_id: "s2")]
+
+    stream.close_all
+
+    expect(subs.map { |s| s.to_enum(:each).to_a }).to eq([[], [], []])
+    expect(stream.instance_variable_get(:@subscriptions)).to be_empty
+  end
+
   it "iterates exactly until close" do
     Sync do |task|
       sub = stream.subscribe
