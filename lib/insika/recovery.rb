@@ -40,13 +40,30 @@ module Insika
       end
     end
 
+    # -> Time the boot generation started, read from the INSIKA_BOOT_ID that
+    # deploy/entrypoint.sh writes (`date +%s`-$$), or nil for any other shape
+    # (no cutoff, the old behavior). Strict format on purpose: a hand-set id like
+    # "42" must not become a 1970 cutoff that skips every orphan.
+    def self.generation_started_at(boot_id)
+      match = /\A(\d{10})-\d+\z/.match(boot_id.to_s)
+      match && Time.at(Integer(match[1], 10)).utc
+    end
+
     # checkpoint_store: needed to query `latest`. logger optional
     # (default nil -> silent in tests).
-    def initialize(task_store:, checkpoint_store:, command_bus:, logger: nil)
+    #
+    # generation_started_at: boot mode skips tasks created at or after it. A
+    # sibling worker of THIS generation may already be serving while the
+    # claiming worker sweeps, and the sweep cannot see its fiber — re-running
+    # that turn opens a second Execution, fails the task and loses the live
+    # reply. Same-second ties are skipped too; a real orphan there is picked up
+    # by the tick's stale sweep, which ignores this cutoff.
+    def initialize(task_store:, checkpoint_store:, command_bus:, logger: nil, generation_started_at: nil)
       @task_store = task_store
       @checkpoint_store = checkpoint_store
       @command_bus = command_bus
       @logger = logger
+      @generation_started_at = generation_started_at
     end
 
     # -> { resumed: [ids], failed: [ids] }
@@ -82,10 +99,18 @@ module Insika
     # only tasks untouched past the threshold — the liveness gate of.
     def sweep(tasks, stale_after)
       tasks = tasks.sort_by(&:created_at)
-      return tasks unless stale_after
+      return tasks.select { |task| previous_generation?(task) } unless stale_after
 
       cutoff = Time.now.utc - stale_after
       tasks.select { |task| stale?(task, cutoff) }
+    end
+
+    def previous_generation?(task)
+      return true unless @generation_started_at
+
+      Time.iso8601(task.created_at.to_s) < @generation_started_at
+    rescue ArgumentError
+      true # unreadable: keep sweeping it, as before the cutoff existed
     end
 
     def stale?(task, cutoff)
