@@ -32,9 +32,13 @@ module Insika
     # `install` per graph would silently leave the earlier graphs dying mid-turn.
     # The host installs ONCE, naming every graph it embedded. `executor:` is the
     # single-graph sugar every serving arm still uses.
-    def self.install(executor: nil, executors: nil, timeout: nil, logger: $stdout, signals: %w[INT TERM])
-      new(executors: executors || executor, timeout: timeout || default_timeout,
-          logger: logger).install!(signals)
+    #
+    # `event_streams:` are closed once the drain is done, so open SSE watches end
+    # and the worker can exit instead of being killed at --graceful-stop.
+    def self.install(executor: nil, executors: nil, event_streams: nil, timeout: nil, logger: $stdout,
+                     signals: %w[INT TERM])
+      new(executors: executors || executor, event_streams: event_streams,
+          timeout: timeout || default_timeout, logger: logger).install!(signals)
     end
 
     # INSIKA_DRAIN_TIMEOUT (validated by EnvSchema); absent/garbage -> the default.
@@ -46,9 +50,10 @@ module Insika
 
     # `interrupt` is the injectable stop delivery (specs); the default raises
     # Interrupt in `target`, the thread that installed the traps.
-    def initialize(executor: nil, executors: nil, timeout:, logger: $stdout,
+    def initialize(executor: nil, executors: nil, event_streams: nil, timeout:, logger: $stdout,
                    target: Thread.current, interrupt: nil)
       @executors = Array(executors || executor)
+      @event_streams = Array(event_streams)
       @timeout = timeout
       @logger = logger
       @target = target
@@ -85,6 +90,7 @@ module Insika
     def watch
       @reader.read(1)
       drain
+      @event_streams.each(&:close_all)
       @interrupt.call
     end
 
