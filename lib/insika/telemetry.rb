@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "logger"
+require "socket"
 
 require "async"
 require_relative "telemetry/pricing"
@@ -44,13 +45,27 @@ module Insika
       load_metrics_sdk
       OpenTelemetry.logger = sdk_logger
       unless @configured
-        OpenTelemetry::SDK.configure { |c| c.service_name = service_name }
+        OpenTelemetry::SDK.configure do |c|
+          c.service_name = service_name
+          c.resource = OpenTelemetry::SDK::Resources::Resource.create(instance_attributes(env))
+        end
         @configured = true
       end
       meter = otel_meter
       @metrics = !meter.nil?
       Recorder.new(tracer: OTelTracer.new(OpenTelemetry.tracer_provider.tracer("insika")),
                    meter: meter, pricing: pricing(env))
+    end
+
+    # Names this process in what it exports. The workers of one deployment export
+    # the same metric names and labels; without an id each, their cumulative
+    # counters land on one series that jumps between the workers' values, and
+    # every drop reads as a counter reset (`increase()` then adds it all again).
+    # An id the operator declared in OTEL_RESOURCE_ATTRIBUTES is left alone.
+    def instance_attributes(env = ENV)
+      return {} if env["OTEL_RESOURCE_ATTRIBUTES"].to_s.include?("service.instance.id=")
+
+      { "service.instance.id" => "#{Socket.gethostname}-#{Process.pid}" }
     end
 
     # The SDK's default logger writes to $stdout, which Ruby buffers when it is a

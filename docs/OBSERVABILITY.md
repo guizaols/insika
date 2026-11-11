@@ -166,6 +166,13 @@ Destination, protocol and headers follow the **OTEL SDK's default config** (env)
 point `OTEL_EXPORTER_OTLP_ENDPOINT` at your collector. `OTEL_SERVICE_NAME` names
 the service (default `insika`).
 
+Each process also reports `service.instance.id` (`<host>-<pid>`), which a
+Prometheus-compatible backend shows as the `instance` label. Counters are
+cumulative per process, so workers must not share a series: sum across
+`instance` (`sum by (insika_model) (increase(insika_cost_total[1d]))`). To name
+instances yourself, set `service.instance.id` in `OTEL_RESOURCE_ATTRIBUTES`,
+with a different value for each worker.
+
 Metrics ride the same switch and the same standard env — no Insika-specific toggle
 is invented for them. `OTEL_METRICS_EXPORTER=none` turns metrics off while traces
 stay on; `OTEL_METRIC_EXPORT_INTERVAL` (ms) sets the export period. If the metrics
