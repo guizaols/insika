@@ -53,8 +53,41 @@ RSpec.describe Insika::Reliability do
 
   # Fatal for the NODE, not the turn: a bad key or a model the provider does not
   # have also hands the turn to the next node, once.
+  # OpenRouter answers a 401 "User not found" for a few seconds with a valid
+  # key: the node gets ONE more try before the turn rotates or dies.
+  it "a 401 retries the same node once, then succeeds" do
+    calls = 0
+    attempts = lambda do |_s, n|
+      calls += 1
+      raise RubyLLM::UnauthorizedError.new("User not found") if n == 1
+
+      "ok"
+    end
+    expect(run(attempts, chain: [])).to eq("ok")
+    expect(calls).to eq(2)
+  end
+
+  it "a 401 that persists retries once, then rotates to the fallback" do
+    seen = []
+    attempts = lambda do |sel, _n|
+      model = sel.respond_to?(:model) ? sel.model : sel[:model]
+      seen << model
+      raise RubyLLM::UnauthorizedError.new("bad key") if model == "deepseek-v4-flash"
+
+      "ok"
+    end
+    expect(run(attempts)).to eq("ok")
+    expect(seen).to eq(%w[deepseek-v4-flash deepseek-v4-flash gpt-4o-mini])
+  end
+
+  it "a 401 on the last node raises after the one extra try" do
+    calls = 0
+    attempts = ->(_s, _n) { calls += 1; raise RubyLLM::UnauthorizedError.new("bad key") }
+    expect { run(attempts, chain: []) }.to raise_error(RubyLLM::UnauthorizedError)
+    expect(calls).to eq(2)
+  end
+
   {
-    "401 (bad key)" => -> { RubyLLM::UnauthorizedError.new("bad key") },
     "403 (no access)" => -> { RubyLLM::ForbiddenError.new("forbidden") },
     "404 (unknown model)" => lambda {
       response = Object.new

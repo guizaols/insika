@@ -102,6 +102,16 @@ module Insika
             retryable = retryable_failure?(e)
             raise unless retryable
             if kind_of(e) == :fatal && !e.is_a?(Insika::TimeoutError)
+              # A 401 gets ONE more try on the same node: OpenRouter answers
+              # "User not found" for a few seconds with a valid key. A really
+              # dead key just costs one extra call before rotating or raising.
+              if unauthorized?(e) && !node[:auth_retried]
+                node[:auth_retried] = true
+                node[:tries] += 1
+                @sleeper.call(1)
+                retry
+              end
+
               # Fatal for THIS node only (no balance, bad key, unknown model):
               # skip to the next node at once — no retry, no backoff, no breaker
               # bump (an open primary circuit fails fast WITHOUT rotating).
@@ -176,6 +186,10 @@ module Insika
     end
 
     def kind_of(error) = ProviderErrorClassifier.classify(error).kind
+
+    def unauthorized?(error)
+      error.class.ancestors.any? { |a| a.name == "RubyLLM::UnauthorizedError" }
+    end
 
     # A provider-family error OR the per-attempt timeout: both are transient
     # transport-class failures that spend the retry budget.
