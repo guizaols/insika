@@ -432,6 +432,108 @@ RSpec.describe Insika::Recovery do
     end
   end
 
+  # A task created AFTER the boot generation started belongs to a live worker of
+  # THIS generation — never an orphan of the previous one. Prod incident
+  # 2026-11-11: the generation began 10:10:15, a sibling worker created the turn
+  # at 10:10:24, the claiming worker's sweep (10:10:24) re-ran it, the second
+  # start_execution failed the task and the live turn's reply was lost.
+  describe "generation_started_at: (boot mode)" do
+    let(:gen_start) { Time.utc(2026, 11, 11, 10, 10, 15) }
+
+    subject(:recovery) do
+      described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                          command_bus: bus, generation_started_at: gen_start)
+    end
+
+    def create_at(id, time)
+      task_store.create(command: command, id: id, at: time.iso8601)
+    end
+
+    it "skips a :queued task created after the generation started (a sibling's live turn)" do
+      create_at("live", gen_start + 9)
+
+      result = recovery.run
+
+      expect(result).to eq({ resumed: [], failed: [] })
+      expect(bus.dispatched).to be_empty
+      expect(task_store.find("live").status).to eq(:queued)
+    end
+
+    it "skips a :running task created after the generation started, its open Execution intact" do
+      create_at("live", gen_start + 9)
+      task_store.start_execution("live")
+      seed_checkpoint("live")
+
+      result = recovery.run
+
+      expect(result).to eq({ resumed: [], failed: [] })
+      expect(bus.dispatched).to be_empty
+      expect(task_store.find("live").status).to eq(:running)
+      # the live turn can still close its own attempt — the exact call that failed in prod
+      expect { task_store.complete_execution("live", outcome: :completed) }.not_to raise_error
+      expect(task_store.find("live").executions.size).to eq(1)
+    end
+
+    it "skips a task created in the generation's first second (could be live; the tick catches a real orphan)" do
+      create_at("edge", gen_start)
+
+      expect(recovery.run).to eq({ resumed: [], failed: [] })
+    end
+
+    it "still resumes orphans the previous generation left behind" do
+      create_at("old-q", gen_start - 60)
+      create_at("old-r", gen_start - 30)
+      task_store.start_execution("old-r")
+      seed_checkpoint("old-r")
+      create_at("new", gen_start + 5)
+
+      result = recovery.run
+
+      expect(result[:resumed]).to contain_exactly("old-q", "old-r")
+      expect(bus.dispatched.map { |c| c.payload[:task_id] }).to contain_exactly("old-q", "old-r")
+      expect(task_store.find("new").status).to eq(:queued)
+    end
+
+    it "an unreadable created_at counts as old — boot keeps sweeping it" do
+      create_at("t", gen_start + 5)
+      record = backend.get("tasks", "task:t")
+      record["created_at"] = "not-a-timestamp"
+      backend.set("tasks", "task:t", record)
+
+      expect(recovery.run[:resumed]).to eq(["t"])
+    end
+
+    it "tick mode ignores the cutoff: staleness alone decides" do
+      create_at("t", gen_start + 5)
+      record = backend.get("tasks", "task:t")
+      record["updated_at"] = (Time.now.utc - 1_000).iso8601
+      backend.set("tasks", "task:t", record)
+
+      expect(recovery.run(stale_after: 900)[:resumed]).to eq(["t"])
+    end
+
+    it "nil cutoff keeps the old behavior: every candidate is swept" do
+      plain = described_class.new(task_store: task_store, checkpoint_store: checkpoint_store,
+                                  command_bus: bus)
+      create_at("t", Time.now.utc + 3_600)
+
+      expect(plain.run[:resumed]).to eq(["t"])
+    end
+  end
+
+  describe ".generation_started_at" do
+    it "reads the epoch the entrypoint writes into INSIKA_BOOT_ID (date +%s-$$)" do
+      expect(described_class.generation_started_at("1794391815-2"))
+        .to eq(Time.utc(2026, 11, 11, 10, 10, 15))
+    end
+
+    it "nil for anything that is not the entrypoint's format (no cutoff, old behavior)" do
+      [nil, "", "deploy-1", "gen-1", "42", "42-1", "1794391815", "abc-1794391815"].each do |id|
+        expect(described_class.generation_started_at(id)).to be_nil, "#{id.inspect} parsed"
+      end
+    end
+  end
+
   # the task sweep runs once per boot generation. The sweep's
   # "orphaned :running" test is per-process, so N workers sweeping at once (or
   # a worker respawned while siblings hold live turns) would double-resume;

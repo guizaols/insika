@@ -213,7 +213,8 @@ module Insika
     # Boot recovery: discovers interrupted tasks and resumes them through the SAME
     # path as ResumeTask, BEFORE the server accepts requests.
     RECOVERY = Insika::Recovery.new(
-      task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, command_bus: BUS
+      task_store: TASK_STORE, checkpoint_store: CHECKPOINT_STORE, command_bus: BUS,
+      generation_started_at: Insika::Recovery.generation_started_at(ENV["INSIKA_BOOT_ID"])
     )
 
     # Named steps consumed by Server::Boot. The graph above is built EAGERLY at

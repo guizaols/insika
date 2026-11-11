@@ -156,6 +156,69 @@ RSpec.describe "Integration: two workers boot, one sweeps" do
     store_check.close
   end
 
+  # Prod incident 2026-11-11 (Época, task 1a8a1c36): generation 1794391815 began
+  # 10:10:15; a sibling worker already serving created the turn at 10:10:24 —
+  # the same second the claiming worker swept. The sweep saw it :queued,
+  # re-dispatched it, the second start_execution raised "an open Execution
+  # already exists", the task went :failed and the live turn's reply was dropped
+  # ("no open Execution" at complete). The sweep must leave this generation's
+  # tasks to their own worker and still recover the previous generation's.
+  it "the claiming worker leaves a sibling's fresh turn alone and still resumes old orphans" do
+    gen_start = Time.utc(2026, 11, 11, 10, 10, 15)
+    boot_id = "#{gen_start.to_i}-2"
+    command = lambda do |session|
+      Insika::Command.build(:send_message, { agent: "sales", message: "oi", session_id: session }).to_h
+    end
+
+    # the previous generation left a :queued turn behind (killed before it started)
+    store_old = Insika::Stores::SQLite.new(path: db_path)
+    old = worker(store_old)
+    old[:session_store].create(id: "s-old")
+    old[:task_store].create(command: command.call("s-old"), session_id: "s-old", id: "t",
+                            at: (gen_start - 60).iso8601)
+    store_old.close
+
+    # worker A, already serving in the new generation, takes a turn
+    store_a = Insika::Stores::SQLite.new(path: db_path)
+    worker_a = worker(store_a)
+    worker_a[:session_store].create(id: "s-live")
+    worker_a[:task_store].create(command: command.call("s-live"), session_id: "s-live", id: "live",
+                                 at: (gen_start + 9).iso8601)
+
+    # worker B boots, claims the generation and sweeps
+    store_b = Insika::Stores::SQLite.new(path: db_path)
+    worker_b = worker(store_b)
+    stub_chat(worker_b)
+    expect(Insika::Recovery.claim_sweep(store: store_b, boot_id: boot_id)).to be(true)
+    recovery = Insika::Recovery.new(
+      task_store: worker_b[:task_store], checkpoint_store: worker_b[:checkpoint_store],
+      command_bus: worker_b[:bus],
+      generation_started_at: Insika::Recovery.generation_started_at(boot_id)
+    )
+    summary = Sync do
+      result = recovery.run
+      100.times do
+        break if worker_b[:task_store].find("t").status == :completed
+
+        sleep(0.005)
+      end
+      worker_b[:executor].stop_session_actors
+      result
+    end
+
+    expect(summary).to eq({ resumed: ["t"], failed: [] })
+    expect(worker_b[:task_store].find("t").status).to eq(:completed)
+    # the live turn was not touched: it opens and closes its own single attempt
+    expect(worker_a[:task_store].find("live").status).to eq(:queued)
+    worker_a[:task_store].start_execution("live")
+    expect { worker_a[:task_store].complete_execution("live", outcome: :completed) }.not_to raise_error
+    live = worker_a[:task_store].find("live")
+    expect(live.executions.map(&:outcome)).to eq(["completed"])
+
+    store_a.close
+    store_b.close
+  end
+
   it "a worker respawned mid-generation does not steal the generation's turns" do
     # The generation was already claimed (the original boot); a respawned worker
     # re-runs the same boot path and must skip the sweep even though it sees a
