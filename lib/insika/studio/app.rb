@@ -1083,6 +1083,7 @@ module Studio
             # the stage history — the session's outcomes folded
             # into the agent's declared stages (unmapped kinds render raw).
             @stage_history = stage_history_for(sid)
+            @failed_tasks = failed_tasks_in(Array(@session.messages))
             if turbo_frame?("session-detail")
               render("session", locals: { frame_only: true }, layout: false)
             else
@@ -2115,11 +2116,14 @@ end
     # The shared "filter by agent" GET form used by every shared screen
     # (home, chats, tasks, approvals, customers, evals, funnel, follow-ups,
     # facts, parity). Same markup everywhere: a select that submits on change.
-    def agent_filter_form(path, current)
+    # keep: other filters the form must carry across an agent change ({ "status" => "failed" }).
+    def agent_filter_form(path, current, keep: {})
       picker = render("_agent_picker", locals: { name: "agent", options: insika[:profile_source].ids.sort,
                                                  value: current, blank: "All agents — type to search",
                                                  auto_submit: true })
-      %(<form method="get" action="#{path}" class="actions inline"><label>Agent #{picker}</label></form>)
+      esc = ->(s) { Rack::Utils.escape_html(s.to_s) }
+      hidden = keep.compact.map { |k, v| %(<input type="hidden" name="#{esc.(k)}" value="#{esc.(v)}">) }.join
+      %(<form method="get" action="#{path}" class="actions inline">#{hidden}<label>Agent #{picker}</label></form>)
     end
 
     # The sessions of one agent — the session stamps its agent in
@@ -3425,13 +3429,17 @@ end
     def render_tasks
       store = insika[:task_store]
       @agent = presence(request.params["agent"])
+      status = presence(request.params["status"])
+      @status = Insika::TaskStore::STATUSES.find { |s| s.to_s == status }
       @page = request.params["page"].to_i.clamp(1, 1_000_000)
       offset = (@page - 1) * TASKS_PER_PAGE
       rows =
         if store.nil? then []
-        elsif @agent
-          recent_tasks(store, TASKS_AGENT_SCAN, 0).select { |t| task_agent(t) == @agent }
-                                                  .drop(offset).first(TASKS_PER_PAGE + 1)
+        elsif @agent || @status
+          # ponytail: scans the TASKS_AGENT_SCAN most recent tasks; older matches need a status index
+          recent_tasks(store, TASKS_AGENT_SCAN, 0)
+            .select { |t| (@agent.nil? || task_agent(t) == @agent) && (@status.nil? || t.status == @status) }
+            .drop(offset).first(TASKS_PER_PAGE + 1)
         else
           recent_tasks(store, TASKS_PER_PAGE + 1, offset)
         end
@@ -3446,9 +3454,32 @@ end
       every_record(store).sort_by { |t| t.updated_at.to_s }.reverse.drop(offset).first(limit)
     end
 
-    def tasks_page_path(page)
-      query = { "agent" => @agent, "page" => (page if page > 1) }.compact
+    def tasks_page_path(page, status: @status)
+      query = { "agent" => @agent, "status" => status&.to_s, "page" => (page if page > 1) }.compact
       query.empty? ? "/studio/tasks" : "/studio/tasks?#{Rack::Utils.build_query(query)}"
+    end
+
+    # The status links above the tasks table: page 1, the agent kept.
+    TASK_STATUS_FILTERS = [[nil, "All"], [:failed, "Failed"], [:running, "Running"], [:queued, "Queued"],
+                           [:waiting, "Waiting"], [:completed, "Completed"]].freeze
+
+    # { task_id => Task } for the session's turns whose task ended :failed. Their
+    # reply may be in the transcript yet never reached the customer (the channel
+    # got an error and sent its own fallback), so the viewer marks them.
+    def failed_tasks_in(messages)
+      store = insika[:task_store]
+      return {} unless store
+
+      messages.filter_map { |m| m["task_id"] if m.is_a?(Hash) }.uniq
+              .filter_map { |id| (t = store.find(id)) && t.status.to_s == "failed" ? [id, t] : nil }.to_h
+    end
+
+    # The last execution's error message, whatever shape it was stored in.
+    def task_failure_reason(task)
+      error = Array(task.executions).last&.error
+      return error.to_s unless error.is_a?(Hash)
+
+      error["message"] || error[:message] || error.to_s
     end
 
     def task_agent(task)

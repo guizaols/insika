@@ -4,12 +4,18 @@
     <h1>Tasks<span class="sub">most recent first · page <%= @page %></span></h1>
   </div>
   <div class="head-actions">
-    <%== agent_filter_form("/studio/tasks", @agent) %>
+    <%== agent_filter_form("/studio/tasks", @agent, keep: { "status" => @status&.to_s }) %>
     <a class="btn" href="/studio/approvals">Open approvals</a>
   </div>
 </header>
 
 <p class="muted">Open a task to review its execution history, resolve approvals or control a running turn.</p>
+
+<nav class="segmented" aria-label="Status">
+  <% TASK_STATUS_FILTERS.each do |value, label| %>
+    <a href="<%= tasks_page_path(1, status: value) %>"<%== ' aria-current="page"' if @status == value %>><%= label %></a>
+  <% end %>
+</nav>
 
 <% if @tasks.empty? && @page == 1 %>
   <div class="empty">No tasks yet. A task is born when an agent runs a turn.</div>

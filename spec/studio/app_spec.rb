@@ -2301,6 +2301,49 @@ end
     expect(body).to include("Continue in playground")
   end
 
+  # A failed task's reply was saved but never delivered (prod 2026-11-11, Época:
+  # the transcript read like a normal answer while the customer got the fallback).
+  describe "failed turns in the session viewer" do
+    def failed_session_app
+      failed_exec = ExecDouble.new(attempt: 1, started_at: "a", finished_at: "b", outcome: "failed",
+                                   error: { "class" => "ArgumentError", "message" => "an open Execution already exists" })
+      tasks = {
+        "t-ok" => task(id: "t-ok", status: :completed, session_id: "s-f"),
+        "t-bad" => task(id: "t-bad", status: :failed, session_id: "s-f", executions: [failed_exec])
+      }
+      sess = StoredSession.new(id: "s-f", updated_at: "t", messages: [
+                                 { "role" => "user", "content" => "primeira", "task_id" => "t-ok" },
+                                 { "role" => "assistant", "content" => "resposta entregue", "task_id" => "t-ok" },
+                                 { "role" => "user", "content" => "segunda", "task_id" => "t-bad" },
+                                 { "role" => "assistant", "content" => "resposta perdida", "task_id" => "t-bad" },
+                                 { "role" => "user", "content" => "terceira" }
+                               ])
+      build_app(sessions: { "s-f" => sess }, tasks: tasks).first
+    end
+
+    it "marks the failed turn once, after its last message, with the error and a link to the task" do
+      body = login(failed_session_app).get("/sessions/s-f").body
+
+      expect(body.scan("turn failed").size).to eq(1)
+      expect(body).to include("an open Execution already exists", 'href="/studio/tasks/t-bad"')
+      expect(body).not_to include('href="/studio/tasks/t-ok"')
+      marker = body.index("turn failed")
+      expect(marker).to be > body.rindex("resposta perdida")
+      # rindex: the chat list column also previews the last message, before the transcript
+      expect(marker).to be < body.rindex("terceira")
+    end
+
+    it "a session whose tasks are gone from the store renders without a marker" do
+      sess = StoredSession.new(id: "s-x", updated_at: "t",
+                               messages: [{ "role" => "assistant", "content" => "oi", "task_id" => "t-missing" }])
+      app, = build_app(sessions: { "s-x" => sess })
+      res = login(app).get("/sessions/s-x")
+
+      expect(res.status).to eq(200)
+      expect(res.body).not_to include("turn failed")
+    end
+  end
+
   it "an agent's History tab lists only that agent's conversations" do
     sessions = {
       "s-bia" => StoredSession.new(id: "s-bia-0000001", messages: [], vars: { "agent" => "bia" }, updated_at: "2026-10-08T10:00:00Z"),
@@ -4552,6 +4595,64 @@ end
       app, = build_app(tasks: many_tasks(60, agent: "sales").merge(many_tasks(3, agent: "x").transform_keys { "x#{_1}" }))
       body = login(app).get("/tasks?agent=sales").body
       expect(body).to include('href="/studio/tasks?agent=sales&amp;page=2"')
+    end
+  end
+
+  describe "tasks status filter" do
+    def mixed_tasks
+      rows = (1..60).map do |i|
+        status = i.even? ? :failed : :completed
+        agent = i <= 30 ? "sales" : "x"
+        id = format("%s%03d", status == :failed ? "f" : "c", i)
+        [id, TaskDouble.new(id: id, status: status, command: { "type" => "send_message", "payload" => { "agent" => agent } },
+                            session_id: "s#{i}", executions: [], updated_at: format("2026-07-21T00:00:%02dZ", i), timing: nil)]
+      end
+      rows.to_h
+    end
+
+    it "?status=failed lists only failed tasks" do
+      app, = build_app(tasks: mixed_tasks)
+      body = login(app).get("/tasks?status=failed").body
+
+      expect(body).to include("f060", "f002")
+      expect(body).not_to include("c059", "c001")
+    end
+
+    it "combines with the agent filter" do
+      app, = build_app(tasks: mixed_tasks)
+      body = login(app).get("/tasks?status=failed&agent=sales").body
+
+      expect(body).to include("f030", "f002")
+      expect(body).not_to include("f032", "c029")
+    end
+
+    it "keeps the status in the page links and in the agent form" do
+      failed = (1..60).to_h do |i|
+        id = format("f%03d", i)
+        [id, TaskDouble.new(id: id, status: :failed, command: { "type" => "send_message" }, session_id: "s#{i}",
+                            executions: [], updated_at: format("2026-07-21T00:00:%02dZ", i), timing: nil)]
+      end
+      app, = build_app(tasks: failed)
+      body = login(app).get("/tasks?status=failed").body
+
+      expect(body).to include('href="/studio/tasks?status=failed&amp;page=2"')
+      expect(body).to include('<input type="hidden" name="status" value="failed">')
+    end
+
+    it "offers the status links, marking the current one" do
+      app, = build_app(tasks: mixed_tasks)
+      body = login(app).get("/tasks?status=failed&agent=sales").body
+
+      expect(body).to include('href="/studio/tasks?agent=sales&amp;status=failed"', 'href="/studio/tasks?agent=sales"')
+      expect(body).to match(/aria-current="page"[^>]*>Failed|href="[^"]*status=failed"[^>]*aria-current="page"/)
+    end
+
+    it "an unknown status is ignored (no filter, no error)" do
+      app, = build_app(tasks: mixed_tasks)
+      res = login(app).get("/tasks?status=bogus")
+
+      expect(res.status).to eq(200)
+      expect(res.body).to include("f060", "c059")
     end
   end
 
