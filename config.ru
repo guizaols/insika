@@ -172,7 +172,7 @@ BOOTED_APP = Insika::Server::Boot.new(W, app: RACK_APP).call
 # closes, in-flight turns get up to INSIKA_DRAIN_TIMEOUT (default 20s), and only
 # then the ordinary Falcon teardown proceeds. entrypoint.sh sizes Falcon's
 # --graceful-stop above this deadline so the controller does not cut it short.
-Insika::Shutdown.install(executor: W::EXECUTOR)
+Insika::Shutdown.install(executor: W::EXECUTOR, event_streams: W::EVENT_STREAM)
 
 # Diagnostic: log the reactor's stack when it stops yielding (opt-in).
 if (stall_ms = ENV["INSIKA_STALL_LOG_MS"].to_i).positive?

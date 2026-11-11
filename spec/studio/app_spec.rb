@@ -3925,8 +3925,8 @@ end
                               messages: [{ "role" => "user", "content" => "oi" }])
     app, = build_app(sessions: { "sess-shared-master" => sess })
     client = login(app)
-    index_row = client.get("/chats").body[/<a class="drill-item[^"]*"\s+href="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
-    detail_row = client.get("/sessions/sess-shared-master").body[/<a class="drill-item[^"]*"\s+href="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
+    index_row = client.get("/chats").body[/<a class="drill-item[^"]*"[^>]*\shref="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
+    detail_row = client.get("/sessions/sess-shared-master").body[/<a class="drill-item[^"]*"[^>]*\shref="\/studio\/sessions\/sess-shared-master".*?<\/a>/m]
     expect(index_row).not_to be_nil
     # the detail's row differs only by the "active" class (this IS the
     # selected session there); strip it before comparing the rest.

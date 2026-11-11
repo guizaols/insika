@@ -48,7 +48,7 @@ module Insika
         banner(telemetry)
         # first Ctrl-C/SIGTERM closes the intake and drains in-flight
         # turns (INSIKA_DRAIN_TIMEOUT, default 20s); a second signal skips the wait.
-        Insika::Shutdown.install(executor: @graph.executor)
+        Insika::Shutdown.install(executor: @graph.executor, event_streams: @graph.event_stream)
         Async do
           @graph.executor.supervised = true # serving mode: turns survive disconnects
           # forces the tick/alert/distill/harvest supervisor up now — otherwise a
