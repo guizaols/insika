@@ -36,6 +36,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- Exported metrics now carry `service.instance.id` (host and process id), so each
+  worker gets its own series. Workers of one deployment used to share one series
+  per counter; it jumped between their values, every drop read as a counter reset,
+  and `increase()`/`rate()` over `insika_cost_total`, `insika_tokens_total` and
+  `insika_llm_attempts_total` came out many times too high. Dashboards that sum
+  these need no change; a query that selected one series now sees one per worker.
+  See [Observability](docs/OBSERVABILITY.md#turning-it-on).
 - DeepSeek requests made in its peak hours (Monday to Friday, 01:00-04:00 and
   06:00-10:00 UTC, Chinese public holidays excepted) were costed at the off-peak
   rate, half of what DeepSeek bills. Each request is now priced at the rate in force
