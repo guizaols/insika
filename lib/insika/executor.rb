@@ -1655,8 +1655,8 @@ module Insika
       state.route = route
       # MERGED, not assigned: a WS9 transcription may already have banked its
       # tokens in state.usage (the classifier call must not erase them).
-      state.usage = merge_usage(with_model_source(usage_of(classification[:response]), selection),
-                                state.usage)
+      usage = usage_of(classification[:response], peak: classification[:peak])
+      state.usage = merge_usage(with_model_source(usage, selection), state.usage)
       emit(:route_classified,
            { task_id: task.id, agent: profile.id.to_s, route: route.to_s,
              model: selection.model, usage: state.usage },
@@ -1667,11 +1667,11 @@ module Insika
     end
 
     # The classifier call, its answer parsed back into a route.
-    # -> { route:, response: } | nil (nil = the call failed — the turn proceeds
+    # -> { route:, response:, peak: } | nil (nil = the call failed — the turn proceeds
     # unrouted rather than paying a wrong label or dying for an additive step).
     def classify_route(selection, meta, message, task, st)
-      response = route_ask(selection, Insika::Routing.classifier_prompt(meta), message, task, st)
-      { route: Insika::Routing.parse(route_response_text(response), meta), response: response }
+      response, peak = route_ask(selection, Insika::Routing.classifier_prompt(meta), message, task, st)
+      { route: Insika::Routing.parse(route_response_text(response), meta), response: response, peak: peak }
     rescue StandardError
       nil
     end
@@ -1697,6 +1697,7 @@ module Insika
     # the classifier is model-visible, so it is logged — the ONE
     # engine-internal ask the conformance spec adds a record for (part
     # "routing", same turn number as the answer ask).
+    # -> [response, what peak hours added to the ask (see #peak_surcharge)]
     def route_ask(selection, prompt, message, task, st)
       require "ruby_llm"
       chat = llm_operation_context(st, selection.model, operation: "routing")
@@ -1705,7 +1706,7 @@ module Insika
       chat.with_instructions(prompt) if chat.respond_to?(:with_instructions)
       response = chat.ask(message.to_s)
       record_model_visible(task, st, chat, part: "routing")
-      response
+      [response, peak_surcharge(chat)]
     end
 
     def route_response_text(response)
@@ -2185,7 +2186,7 @@ module Insika
     # Internal buckets are disjoint; total_tokens is the input/output subtotal.
     # The Responses adapter projects cache-inclusive input/total at the HTTP edge.
     # Budgets and evals already add the separate cache buckets to this subtotal.
-    def usage_of(response)
+    def usage_of(response, peak: peak_surcharge(response))
       return nil unless response.respond_to?(:tokens) && (tokens = response.tokens)
 
       usage = { input_tokens: tokens.input, output_tokens: tokens.output,
@@ -2200,7 +2201,20 @@ module Insika
       # fallback and the router costs each at its own rate.
       usage[:cost_usd] = response.cost.total if response.respond_to?(:cost)
       usage[:cost_usd] = @pricing.cost(usage) if usage[:cost_usd].nil? && @pricing
+      usage[:cost_usd] += peak.to_f if usage[:cost_usd]
       usage
+    end
+
+    # What the provider's peak hours added to the requests of this chat's context
+    # (Telemetry::PeakPricing), which the catalog cost above leaves out. The
+    # instrumenter priced each attempt when it ended, so a turn that crosses a
+    # peak boundary or falls back to another provider costs each request at its
+    # own rate. A bare response or an uninstrumented chat adds nothing.
+    def peak_surcharge(chat)
+      return 0 unless chat.respond_to?(:context) && chat.context.respond_to?(:config)
+
+      instrumenter = chat.context.config.instrumenter
+      instrumenter.respond_to?(:peak_surcharge) ? instrumenter.peak_surcharge : 0
     end
 
     def workflow_name(task)
@@ -3128,6 +3142,7 @@ module Insika
       chat = source.context.chat(model: source.model.id, provider: binding.fetch("provider"),
         protocol: :responses, assume_model_exists: true)
       @chat_builder.seed_history(chat, session.messages.take(plan.upto))
+      peak_before = peak_surcharge(chat) # the context is the turn chat's: count this request only
       message = chat.compact
       raw = message.raw_content
       return unless Compaction.native_payload?(raw)
@@ -3139,7 +3154,7 @@ module Insika
         upto: plan.upto, model: binding.fetch("model"))
       emit(:context_compacted, { task_id: task.id, agent: profile.id, from: 0, upto: plan.upto,
         messages: plan.upto, runs: updated.compaction["runs"], model: binding.fetch("model"),
-        usage: usage_of(chat) }, task: task)
+        usage: usage_of(chat, peak: peak_surcharge(chat) - peak_before) }, task: task)
     rescue StandardError
       nil # A failed compaction cannot fail the already-committed turn.
     end

@@ -12,7 +12,8 @@ module Insika
     # The operator declares the rates, Insika only multiplies — which is why the
     # attribute is documented as an ESTIMATE, not a bill.
     #
-    # Rates are **USD per million tokens** (the unit every provider publishes):
+    # Rates are **USD per million tokens** (the unit every provider publishes), and
+    # the off-peak ones for a provider that bills by the hour (see PeakPricing):
     #
     #   { "deepseek-v4-flash" => { "input" => 0.27, "output" => 1.10,
     #                          "cached_input" => 0.07, "cache_write" => 0.34 } }

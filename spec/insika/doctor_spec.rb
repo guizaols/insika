@@ -60,6 +60,18 @@ RSpec.describe Insika::Doctor do
       expect(ok.severity).to eq(:ok)
     end
 
+    it "warns once a configured provider's peak-hours holiday calendar is behind the year" do
+      peak = ->(report) { report.findings.select { |f| f.check == "peak-pricing" } }
+      env = { "DEEPSEEK_API_KEY" => "sk" }
+      expect(peak.(doctor(env: env).run)).to be_empty
+
+      allow(Time).to receive(:now).and_return(Time.utc(2028, 1, 2))
+      expect(peak.(doctor.run)).to be_empty # DeepSeek is not this deployment's provider
+      stale = peak.(doctor(env: env).run)
+      expect(stale.map(&:severity)).to eq([:warn])
+      expect(stale.first.message).to include("deepseek holiday calendar ends in 2027")
+    end
+
     it "info (not error) when the backend is ephemeral memory" do
       db = doctor.run.findings.find { |f| f.check == "db" }
       expect(db.severity).to eq(:info)

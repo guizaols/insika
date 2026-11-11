@@ -4,6 +4,7 @@ require "logger"
 
 require "async"
 require_relative "telemetry/pricing"
+require_relative "telemetry/peak_pricing"
 require_relative "telemetry/recorder"
 
 module Insika

@@ -67,3 +67,12 @@ and [../docs/LOADTEST.md](../docs/LOADTEST.md) for end-to-end load testing.
   after a moderator change, for example
   `railway ssh -s insika -- 'cd /app && bundle exec ruby scripts/replay_moderator.rb /data/insika.db'`.
   `--help` explains what is rebuilt exactly and what is approximate.
+- **`reprice_history.rb`** — recomputes the cost of the requests already in Studio's
+  model history from their token counts, each provider's price list and the hour
+  the request ended in (DeepSeek's peak hours cost double; see
+  [Observability](../docs/OBSERVABILITY.md#estimated-cost)). Lists every provider
+  and model it finds and what it did with each: repriced, left because the provider
+  reported the billed amount, or left because no price list in the script covers it.
+  Reports only; `--apply` writes, and a second run changes nothing. Safe with the
+  app running. Run it on the host, once, after upgrading to the release that prices
+  peak hours.

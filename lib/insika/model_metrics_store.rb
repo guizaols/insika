@@ -163,6 +163,45 @@ module Insika
       }
     end
 
+    REPRICE_BATCH = 500
+    REPRICE_EPSILON = 1e-12 # float noise is not a price change
+
+    # Corrects the cost of the request rows completed in [from, to]. The block
+    # gets a row and returns its cost, or nil to leave it; a row whose cost is
+    # unknown stays unknown. A corrected row keeps its place in the write order
+    # (#pairs_between pages by it), and the day summaries that already counted it
+    # move by the same difference in the same transaction, so a day whose rows
+    # were deleted since keeps their share. Running it twice changes nothing more.
+    # -> { "rows", "changed", "before", "after" } (USD over the changed rows);
+    # nothing is written unless `apply`.
+    def reprice(from:, to:, apply: false)
+      pairs = pairs_between(SCOPE, "completed_at", from, to)
+      changes = pairs.filter_map do |key, row|
+        next unless row["cost"].is_a?(Numeric)
+
+        cost = yield(row)
+        [key, row, cost] if cost.is_a?(Numeric) && (cost - row["cost"]).abs > REPRICE_EPSILON
+      end
+      result = { "rows" => pairs.size, "changed" => changes.size,
+                 "before" => changes.sum { |_, row, _| row["cost"] }, "after" => changes.sum { |_, _, cost| cost } }
+      return result unless apply
+
+      changes.each_slice(REPRICE_BATCH) do |batch|
+        @store.transaction do
+          days = Hash.new(0.0)
+          batch.each do |key, row, cost|
+            next unless @store.get(SCOPE, key) == row # written since it was read: the next run takes it
+
+            @store.amend(SCOPE, key, row.merge("cost" => cost))
+            day = Time.iso8601(row["completed_at"]).utc.strftime("%F")
+            ["*", row["agent"]].compact.each { |tag| days["#{tag}|#{day}"] += cost - row["cost"] }
+          end
+          days.each { |key, delta| shift_kept_day(key, delta) }
+        end
+      end
+      result
+    end
+
     private
 
     # a failed write only means the next home computes those days again
@@ -187,21 +226,36 @@ module Insika
     # a window costs its own rows, not the whole history. The stop test reads the
     # page's oldest RECENT_PAGE rows, so a doubled page stops as early as a small one.
     # ponytail: offset paging over write order; a time-keyed index if windows reach far back.
-    def rows_between(scope, field, from, to)
+    def rows_between(scope, field, from, to) = pairs_between(scope, field, from, to).map(&:last)
+
+    # #rows_between with each row's key: [[key, row], ...].
+    def pairs_between(scope, field, from, to)
       floor = from - LATE_WRITE
-      rows = []
+      pairs = []
       offset = 0
       limit = RECENT_PAGE
       loop do
         page = @store.recent(scope, nil, limit, offset)
         times = page.map { |_key, row| row.is_a?(Hash) && row[field] ? Time.iso8601(row[field]) : nil }
-        page.each_with_index { |(_key, row), i| rows << row if times[i] && times[i] >= from && times[i] <= to }
+        page.each_with_index { |pair, i| pairs << pair if times[i] && times[i] >= from && times[i] <= to }
         break if page.size < limit || times.last(RECENT_PAGE).all? { |t| t && t < floor }
 
         offset += limit
         limit *= 2 # each call orders the whole scope: few big pages, not many small ones
       end
-      rows
+      pairs
+    end
+
+    # Moves the kept summaries of one "agent|YYYY-MM-DD" by a cost difference.
+    # A day nobody kept yet has nothing to move: it is summarized from the rows.
+    def shift_kept_day(key, delta)
+      day = @store.get(DAY_SCOPE, key)
+      @store.set(DAY_SCOPE, key, day.merge("cost" => day["cost"] + delta)) if day && day["cost"].is_a?(Numeric)
+      window = @store.get(WINDOW_DAY_SCOPE, key)
+      return unless window && window.dig("totals", "cost").is_a?(Numeric)
+
+      totals = window["totals"].merge("cost" => window["totals"]["cost"] + delta)
+      @store.set(WINDOW_DAY_SCOPE, key, window.merge("totals" => totals))
     end
 
     def turn_report(from, to, agent:, provider:, model:)
