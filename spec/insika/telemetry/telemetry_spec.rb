@@ -44,6 +44,21 @@ RSpec.describe Insika::Telemetry do
     end
   end
 
+  # Workers of one deployment export the same metric names and labels. Without
+  # an id per process their cumulative counters land on ONE series, which then
+  # jumps between each worker's value and reads as a counter reset every time.
+  describe ".instance_attributes" do
+    it "names this process, so each worker gets its own series" do
+      id = described_class.instance_attributes({})["service.instance.id"]
+      expect(id).to eq("#{Socket.gethostname}-#{Process.pid}")
+    end
+
+    it "leaves an id the operator declared alone" do
+      env = { "OTEL_RESOURCE_ATTRIBUTES" => "deployment.environment=prod,service.instance.id=worker-1" }
+      expect(described_class.instance_attributes(env)).to eq({})
+    end
+  end
+
   describe ".attach" do
     it "recorder nil -> no-op (nil), does not subscribe" do
       es = Insika::EventStream.new
