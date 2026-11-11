@@ -35,7 +35,13 @@ module Insika
         @clients = {} # backend address -> memoized client (persistent connections)
         @clients_mutex = Mutex.new
         @rr_index = -1
+        @in_flight = 0
       end
+
+      # Proxied requests not yet fully answered (body still streaming). A
+      # stopping router waits for this to reach zero before it exits, so a
+      # deploy does not cut a reply mid-flight.
+      def in_flight = @clients_mutex.synchronize { @in_flight }
 
       DEFAULT_CLIENT_FACTORY = lambda do |backend, timeout|
         Async::HTTP::Client.new(Async::HTTP::Endpoint.parse(backend, timeout: timeout))
@@ -102,6 +108,7 @@ module Insika
       end
 
       def proxy(req, backend, raw_body)
+        track(+1)
         client = client_for(backend)
         path = req.script_name.to_s + req.path_info
         path += "?#{req.query_string}" unless req.query_string.to_s.empty?
@@ -111,11 +118,18 @@ module Insika
           Protocol::HTTP::Request.new(nil, nil, req.request_method, path, nil,
                                       forward_headers(req), body)
         )
-        [response.status, response_headers(response), response.body ? ProxyBody.new(response.body) : []]
+        headers = response_headers(response)
+        return [response.status, headers, ProxyBody.new(response.body, on_done: -> { track(-1) })] if response.body
+
+        track(-1)
+        [response.status, headers, []]
       rescue StandardError => e
+        track(-1)
         log("router: backend #{backend} unreachable (#{e.class}: #{e.message})")
         unavailable_response
       end
+
+      def track(delta) = @clients_mutex.synchronize { @in_flight += delta }
 
       def client_for(backend)
         @clients_mutex.synchronize { @clients[backend] ||= @client_factory.call(backend, @backend_timeout) }

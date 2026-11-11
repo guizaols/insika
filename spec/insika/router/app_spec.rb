@@ -184,6 +184,35 @@ RSpec.describe Insika::Router::App do
     end
   end
 
+  describe "#in_flight (what a stopping router waits for)" do
+    let(:pool) { RouterFakePool.new(%w[http://a:9292]) }
+    let(:factory) { RouterFakeClientFactory.new }
+    let(:app) { described_class.new(pool: pool, logger: nil, client_factory: factory.to_proc) }
+    let(:env) { rack_env(method: "POST", path: "/v1/responses", body: JSON.generate(user: "sess-1")) }
+
+    it "counts a reply until its body has streamed out" do
+      triple = app.call(env)
+      expect(app.in_flight).to eq(1)
+
+      read_body(triple)
+      expect(app.in_flight).to eq(0)
+    end
+
+    it "releases a reply closed before it ever streamed (client gone), once" do
+      _status, _headers, body = app.call(env)
+      2.times { body.close }
+
+      expect(app.in_flight).to eq(0)
+    end
+
+    it "does not count a request whose backend was unreachable" do
+      factory.respond("http://a:9292", Errno::ECONNREFUSED.new)
+      app.call(env)
+
+      expect(app.in_flight).to eq(0)
+    end
+  end
+
   describe "streaming response bodies (SSE passthrough, §6.5)" do
     it "streams every upstream chunk through, in order" do
       pool = RouterFakePool.new(%w[http://a:9292])
