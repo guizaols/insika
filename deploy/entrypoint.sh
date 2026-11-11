@@ -43,7 +43,8 @@ fi
 # (default 20s). Falcon's controller must wait AT LEAST that long before killing
 # the workers — its default --graceful-stop is 1s — hence drain + 5 here. The
 # platform must wait longer still: on Railway set
-# RAILWAY_DEPLOYMENT_DRAINING_SECONDS >= drain + 10 (its default is 0: SIGKILL
+# RAILWAY_DEPLOYMENT_DRAINING_SECONDS >= drain + 15, since the router (INSIKA_WORKERS
+# > 1) waits up to drain + 10 for the replies in flight (its default is 0: SIGKILL
 # right after SIGTERM, which cancels the whole drain). See docs/DEPLOY.md.
 DRAIN="${INSIKA_DRAIN_TIMEOUT:-20}"
 APP_CMD="bundle exec falcon serve --bind http://0.0.0.0:${PORT:-9292} --count ${WEB_CONCURRENCY:-1} --graceful-stop $((DRAIN + 5))"
