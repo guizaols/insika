@@ -14,7 +14,7 @@
                                            value: @agent, blank: "All agents · #{@chats_all} — type to search",
                                            all_count: @chats_all, label: "Filter by agent", auto_submit: true }) %>
     <% if @status %><input type="hidden" name="status" value="<%= @status %>"><% end %>
-    <input type="search" name="q" value="<%= @query %>" class="filter-input" placeholder="Filter… Enter searches all by id" aria-label="Filter conversations"
+    <input type="search" name="q" value="<%= @query %>" class="filter-input" placeholder="Filter… Enter searches all by name, phone or id" aria-label="Filter conversations"
            data-list-filter-target="query" data-action="input->list-filter#filter keydown->list-filter#clear">
   </form>
   <%# Status tabs: all / active now / guardrail flagged — counts follow the agent and search filters. %>
@@ -30,13 +30,13 @@
     <% if @sessions.empty? %>
       <div class="empty"><% if @query || @agent || @status %>No conversations match. <a href="/studio/chats">Show all</a><% else %>No conversations yet. Start one in the <a href="/studio/playground">playground</a>.<% end %></div>
     <% else %>
-      <% @sessions.each do |s| %>
+      <% @sessions.each_with_index do |s, i| %>
         <% customer = presence(session_customer(s)) %>
         <% label = presence(session_customer_label(s)) %>
         <% phone = session_customer_phone(s) %>
         <% agent = presence(session_agent(s)) %>
         <% preview = session_preview(s) %>
-        <a class="drill-item<%== ' active' if s.id == active_id %>"
+        <a class="drill-item<%== ' active' if s.id == active_id %>" id="chat-row-<%= i %>"
            href="/studio/sessions/<%= Rack::Utils.escape(s.id) %><%= @agent ? "?agent=#{Rack::Utils.escape(@agent)}" : "" %>"
            data-turbo-frame="session-detail" data-turbo-action="advance"
            data-list-filter-target="item" data-filter-text="<%= s.id %> <%= customer %> <%= label %> <%= phone %> <%= agent %> <%= preview %>"
@@ -50,9 +50,10 @@
           <% if preview %><div class="drill-item-sub"><%== mark_tags(preview, 90) %></div><% end %>
         </a>
       <% end %>
-      <div class="empty" data-list-filter-target="empty" hidden>No conversations match your filter.</div>
+      <div class="empty" data-list-filter-target="empty" hidden>Not in the loaded list. Press Enter to search every conversation.</div>
       <% if @more.to_i.positive? %>
-        <a class="btn" href="<%= chats_path(limit: @limit + @more) %>" data-turbo-frame="_top">Load <%= @more %> more</a>
+        <%# The anchor lands on the first new row, so the list does not jump back to the top. %>
+        <a class="btn" href="<%= chats_path(limit: @limit + @more) %>#chat-row-<%= @sessions.size %>" data-turbo-frame="_top">Load <%= @more %> more</a>
       <% end %>
     <% end %>
   </nav>

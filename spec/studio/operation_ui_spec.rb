@@ -107,13 +107,14 @@ RSpec.describe "Studio operation screens" do
   end
 
   it "lists every conversation, not just the latest page: agent filter, id search and load more" do
-    sessions.create(id: "old-rare", vars: { "agent" => "rare" })
+    sessions.create(id: "old-rare", vars: { "agent" => "rare", "customer_name" => "Marta Lima" })
     105.times { |n| sessions.create(id: "chat-#{n}", vars: { "agent" => "support" }) }
 
     all = request("GET", "/chats").body
-    expect(all).to include("106 conversations", "Load 6 more", "/studio/chats?limit=106")
+    expect(all).to include("106 conversations", "Load 6 more", "/studio/chats?limit=106#chat-row-100")
     expect(request("GET", "/chats?agent=rare").body).to include('href="/studio/sessions/old-rare?agent=rare"')
     expect(request("GET", "/chats?q=OLD-").body).to include("1 conversations", 'href="/studio/sessions/old-rare"')
+    expect(request("GET", "/chats?q=marta").body).to include("1 conversations", 'href="/studio/sessions/old-rare"')
     expect(request("GET", "/chats?limit=200").body).not_to include("Load ")
 
     rare = request("GET", "/chats?agent=rare").body
