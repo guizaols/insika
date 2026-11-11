@@ -13,9 +13,14 @@ module Insika
     # `Fiber.schedule` under the reactor, which is what makes an SSE stream
     # drain through the router with no added buffering beyond the one-time
     # request-body read (§6.5).
+    #
+    # `on_done` runs exactly once, when the body finishes streaming or is closed
+    # without ever streaming (client gone first). The App uses it to count the
+    # requests still in flight, so a stopping router can wait for them.
     class ProxyBody
-      def initialize(upstream_body)
+      def initialize(upstream_body, on_done: nil)
         @upstream_body = upstream_body
+        @on_done = on_done
       end
 
       def call(stream)
@@ -28,6 +33,17 @@ module Insika
       ensure
         @upstream_body.close
         stream.close
+        done
+      end
+
+      def close = done
+
+      private
+
+      def done
+        callback = @on_done
+        @on_done = nil
+        callback&.call
       end
     end
   end

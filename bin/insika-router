@@ -46,10 +46,29 @@ module Insika
         endpoint = Async::HTTP::Endpoint.parse("http://#{host}:#{port}")
 
         banner(pool, host, port)
+        stopping = false
+        # First signal: keep serving until the replies in flight finish (the
+        # workers are draining their turns at the same time), then stop. Exiting
+        # at once cut those replies mid-body on every deploy. A second signal
+        # means now.
+        %w[TERM INT].each { |sig| Signal.trap(sig) { stopping ? exit : stopping = true } }
         Async do |task|
           pool.start_polling(task)
-          Async::HTTP::Server.new(Protocol::Rack::Adapter.new(app), endpoint).run
+          task.async { Async::HTTP::Server.new(Protocol::Rack::Adapter.new(app), endpoint).run }
+          sleep 0.2 until stopping
+          drain(app)
+          task.stop
         end
+      end
+
+      # The workers get INSIKA_DRAIN_TIMEOUT + 5s (Falcon --graceful-stop); the
+      # router outlives them by a few seconds so their last replies get through.
+      def drain(app)
+        timeout = Integer(Insika::EnvSchema.read("INSIKA_DRAIN_TIMEOUT") || 20) + 10
+        puts "router: stopping — #{app.in_flight} request(s) in flight, deadline #{timeout}s"
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        sleep 0.1 until app.in_flight.zero? || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        puts "router: stopped — #{app.in_flight} request(s) still in flight"
       end
 
       def build_pool
