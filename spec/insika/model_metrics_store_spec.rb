@@ -160,6 +160,58 @@ RSpec.describe "Durable model metrics" do
         expect(reads.sum).to be < 3_000
       end
 
+      describe "#reprice" do
+        def request(id, ago, cost:, task: "t", agent: "sales", model: "flash")
+          at = (now - ago).iso8601
+          record("llm_usage", id: id, task: task, at: at, cost: cost, agent: agent, model: model, input_tokens: 10)
+          record("llm_request", id: id, task: task, at: at, agent: agent, model: model, duration_ms: 3, status: "succeeded")
+        end
+
+        it "reports without writing, then corrects only the rows the block prices" do
+          request("a", 3600, cost: 1.0)
+          request("b", 7200, cost: 2.0, model: "pro")
+          record("llm_request", id: "unknown", at: (now - 60).iso8601, duration_ms: 3, status: "succeeded")
+          from_tokens = ->(row) { row["input_tokens"] * 0.2 if row["model"] == "flash" }
+
+          dry = store.reprice(from: now - 86_400, to: now, &from_tokens)
+          expect(dry).to eq("rows" => 3, "changed" => 1, "before" => 1.0, "after" => 2.0)
+          expect(store.report(period: "24h", now: now)["totals"]["cost"]).to eq(3.0)
+
+          store.reprice(from: now - 86_400, to: now, apply: true, &from_tokens)
+          expect(store.report(period: "24h", now: now)["totals"])
+            .to include("cost" => 4.0, "requests" => 3, "unknown_cost_requests" => 1)
+          again = store.reprice(from: now - 86_400, to: now, apply: true, &from_tokens)
+          expect(again).to include("changed" => 0)
+        end
+
+        it "moves the kept day summaries by the same difference, rows deleted since included" do
+          tasks.create(id: "gone", command: {})
+          request("old", 5 * 86_400, cost: 0.75)
+          request("lost", 5 * 86_400, cost: 0.25, task: "gone")
+          store.home(now: now)
+          store.home(agent: "sales", now: now)
+          store.windows(agent: "sales", now: now)
+          tasks.delete("gone")
+
+          store.reprice(from: now - 30 * 86_400, to: now, apply: true) { 1.5 }
+
+          expect(store.home(now: now)["daily"][-6]).to include("cost" => 1.75, "requests" => 2)
+          expect(store.home(agent: "sales", now: now)["daily"][-6]).to include("cost" => 1.75)
+          expect(store.windows(agent: "sales", now: now)["7d"]["totals"]).to include("cost" => 1.75, "requests" => 2)
+          expect(store.windows(now: now)["7d"]["totals"]).to include("cost" => 1.75)
+        end
+
+        it "keeps a corrected row's place in the write order" do
+          request("old", 40 * 86_400, cost: 1.0)
+          request("new", 60, cost: 1.0)
+
+          store.reprice(from: now - 60 * 86_400, to: now - 86_400, apply: true) { 5.0 }
+
+          written = @backend.recent(Insika::ModelMetricsStore::SCOPE, nil, 10).map { |_key, row| [row["request_id"], row["cost"]] }
+          expect(written).to eq([["new", 1.0], ["old", 5.0]])
+        end
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,

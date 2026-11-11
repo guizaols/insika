@@ -63,6 +63,39 @@ RSpec.describe Insika::Telemetry::RubyLLMInstrumenter do
     expect(events.last.last["cost"]).to eq((10 * 1 + 3 * 2) / 1_000_000.0)
   end
 
+  describe "a provider's peak hours (PeakPricing)" do
+    let(:tokens) { RubyLLM::Tokens.new(input: 10, output: 3) }
+    let(:catalog) { RubyLLM::Cost.from_h({ total: 0.25 }) }
+
+    def usage(provider, at)
+      allow(Time).to receive(:now).and_return(at)
+      instrumenter.instrument("usage.ruby_llm", provider: provider, tokens: tokens, cost: catalog)
+      events.last.last["cost"]
+    end
+
+    it "prices an attempt at the rate in force when it ended" do
+      expect(usage("deepseek", Time.utc(2026, 11, 10, 2))).to eq(0.5)   # Tuesday 10:00 in Beijing
+      expect(usage("deepseek", Time.utc(2026, 11, 10, 12))).to eq(0.25) # off-peak
+      expect(usage("openai", Time.utc(2026, 11, 10, 2))).to eq(0.25)
+    end
+
+    it "prices the operator's table the same way" do
+      pricing = Insika::Telemetry::Pricing.new("deepseek-chat" => { "input" => 1, "output" => 2 })
+      priced = described_class.new(emit: emit, model: "deepseek-chat", pricing: pricing)
+      allow(Time).to receive(:now).and_return(Time.utc(2026, 11, 10, 2))
+      priced.instrument("usage.ruby_llm", provider: "deepseek", tokens: tokens, cost: nil)
+      expect(events.last.last["cost"]).to eq(2 * (10 * 1 + 3 * 2) / 1_000_000.0)
+    end
+
+    it "adds up what peak hours added, for the turn's own cost" do
+      expect(instrumenter.peak_surcharge).to eq(0)
+      usage("deepseek", Time.utc(2026, 11, 10, 2))
+      usage("deepseek", Time.utc(2026, 11, 10, 12))
+      usage("deepseek", Time.utc(2026, 11, 10, 7))
+      expect(instrumenter.peak_surcharge).to eq(0.5)
+    end
+  end
+
   it "retains the host instrumenter's block and notification behavior" do
     calls = []
     host = Object.new

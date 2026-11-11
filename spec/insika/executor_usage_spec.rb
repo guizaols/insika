@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require_relative "../../lib/insika/telemetry/ruby_llm_instrumenter"
 
 RSpec.describe "Executor native usage accounting" do
   let(:executor) { Insika::Executor.allocate }
@@ -46,6 +47,47 @@ RSpec.describe "Executor native usage accounting" do
 
     expect(state.usage).to include(input_tokens: 20, output_tokens: 4)
     expect(state.usage[:cost_usd]).to be_within(1e-10).of(0.02)
+  end
+
+  describe "a provider's peak hours" do
+    let(:instrumenter) { Insika::Telemetry::RubyLLMInstrumenter.new(emit: ->(*) {}) }
+    let(:chat) do
+      RubyLLM.context do |config|
+        config.deepseek_api_key = "spec-only"
+        config.instrumenter = instrumenter
+      end.chat(model: "deepseek-v4-flash", provider: :deepseek)
+    end
+    let(:peak) { Time.utc(2026, 11, 10, 2) }     # Tuesday 10:00 in Beijing
+    let(:off_peak) { Time.utc(2026, 11, 10, 4) } # the window just closed
+
+    it "costs each request of the turn at the rate in force when it ended" do
+      lookup = Class.new(RubyLLM::Tool) do
+        def name = "lookup"
+        def execute = "found"
+      end.new
+      chat.with_tools(lookup)
+      call = RubyLLM::ToolCall.new(id: "one", name: "lookup", arguments: {})
+      first = message(input: 10, output: 2, cost: 0.01, calls: { "one" => call })
+      last = message(input: 20, output: 3, cost: 0.02)
+      allow(Time).to receive(:now).and_return(peak, off_peak)
+      allow(chat.provider).to receive(:complete).and_return(first, last)
+      chat.ask_later("hello")
+
+      executor.send(:complete_chat, state, chat)
+
+      expect(state.usage[:cost_usd]).to be_within(1e-10).of(0.01 * 2 + 0.02)
+    end
+
+    it "does not carry one round's peak hours into the next round of the same chat" do
+      allow(chat.provider).to receive(:complete).and_return(message(input: 10, output: 2, cost: 0.01))
+      [peak, off_peak].each do |time|
+        allow(Time).to receive(:now).and_return(time)
+        chat.ask_later("hello")
+        executor.send(:complete_chat, state, chat)
+      end
+
+      expect(state.usage[:cost_usd]).to be_within(1e-10).of(0.01 * 2 + 0.01)
+    end
   end
 
   it "accounts a completed generation even when its tool then raises" do

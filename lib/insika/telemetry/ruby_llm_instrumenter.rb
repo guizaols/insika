@@ -1,13 +1,19 @@
 # frozen_string_literal: true
 
 require "securerandom"
+require_relative "peak_pricing"
 
 module Insika
   module Telemetry
     # One instance belongs to one chat context, never to a graph or current fiber.
     class RubyLLMInstrumenter
+      # What peak hours added to the attempts this context made (PeakPricing), in
+      # USD: the difference between each attempt's cost here and its catalog cost.
+      attr_reader :peak_surcharge
+
       def initialize(emit:, delegate: nil, operation: nil, model: nil, pricing: nil)
         @emit, @delegate, @operation, @model, @pricing = emit, delegate, operation, model, pricing
+        @peak_surcharge = 0.0
       end
 
       def instrument(name, payload = {}, &block)
@@ -88,11 +94,18 @@ module Insika
           end
           value = payload[:cost]&.total
           value = priced(data) unless value.is_a?(Numeric)
-          data["cost"] = value.is_a?(Numeric) ? value : nil
+          data["cost"] = value.is_a?(Numeric) ? billed(value, data["provider"]) : nil
         end
         @emit.call(type, data)
       rescue StandardError
         nil
+      end
+
+      # The catalog cost at the rate in force now, when the attempt ended.
+      def billed(cost, provider)
+        total = PeakPricing.apply(cost, provider: provider)
+        @peak_surcharge += total - cost
+        total
       end
 
       # The operator's rates fill in only what the library could not price (Pricing.from_env).

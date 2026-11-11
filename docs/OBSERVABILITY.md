@@ -347,6 +347,17 @@ and refreshes it every `INSIKA_MODEL_REFRESH_HOURS` (default 24; 0 keeps the
 gem's bundled catalog): one worker downloads it, the others reload it, and a
 restart starts from the last download instead of the catalog shipped with the gem.
 
+The catalog has one price per model and no clock. A provider that bills by the
+hour is priced on top of it: DeepSeek charges twice the catalog (off-peak) rate
+from Monday to Friday, 01:00-04:00 and 06:00-10:00 UTC, Chinese public holidays
+excepted. Each request is priced at the rate in force when it ended, with nothing
+to configure, and the same rule applies to a cost that came from
+`INSIKA_MODEL_PRICING`, so that table holds off-peak rates. The rule ships with
+Insika (`Insika::Telemetry::PeakPricing`), and so does the holiday calendar, which
+China publishes one year at a time: `insika doctor` warns when it is behind the
+current year. Requests recorded before this rule existed are corrected by
+`scripts/reprice_history.rb`.
+
 `INSIKA_MODEL_PRICING` optionally fills in cost where RubyLLM reports none (a
 model missing from its registry, a negotiated contract) — everywhere: Studio
 Models, task traces, turn usage and telemetry. RubyLLM's cost always wins, so the

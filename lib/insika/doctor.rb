@@ -175,7 +175,7 @@ module Insika
     private
 
     def checks = %i[check_env check_settings_schema check_default_model check_db check_llm_provider
-                    check_admin_token check_web_concurrency check_data_tools check_mcp check_prompt_files
+                    check_peak_pricing check_admin_token check_web_concurrency check_data_tools check_mcp check_prompt_files
                     check_relay_channel check_web_widget check_skill_eager check_skill_drift check_shadow_parity
                     check_soak_envelope check_turn_timing check_grounding check_cache_layers
                     check_memory_scopes check_funnel_declarations check_followup check_distill
@@ -338,6 +338,22 @@ module Insika
 
       [Finding.new(check: "llm-provider", severity: :warn,
                    message: "no LLM provider configured (set DEEPSEEK_API_KEY or add one in Studio > LLM providers) — turns will fail", fix: nil)]
+    end
+
+    # Telemetry::PeakPricing ships a provider's holidays one year at a time. Past
+    # the last year, a holiday on a weekday is priced as peak hours.
+    def check_peak_pricing
+      require_relative "telemetry/peak_pricing"
+      year = Time.now.utc.year
+      configured = Array(@llm_provider_store&.apis).map(&:to_s)
+      Insika::Telemetry::PeakPricing.holidays_through.filter_map do |provider, last|
+        next if last >= year
+        next unless configured.include?(provider) || Insika::Coercion.present?(@env["#{provider.upcase}_API_KEY"])
+
+        Finding.new(check: "peak-pricing", severity: :warn, fix: nil,
+                    message: "#{provider} holiday calendar ends in #{last}: a #{provider} holiday on a weekday is priced " \
+                             "as peak hours, so that day's cost is overestimated — upgrade Insika")
+      end
     end
 
     def check_admin_token
