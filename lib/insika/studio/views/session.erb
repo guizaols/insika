@@ -99,6 +99,17 @@
               <%== render("_message", locals: { m: m, prev: i.positive? ? @session.messages[i - 1] : nil,
                                                 review: { path: "/studio/sessions/#{Rack::Utils.escape_path(@session.id)}/guardrail", message: i } }) %>
               <% if (w = @why && @why[i]) %><%== render("_why", locals: { w: w, sid: @session.id, index: i }) %><% end %>
+              <%# A failed task: its reply may sit above yet never have reached the
+                  customer. Marked once, after the turn's last message. %>
+              <% failed = (@failed_tasks || {})[m["task_id"]] %>
+              <% if failed && @session.messages[i + 1]&.dig("task_id") != m["task_id"] %>
+                <details class="toolcard guardrail" open>
+                  <summary><%== chip_icon(:guardrail) %><strong>turn failed · reply may not have been delivered</strong></summary>
+                  <% reason = task_failure_reason(failed) %>
+                  <% unless reason.empty? %><pre><%= reason %></pre><% end %>
+                  <p><a class="mono" href="<%= task_path(failed.id) %>" data-turbo-frame="_top">open task <%= failed.id[0, 12] %></a></p>
+                </details>
+              <% end %>
             <% end %>
           </div>
           <div class="empty" data-live-transcript-target="empty"<%== ' hidden' unless Array(@session.messages).empty? %>>This session has no messages.</div>
