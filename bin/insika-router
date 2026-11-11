@@ -51,13 +51,16 @@ module Insika
         # workers are draining their turns at the same time), then stop. Exiting
         # at once cut those replies mid-body on every deploy. A second signal
         # means now.
-        %w[TERM INT].each { |sig| Signal.trap(sig) { stopping ? exit : stopping = true } }
+        %w[TERM INT].each { |sig| Signal.trap(sig) { stopping ? exit!(0) : stopping = true } }
         Async do |task|
           pool.start_polling(task)
           task.async { Async::HTTP::Server.new(Protocol::Rack::Adapter.new(app), endpoint).run }
           sleep 0.2 until stopping
           drain(app)
-          task.stop
+          # exit!, not task.stop: a reply still streaming at the deadline (an SSE
+          # watch) runs in a Fiber.schedule fiber outside the task tree, so
+          # task.stop left the process up until the platform killed it.
+          exit!(0)
         end
       end
 
@@ -102,4 +105,5 @@ module Insika
   end
 end
 
+$stdout.sync = true # a buffered line is lost when the process ends with exit!
 Insika::CLI::Router.main
