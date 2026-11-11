@@ -36,6 +36,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- DeepSeek requests made in its peak hours (Monday to Friday, 01:00-04:00 and
+  06:00-10:00 UTC, Chinese public holidays excepted) were costed at the off-peak
+  rate, half of what DeepSeek bills. Each request is now priced at the rate in force
+  when it ended, in Studio, turn usage and telemetry, with nothing to configure.
+  `scripts/reprice_history.rb` corrects the history already recorded, and
+  `insika doctor` warns when the shipped holiday calendar is behind the year. See
+  [Observability](docs/OBSERVABILITY.md#estimated-cost).
 - A manual harvest run (`insika harvest`, the Studio button) no longer comes back
   empty on a live store. It capped the window at the five newest sessions before
   checking them, and those are usually still open or too short; the cap now counts
