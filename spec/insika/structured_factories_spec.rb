@@ -66,14 +66,12 @@ RSpec.describe "Native structured utility responses" do
     context = RubyLLM.context { |config| config.deepseek_api_key = "test-key" }
     chat = context.chat(model: "deepseek-chat", provider: :deepseek, assume_model_exists: true)
     allow(context).to receive(:chat).and_return(chat)
+    # RubyLLM 2.2 raises for a schema on DeepSeek Chat Completions; Insika keeps
+    # 2.1's JSON-object fallback and the prompt carries the envelope.
     expect(chat).to receive(:ask) do |prompt|
-      protocol = RubyLLM::Providers::DeepSeek::ChatCompletions.new(chat.provider, chat.model)
-      payload = protocol.send(:render_payload,
-        [RubyLLM::Message.new(role: :user, content: prompt)], tools: {}, temperature: 0,
-        model: chat.model, schema: chat.schema
-      )
-      expect(payload[:response_format]).to eq(type: "json_object")
-      expect(chat.schema[:schema][:properties][:items][:type]).to eq("array")
+      expect(chat.schema).to be_nil
+      expect(chat.provider_options).to eq(response_format: { type: "json_object" })
+      expect(prompt).to include('JSON object with the key "items"')
       RubyLLM::Message.new(role: :assistant, content: '{"items": []}')
     end
     distiller = Insika::Distill::DistillerFactory.build({}, utility_model: "deepseek/deepseek-chat", llm: context)

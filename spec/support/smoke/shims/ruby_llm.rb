@@ -58,7 +58,8 @@ module RubyLLM
     end
 
     def complete? = @complete
-    def awaiting_approval? = false
+    def pending_questions = []
+    def waiting? = false
 
     def ask(message, with: nil, &on_chunk)
       on_chunk&.call(Response.new("processando... "))

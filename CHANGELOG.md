@@ -34,6 +34,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Changed
 
+- RubyLLM 2.2. Inside a turn's tool loop, one tool result is capped at 25% of the
+  model's context window and the oldest results are left out past 70% (RubyLLM's
+  `context_budget`), for models whose window the catalog knows. A network failure now
+  arrives as `RubyLLM::ConnectionError` and is still retried and falls back. DeepSeek
+  utility asks (distill, harvest, knowledge, refinement) keep JSON-object mode: 2.2
+  refuses a schema on DeepSeek Chat Completions.
 - `tool_concurrency` has a platform layer: Studio > Settings sets it for every agent
   that sets none, and the agent value still wins. It left `DEFAULT_LIMITS` for that.
   Agents saved before this carry the old default (`tool_concurrency: 1`) and keep

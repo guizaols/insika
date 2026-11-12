@@ -14,6 +14,7 @@ require_relative "insika/errors"
 # Pure module — loaded by the gemspec too, so it carries no app requires.
 require_relative "insika/packaging"
 require_relative "insika/provider_error_classifier"
+require_relative "insika/structured_output"
 require_relative "insika/token_store"
 require_relative "insika/budget_ledger"
 require_relative "insika/circuit_state"

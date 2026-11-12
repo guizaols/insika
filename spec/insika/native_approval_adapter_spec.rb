@@ -49,8 +49,8 @@ RSpec.describe "Native approval resolver with Insika's durable store" do
 
     expect(reads).to eq(["read"])
     expect(writes).to be_empty
-    expect(chat.awaiting_approval?).to be(true)
-    expect(chat.pending_approvals.map(&:id)).to eq(["call-0"])
+    expect(chat.pending_questions.any?(&:approval?)).to be(true)
+    expect(chat.pending_questions.map { |q| q.tool_call.id }).to eq(["call-0"])
     expect(pending.find("t:1:call-0").status).to eq(:pending)
   end
 
@@ -69,7 +69,7 @@ RSpec.describe "Native approval resolver with Insika's durable store" do
       expect(writes).to eq(decision == :approved ? ["written"] : [])
       expect(restored.messages.last.tool_call_id).to eq("call-0")
       expect(restored.messages.last.content).to include(decision == :approved ? "written" : "denied")
-      expect(restored.pending_approvals).to be_empty
+      expect(restored.pending_questions).to be_empty
       expect(restored_store.find("t:1:call-0").resolved_by).to eq("operator-1")
     end
   end
@@ -82,7 +82,7 @@ RSpec.describe "Native approval resolver with Insika's durable store" do
     chat.run_tools
 
     expect(writes).to be_empty
-    expect(chat.awaiting_approval?).to be(true)
+    expect(chat.pending_questions.any?(&:approval?)).to be(true)
     expect(pending.find("t:1:call-0").status).to eq(:pending)
   end
 end

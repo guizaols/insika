@@ -47,8 +47,10 @@ module Insika
       RubyLLM::UnauthorizedError RubyLLM::PaymentRequiredError RubyLLM::ForbiddenError
     ].freeze
     RATE_LIMITED_ERROR_NAME = "RubyLLM::RateLimitError"
+    # ConnectionError: RubyLLM 2.2 wraps Faraday's transport failures (cause kept).
     RETRYABLE_ERROR_NAMES = %w[
       RubyLLM::ServerError RubyLLM::ServiceUnavailableError RubyLLM::OverloadedError
+      RubyLLM::ConnectionError
     ].freeze
     RUBY_LLM_ERROR_NAMES = (
       FATAL_ERROR_NAMES + [RATE_LIMITED_ERROR_NAME] +

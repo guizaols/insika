@@ -41,7 +41,8 @@ RSpec.describe Insika::ProviderErrorClassifier do
     it ":retryable for transport failures (socket, DNS, timeout, connection)" do
       [SocketError.new("nodename nor servname"), Errno::ECONNREFUSED.new,
        Errno::ECONNRESET.new, Net::ReadTimeout.new,
-       Faraday::ConnectionFailed.new("refused"), Faraday::TimeoutError.new].each do |error|
+       Faraday::ConnectionFailed.new("refused"), Faraday::TimeoutError.new,
+       RubyLLM::ConnectionError.new("stream interrupted")].each do |error|
         c = described_class.classify(error)
         expect(c.kind).to eq(:retryable), "#{error.class}: expected retryable, got #{c.kind}"
         expect(c.retryable).to be(true)
