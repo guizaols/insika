@@ -150,11 +150,20 @@ RSpec.describe Insika::DistillEngine do
       expect(e.start(parent: double)).to be(false)
     end
 
-    it "returns false without a distill declaration — the engine stays off (Blocker 2)" do
-      e = described_class.new(store: backend, proposal_store: proposals,
-                              session_store: sessions, runner: runner,
-                              window: 300, idle_hours: 6, profiles: {})
-      expect(e.start(parent: double)).to be(false)
+    it "starts with no distillation declared and distills once one is switched on, without a restart" do
+      seed_session(id: "acme:due")
+      live = {}
+      passes = 0
+      e = described_class.new(store: backend, proposal_store: proposals, session_store: sessions,
+                              runner: runner, window: 300, idle_hours: 6, profiles: live,
+                              sleeper: lambda do |_|
+                                passes += 1
+                                live.merge!(profiles) if passes == 2 # switched on in the Studio after boot
+                                Async::Task.current.stop if passes == 3
+                              end)
+      Sync { |task| expect(e.start(parent: task)).to be(true) }
+      expect(passes).to eq(3)
+      expect(calls.map { |p| p[:session_id] }).to eq(["acme:due"])
     end
   end
 

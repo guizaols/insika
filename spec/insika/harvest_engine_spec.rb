@@ -275,11 +275,20 @@ RSpec.describe Insika::HarvestEngine do
       expect(e.start(parent: double)).to be(false)
     end
 
-    it "returns false without a harvest declaration — the loop stays off" do
-      e = described_class.new(store: backend, harvest_store: harvest_store,
-                              session_store: sessions, runner: runner,
-                              window: 300, idle_hours: idle_hours, profiles: {})
-      expect(e.start(parent: double)).to be(false)
+    it "starts with no harvest declared and mines once one is switched on, without a restart" do
+      seed_session(id: "acme:due")
+      live = {}
+      passes = 0
+      e = described_class.new(store: backend, harvest_store: harvest_store, session_store: sessions,
+                              runner: runner, window: 300, idle_hours: idle_hours, profiles: live,
+                              sleeper: lambda do |_|
+                                passes += 1
+                                live.merge!(profiles) if passes == 2 # switched on in the Studio after boot
+                                Async::Task.current.stop if passes == 3
+                              end)
+      Sync { |task| expect(e.start(parent: task)).to be(true) }
+      expect(passes).to eq(3)
+      expect(calls.map { |p| p[:session_ids] }).to eq([["acme:due"]])
     end
   end
 end
