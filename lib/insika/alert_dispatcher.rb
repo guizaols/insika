@@ -72,6 +72,19 @@ module Insika
       nil
     end
 
+    # The webhook channel of an alert this worker never registered: the URL was
+    # set in the Studio after boot and another worker recorded the alert. The row
+    # carries the URL, so any worker that claims it can deliver, with no restart.
+    # -> channel | nil (not an alert webhook row)
+    def channel_for(delivery)
+      url = delivery.to.to_s
+      return nil if url.empty? || delivery.channel.to_s != channel_id(url)
+
+      @channels.find(webhook_id(url))
+    rescue StandardError
+      nil
+    end
+
     private
 
     # The agent the alert belongs to: the event carries it for the alerts the
@@ -117,11 +130,13 @@ module Insika
     # One channel per URL, registered so ChannelDelivery.sweep can claim it.
     def webhook_id(url)
       @webhook_ids[url] ||= begin
-        id = "webhook:#{Digest::SHA1.hexdigest(url)[0, 8]}"
+        id = channel_id(url)
         @channels.register(id, Channels::Webhook.new(url, http: @http))
         id
       end
     end
+
+    def channel_id(url) = "webhook:#{Digest::SHA1.hexdigest(url)[0, 8]}"
 
     # Boot face of `webhook_id`: register every configured URL up front (at
     # wiring time, before the boot recovery's channel sweep runs). The url is

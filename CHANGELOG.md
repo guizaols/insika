@@ -41,6 +41,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- An MCP server edited in the Studio (url, command, args, env, headers) is used on
+  every worker's next call. Each worker kept its old connection until a restart.
+- An alert webhook set or changed after boot is delivered by whichever worker picks
+  the alert up. With several workers it could fail as "channel is not registered"
+  until a restart.
+
 - Harvest and distillation switched on in the Studio now start on the next pass.
   Their loops only started at boot, and only when an agent already had the feature
   on, so one switched on later did nothing until a restart.

@@ -25,6 +25,11 @@ module Insika
     # customer waiting on WhatsApp is the deadline, not the consumer's SLA.
     BACKOFF_SECONDS = [1, 5].freeze
 
+    # ->(delivery) { channel | nil }: asked when a delivery's channel is not
+    # registered in this worker (AlertDispatcher#channel_for builds an alert
+    # webhook another worker recorded).
+    attr_accessor :missing_channel
+
     def initialize(channels:, outbox:, session_store:, event_stream: nil,
                    max_attempts: MAX_ATTEMPTS, backoff: BACKOFF_SECONDS, sleeper: nil,
                    shadow_pairs: nil, criterion_sha: nil)
@@ -103,7 +108,7 @@ module Insika
       return false unless @outbox.claim(id)
 
       delivery = @outbox.find(id)
-      channel = @channels&.find(delivery&.channel)
+      channel = @channels&.find(delivery&.channel) || (delivery && @missing_channel&.call(delivery))
       # The channel vanished between the record and the dispatch (a plugin was
       # disabled, the deployment was reconfigured). Nothing can send this; leave it
       # terminal so the boot sweep does not spin on it forever.

@@ -470,8 +470,10 @@ module Deploy
 
     # MCP + system files: CRUD of MCP instances and of the global files that apply to
     # all agents.
-    BUS.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
-    BUS.register(:delete_mcp, Insika::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM))
+    BUS.register(:upsert_mcp, Insika::Commands::UpsertMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM,
+                                                               mcp_registry: MCP_TOOL_REGISTRY))
+    BUS.register(:delete_mcp, Insika::Commands::DeleteMcp.new(mcp_store: MCP_STORE, event_stream: EVENT_STREAM,
+                                                               mcp_registry: MCP_TOOL_REGISTRY))
     # LIVE re-discovery — connects, lists, writes
     # MCP_STORE#tools_cache; TOOL_REGISTRY's live tools (MCP_TOOL_REGISTRY,
     # wired above) never depend on this cache to execute.
