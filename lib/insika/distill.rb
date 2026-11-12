@@ -223,8 +223,8 @@ module Insika
           # DeepSeek's native adapter uses JSON-object mode, requiring an envelope.
           schema = { "type" => "object", "properties" => { "items" => PROPOSAL_SCHEMA.json_schema },
                      "required" => ["items"], "additionalProperties" => false }
-          llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).with_schema("schema" => schema, "strict" => false)
+          chat = llm.chat(model: model, provider: provider, assume_model_exists: true).with_temperature(0)
+          Insika::StructuredOutput.apply(chat, schema)
              .ask("#{prompt}\n\nReturn the requested array inside a JSON object with the key \"items\".")
         end
       end

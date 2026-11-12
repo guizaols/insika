@@ -2,7 +2,7 @@
 
 require "spec_helper"
 
-RSpec.describe "Executor native approvals" do
+RSpec.describe "Executor native approvals", :provider_tool_call_ids do
   let(:backend) { Insika::Stores::Memory.new }
   let(:sessions) { Insika::SessionStore.new(store: backend) }
   let(:tasks) { Insika::TaskStore.new(store: backend) }

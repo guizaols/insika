@@ -77,7 +77,7 @@ module Insika
       run(args.merge(kwargs), hold: true, native_call: tool_call && native_approvals?)
     end
 
-    def requires_approval? = native_approvals? && approval_required?
+    def requires_approval?(_tool_call = nil) = native_approvals? && approval_required?
 
     def approval_tool_name = real_name
 

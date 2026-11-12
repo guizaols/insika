@@ -180,7 +180,8 @@ class StubChat
   def model = nil # provider check (anthropic caching) -> false
   def ask_later(_message) = self
   def complete? = true
-  def awaiting_approval? = false
+  def waiting? = false
+  def pending_questions = []
   def step(&block) = ask(nil, &block)
 
   # Simulates one model interaction: an optional single tool round-trip, then a
@@ -204,6 +205,8 @@ if REAL_CHAT
     COUNTS = Hash.new(0)
 
     def self.slug = "bench_offline"
+    # RubyLLM 2.2 wants a declared protocol; #complete below answers on its own.
+    protocol :chat_completions, RubyLLM::Protocols::ChatCompletions
     def api_base = "http://benchmark.invalid"
     def preprocess_messages(messages, **) = messages
 

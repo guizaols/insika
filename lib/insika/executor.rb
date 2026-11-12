@@ -1893,7 +1893,7 @@ module Insika
       state.tool_halt = nil
       response = nil
       loop do
-        if chat.awaiting_approval?
+        if awaiting_approval?(chat)
           break unless state.native_approvals
 
           save_approval_continuation(state, chat, before)
@@ -1953,11 +1953,14 @@ module Insika
       warn "[insika] text tool markup dropped agent=#{state.profile&.id}"
     end
 
+    # finish_reason carried: RubyLLM 2.2 reads a blank assistant message with
+    # neither it nor input tokens as a placeholder and asks the provider again.
     def replace_last_message(chat, response, content, tool_calls)
       chat.messages.pop
       chat.add_message(RubyLLM::Message.new(
         role: :assistant, content: content, tool_calls: tool_calls, model: response.model,
-        tokens: response.tokens, thinking: response.thinking, raw_reasoning: response.raw_reasoning
+        tokens: response.tokens, thinking: response.thinking, raw_reasoning: response.raw_reasoning,
+        finish_reason: response.finish_reason
       ))
     end
 
@@ -2018,7 +2021,7 @@ module Insika
 
     def await_native_approvals(state, chat)
       task = state.task
-      chat.pending_approvals.each do |call|
+      pending_approval_calls(chat).each do |call|
         tool = chat.tools[call.name.to_sym]
         unless tool.respond_to?(:approval_tool_name)
           raise Insika::Error, "native approval has no Insika tool binding"
@@ -2033,9 +2036,17 @@ module Insika
         emit(:approval_requested, { pending_id: id, tool: name, args: call.arguments }, task: task)
       end
       @task_store.transition(task.id, to: :waiting) if @task_store.find(task.id).status == :running
-      state.actor.await(reason: :approval) while chat.awaiting_approval?
+      state.actor.await(reason: :approval) while awaiting_approval?(chat)
       @task_store.transition(task.id, to: :running)
     end
+
+    # The tool calls the chat waits on a human to approve (RubyLLM 2.2 folded
+    # approvals into pending_questions, next to the questions tools ask).
+    def pending_approval_calls(chat) = chat.pending_questions.select(&:approval?).map(&:tool_call)
+
+    # Nothing left to run but approvals (2.1's awaiting_approval?): the calls that
+    # need no decision still run before the turn waits.
+    def awaiting_approval?(chat) = chat.waiting? && pending_approval_calls(chat).any?
 
     # The per-round chunk sink. Built FRESH per round: `ttft_sent` is that round's
     # own bookkeeping, and the steer overflow round is a second round on the same
@@ -3203,6 +3214,9 @@ module Insika
     # keeps the loop coherent; the FULL result lives in the ToolTraceStore (viewer).
     TOOL_CONTENT_CAP = 4_000
 
+    # RubyLLM's shares of the context window for tool results (its generator default).
+    CONTEXT_BUDGET = { per_result: 0.25, per_request: 0.7 }.freeze
+
     # The turn's messages in the ADDITIVE string-keyed format (R1). Prefers the
     # real chat transcript (`chat.messages.drop(baseline)`) so tool calls/results
     # survive between turns; falls back to the {user, assistant} pair when the chat
@@ -3341,7 +3355,17 @@ module Insika
         assume_model_exists: !provider.nil?
       )
       params_source.apply_params(chat) # temperature/max_tokens/thinking (per-agent)
+      apply_context_budget(chat)
       chat
+    end
+
+    # Inside one turn's tool loop: one result capped at a share of the window, and
+    # the oldest results left out once the request passes its share. Only for a
+    # model the catalog knows the window of (RubyLLM warns on every chat otherwise).
+    def apply_context_budget(chat)
+      return unless chat.respond_to?(:with_context_budget) && chat.model.context_window.to_i.positive?
+
+      chat.with_context_budget(**CONTEXT_BUDGET)
     end
 
     # `operation` labels every request this context makes in the task's traces and

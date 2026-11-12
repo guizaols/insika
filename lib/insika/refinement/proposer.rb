@@ -278,8 +278,8 @@ module Insika
         require "ruby_llm"
         llm ||= RubyLLM
         lambda do |prompt|
-          llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).with_schema("schema" => Proposer::RESPONSE_SCHEMA, "strict" => false).ask(prompt)
+          chat = llm.chat(model: model, provider: provider, assume_model_exists: true).with_temperature(0)
+          Insika::StructuredOutput.apply(chat, Proposer::RESPONSE_SCHEMA).ask(prompt)
         end
       end
     end

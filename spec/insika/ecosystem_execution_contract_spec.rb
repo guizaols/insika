@@ -3,7 +3,7 @@
 require "spec_helper"
 require_relative "../../lib/insika/telemetry/ruby_llm_instrumenter"
 
-RSpec.describe "RubyLLM execution replacement gates" do
+RSpec.describe "RubyLLM execution replacement gates", :provider_tool_call_ids do
   let(:context) do
     RubyLLM.context do |config|
       config.deepseek_api_key = "spec-only"
@@ -65,7 +65,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
       transport.post("probe", {}) do |request|
         request.options.context = { RubyLLM::Transport::Connection::STREAM_PROGRESS_KEY => { started: true } }
       end
-    end.to raise_error(Faraday::ConnectionFailed)
+    end.to raise_error(RubyLLM::ConnectionError)
     expect(attempts).to eq(1)
   end
 
@@ -168,7 +168,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     primary_attempts = 0
     expect(primary).to receive(:complete).twice do |*, **|
       primary_attempts += 1
-      raise Faraday::ConnectionFailed, "offline" if primary_attempts == 1
+      raise RubyLLM::ConnectionError, "offline" if primary_attempts == 1
 
       RubyLLM::Message.new(role: :assistant, content: "Primary answered")
     end
@@ -212,7 +212,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     primary = chat.provider
     fallback = RubyLLM::Providers::DeepSeek.new(context.config)
     allow(RubyLLM::Providers::DeepSeek).to receive(:new).and_return(fallback)
-    expect(primary).to receive(:complete).once.and_raise(Faraday::ConnectionFailed, "offline")
+    expect(primary).to receive(:complete).once.and_raise(RubyLLM::ConnectionError, "offline")
     expect(fallback).to receive(:complete).once do |messages, **|
       expect(messages.last.tool_call_id).to eq("write-1")
       expect(messages.last.content).to eq("written")
@@ -231,7 +231,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     allow(RubyLLM::Providers::DeepSeek).to receive(:new).and_return(fallback)
     expect(primary).to receive(:complete) do |*, **, &on_chunk|
       on_chunk.call(RubyLLM::Chunk.new(role: :assistant, content: "partial"))
-      raise Faraday::ConnectionFailed, "interrupted"
+      raise RubyLLM::ConnectionError, "interrupted"
     end
     expect(fallback).to receive(:complete) do |*, **, &on_chunk|
       on_chunk.call(RubyLLM::Chunk.new(role: :assistant, content: "replacement"))
@@ -329,7 +329,7 @@ RSpec.describe "RubyLLM execution replacement gates" do
     allow(executor).to receive(:ask_on) { |_, _, current, *| current.ask("hello") {} }
 
     expect { executor.send(:run_reliable_ask, Struct.new(:command).new({}), state, nil, nil) }
-      .to raise_error(Faraday::ConnectionFailed)
+      .to raise_error(RubyLLM::ConnectionError)
     expect(attempts).to eq(1)
   end
 
@@ -340,20 +340,20 @@ RSpec.describe "RubyLLM execution replacement gates" do
     chat.approve("write-1")
     restored = restored_chat(chat).with_tools(writer)
 
-    expect(restored.awaiting_approval?).to be(true)
+    expect(restored.pending_questions.any?(&:approval?)).to be(true)
     expect(restored.step).to be_nil
     expect(writes).to eq(0)
     restored.approve("write-1")
     restored.run_tools
     expect(writes).to eq(1)
-    expect(restored_chat(restored).with_tools(writer).pending_approvals).to be_empty
+    expect(restored_chat(restored).with_tools(writer).pending_questions).to be_empty
   end
 
   it "restores a denied approval without executing its tool" do
     writer = guarded_tool { raise "must not write" }
     chat.with_tools(writer).add_message(pending_message)
     restored = restored_chat(chat).with_tools(writer)
-    restored.deny("write-1")
+    restored.decline("write-1")
     restored.run_tools
 
     expect(restored.messages.last.content).to include("denied")
