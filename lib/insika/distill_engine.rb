@@ -37,13 +37,13 @@ module Insika
     end
 
     # The supervisor child (tick.rb:69-83's shape): loop { sleeper(window);
-    # run_once rescue log }. Returns false when idle_hours <= 0 (the engine
-    # default OFF switch — parity) OR when no profile declares a distillation
-    # (a scan with nothing to distill would re-read every session record every
-    # window forever — each pass skips at the command, writes no marker, and
-    # repeats).
+    # run_once rescue log }. Returns false only when idle_hours <= 0 (the engine
+    # default OFF switch — parity). Whether any profile declares a distillation
+    # is asked by each pass (#run_once), not here: one switched on in the Studio
+    # starts on the next pass, with no restart, and a pass with nothing declared
+    # reads no session.
     def start(parent:)
-      return false unless distillable?
+      return false if @idle_hours <= 0
       return true if @task&.running?
 
       @task = parent.async do |t|

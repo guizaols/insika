@@ -45,12 +45,14 @@ module Insika
     # inert one keeps the loop honest until then.
     attr_accessor :runner
 
-    # The supervisor child (tick.rb:69-83's shape). Returns false when
-    # idle_hours <= 0 (the engine default OFF switch — parity) OR when no
-    # profile declares an enabled harvest (a scan with nothing to mine would
-    # re-read every session record every window forever).
+    # The supervisor child (tick.rb:69-83's shape). Returns false only when
+    # idle_hours <= 0 (the engine default OFF switch — parity). Whether any
+    # profile declares an enabled harvest is asked by each pass (#run_once), not
+    # here: a harvest switched on in the Studio starts mining on the next pass,
+    # with no restart, and a pass with nothing declared reads no session.
     def start(parent:)
-      return false unless harvestable?
+      return false if @idle_hours <= 0
+      return true if @task&.running?
 
       @task = parent.async do |t|
         t.annotate("insika-harvest")
