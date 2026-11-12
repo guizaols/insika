@@ -212,6 +212,21 @@ RSpec.describe "Durable model metrics" do
         end
       end
 
+      it "records a model call made outside a turn, with no task to own it" do
+        events = [
+          { "type" => "llm_usage", "request_id" => "bg", "at" => now.iso8601, "operation" => "harvest",
+            "agent" => "shop", "provider" => "deepseek", "model" => "flash", "status" => "succeeded",
+            "input_tokens" => 10, "cost" => 0.5 },
+          { "type" => "llm_request", "request_id" => "bg", "at" => now.iso8601, "operation" => "harvest",
+            "agent" => "shop", "provider" => "deepseek", "model" => "flash", "status" => "succeeded", "duration_ms" => 7 }
+        ]
+        events.each { |event| store.record_background(event) }
+        totals = store.report(now: now, agent: "shop")["totals"]
+        expect(totals).to include("requests" => 1, "attempts" => 1, "cost" => 0.5, "input_tokens" => 10)
+        tasks.delete("t")
+        expect(store.report(now: now)["totals"]["requests"]).to eq(1)
+      end
+
       it "counts completion without usage and joins late usage without losing unknown retries" do
         record("llm_request", duration_ms: 12, status: "succeeded")
         expect(store.report(now: now)["totals"]).to include("requests" => 1, "attempts" => 0,

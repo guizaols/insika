@@ -62,7 +62,7 @@ module Insika
         return skip("too_short") if session.messages.size < min_messages
 
         tenant = tenant_of(session_id)
-        distiller = @distiller_factory.call(config)
+        distiller = @distiller_factory.call(config.merge("agent" => agent_id))
         return skip("no_model") if distiller.nil?
 
         baseline = memory_baseline(tenant, customer)

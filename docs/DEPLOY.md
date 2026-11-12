@@ -84,9 +84,11 @@ contract:
    Whatever the deadline abandons dies `:running`, and item 3 picks it up at the
    next boot. The layers above must grant the time: `deploy/entrypoint.sh`
    passes Falcon `--graceful-stop` = drain + 5 (Falcon's own default is 1s),
-   and the platform's SIGTERM→SIGKILL buffer must be ≥ drain + 10. **On Railway
+   and the platform's SIGTERM→SIGKILL buffer must be ≥ drain + 15: with
+   `INSIKA_WORKERS` > 1 the router keeps serving the replies in flight for up
+   to drain + 10, then exits. **On Railway
    that buffer defaults to 0** — SIGKILL right after SIGTERM, which cancels the
-   whole drain — so set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` on the
+   whole drain — so set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=35` on the
    service.
 5. **A periodic tick closes the gap between boots.** Serving workers run a tick
    every `INSIKA_TICK_INTERVAL` (default **60s**, `0` disables) as a child of
@@ -112,7 +114,7 @@ this section is the single source of truth for what changing it means.
 | `PORT` | `9292` | HTTP bind port |
 | `WEB_CONCURRENCY` | `1` | number of Falcon worker processes — a contract input, see [The process model](#the-process-model) |
 | `INSIKA_BOOT_ID` | set by `deploy/entrypoint.sh` | boot generation id; the recovery **task sweep** runs once per id (process model, item 3). Unset = every boot sweeps (single-process default) |
-| `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 10 |
+| `INSIKA_DRAIN_TIMEOUT` | `20` | seconds a stopping worker waits for in-flight turns before abandoning them to the next boot's recovery (process model, item 4). The entrypoint sizes Falcon's `--graceful-stop` from it; on Railway also set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` ≥ drain + 15 |
 | `INSIKA_TICK_INTERVAL` | `60` | seconds between tick passes — outbox drain + stale recovery sweep (process model, item 5). `0` disables |
 | `INSIKA_TICK_STALE_AFTER` | `900` | seconds a `:queued`/`:running` task must sit untouched before the tick sweeps it. Must exceed the largest `turn_timeout` of the deployment |
 | `INSIKA_STALL_LOG_MS` | unset (off) | diagnostic: a worker whose reactor does not yield for this many ms logs a `[stall]` line with the stack holding it, once a second. Falcon SIGKILLs a worker stuck 30s; `5000` shows what gets there |

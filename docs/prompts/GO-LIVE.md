@@ -59,7 +59,7 @@ platform env vars. **Never** write either into a file, a commit, or your own out
 - **`INSIKA_EGRESS_HOSTS`** = exactly the hosts your data-tools call. A backend on the
   developer's machine gets a public **https tunnel** + its host in this list — never
   `INSIKA_EGRESS_ALLOW_HTTP`/`_ALLOW_PRIVATE` in cloud.
-- On Railway also **`RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`**: the platform default
+- On Railway also **`RAILWAY_DEPLOYMENT_DRAINING_SECONDS=35`**: the platform default
   is 0 — SIGKILL right after SIGTERM — which cancels the graceful drain entirely.
 
 ## Step 3 — Deploy
