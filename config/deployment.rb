@@ -422,7 +422,8 @@ module Deploy
       settings_store: SETTINGS_STORE, negative_list: HARVEST_NEGATIVE,
       miner_factory: ->(config) {
         Insika::Harvest::MinerFactory.build(config,
-          utility_model: (SETTINGS_STORE.get || {})["utility_model"], llm: LLM_CONTEXT)
+          utility_model: (SETTINGS_STORE.get || {})["utility_model"],
+          llm: Insika::Wiring::Graph.metered_llm(LLM_CONTEXT, SPINE, "harvest", config))
       },
       event_stream: EVENT_STREAM
     )

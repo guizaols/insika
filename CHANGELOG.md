@@ -9,6 +9,11 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- Studio cost now includes distillation and harvest. Their model calls run outside a
+  turn and were not recorded anywhere; each one is now a request on Studio Models
+  (`operation` `distill` or `harvest`), priced like a turn's, peak hours included.
+  See [Observability](docs/OBSERVABILITY.md).
+
 - `INSIKA_HARVEST_PER_PASS`: how many sessions the harvest loop mines per 5-minute
   pass (default 1), one model call each, agents taking turns. See
   [Harvest](docs/HARVEST.md).
