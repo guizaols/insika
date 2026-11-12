@@ -60,6 +60,30 @@ module Insika
         value&.to_i
       end
 
+      # The llm for a model call made outside a turn (distill, harvest): the same
+      # instrumenter a turn's chat gets, so each request lands in ModelMetricsStore
+      # with its tokens and cost (peak hours included) and shows on Studio Models.
+      # An llm without a config (a spec's fake) passes through unmetered.
+      def metered_llm(llm, spine, operation, config)
+        require "ruby_llm" if llm.nil?
+        source = llm || RubyLLM
+        store = spine.model_metrics_store
+        return source unless store && source.respond_to?(:config)
+
+        require_relative "../telemetry/ruby_llm_instrumenter"
+        agent = Insika::Coercion.presence(config && config["agent"])
+        copy = source.config.dup
+        copy.instrumenter = Insika::Telemetry::RubyLLMInstrumenter.new(
+          delegate: copy.instrumenter, operation: operation, pricing: Insika::Telemetry::Pricing.from_env,
+          emit: ->(type, data) {
+            # RubyLLM names every usage "chat"; the row keeps what the call was for.
+            store.record_background(data.merge("type" => type.to_s, "at" => Time.now.utc.iso8601(6),
+                                               "agent" => agent, "operation" => operation))
+          }
+        )
+        RubyLLM::Context.new(copy)
+      end
+
       # the infra spine that is IDENTICAL across roots. `extra_policy_
       # builtins` covers the one real divergence (the minimal wiring also registers
       # :workflow_allowlist; the deployment does not expose workflows).
@@ -269,7 +293,7 @@ module Insika
           settings_store: executor_extra[:settings_store],
           distiller_factory: ->(config) {
             Insika::Distill::DistillerFactory.build(config,
-              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: metered_llm(executor_extra[:llm], spine, "distill", config))
           },
           event_stream: spine.event_stream
         )
@@ -374,7 +398,7 @@ module Insika
           negative_list: nil,
           miner_factory: ->(config) {
             Insika::Harvest::MinerFactory.build(config,
-              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+              utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: metered_llm(executor_extra[:llm], spine, "harvest", config))
           },
           event_stream: spine.event_stream
         )
@@ -624,7 +648,7 @@ module Insika
                        negative_list: nil,
                        miner_factory: ->(config) {
                          Insika::Harvest::MinerFactory.build(config,
-                           utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: executor_extra[:llm])
+                           utility_model: executor_extra[:settings_store]&.get&.[]("utility_model"), llm: metered_llm(executor_extra[:llm], spine, "harvest", config))
                        },
                        event_stream: spine.event_stream
                      ))

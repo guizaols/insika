@@ -185,9 +185,14 @@ RSpec.describe Deploy::Wiring do
       [w::REFINEMENT_GATE, w::HARVEST_GATE].each { |gate| gate.instance_variable_get(:@judge_factory).call }
       expect(Insika::Refinement::ProposerFactory).to receive(:panel).with(anything, utility_model: anything, llm: context)
       w::PROPOSER_FACTORY.call(config)
-      expect(Insika::Distill::DistillerFactory).to receive(:build).with(config, utility_model: anything, llm: context)
+      # distill and harvest get a copy of the context that also records their cost
+      metered = satisfy do |llm|
+        llm.config.instrumenter.is_a?(Insika::Telemetry::RubyLLMInstrumenter) &&
+          llm.config.deepseek_api_key == context.config.deepseek_api_key
+      end
+      expect(Insika::Distill::DistillerFactory).to receive(:build).with(config, utility_model: anything, llm: metered)
       w::EXECUTOR.distill_engine.instance_variable_get(:@runner).instance_variable_get(:@distiller_factory).call(config)
-      expect(Insika::Harvest::MinerFactory).to receive(:build).with(config, utility_model: anything, llm: context)
+      expect(Insika::Harvest::MinerFactory).to receive(:build).with(config, utility_model: anything, llm: metered)
       w::HARVEST_RUN.instance_variable_get(:@miner_factory).call(config)
     end
   end

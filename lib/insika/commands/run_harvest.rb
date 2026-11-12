@@ -72,7 +72,7 @@ module Insika
 
         # the agent's provider backs a bare miner model ref; a "provider/model"
         # ref (what the Studio picker writes) carries its own
-        miner = @miner_factory.call(config.merge("provider" => profile.provider.to_s))
+        miner = @miner_factory.call(config.merge("provider" => profile.provider.to_s, "agent" => agent))
         return skip("no_model") if miner.nil?
 
         run = @harvest_store.create_run(agent_id: agent, window: window_record(p),

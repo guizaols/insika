@@ -396,6 +396,12 @@ Routing (`operation: "routing"`) and summarizing compaction
 (`operation: "compaction"`) requests are recorded like the chat's, so they show
 on Studio Models next to it.
 
+Distillation (`operation: "distill"`) and harvest mining (`operation: "harvest"`)
+run outside a turn, on a timer. Each of their requests is recorded the same way,
+under its agent and with no task, so Studio Models and the home cost include
+them. These rows are not deleted by retention, and they are not exported as
+OpenTelemetry metrics: `insika.cost` and `insika.tokens` still count turns only.
+
 The number is an **estimate for trend and attribution**, not a bill. Reconcile
 against your provider's invoice, never the other way round.
 

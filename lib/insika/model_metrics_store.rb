@@ -33,6 +33,10 @@ module Insika
 
     def record(task_id:, entry:) = record_many(task_id: task_id, entries: [entry])
 
+    # A model call made outside a turn (distill, harvest): no task owns it.
+    # ponytail: never pruned (no task to delete it with), like the kept day rows.
+    def record_background(entry) = record_many(task_id: nil, entries: [entry])
+
     # A turn's events in one transaction: each request's row is read and written
     # once, however many events (request, usage, retries) it got.
     def record_many(task_id:, entries:)
@@ -46,12 +50,12 @@ module Insika
       return if rows.empty?
 
       @store.transaction do
-        next unless @store.get(TaskStore::SCOPE, "#{TaskStore::KEY_PREFIX}#{task_id}")
+        next unless task_id.nil? || @store.get(TaskStore::SCOPE, "#{TaskStore::KEY_PREFIX}#{task_id}")
 
         rows.group_by { |data| data["request_id"] }.each do |request_id, events|
           key = self.class.task_prefix(task_id) + request_id
           row = @store.get(SCOPE, key) || {
-            "task_id" => task_id.to_s, "request_id" => request_id,
+            "task_id" => task_id&.to_s, "request_id" => request_id,
             "attempts" => 0, "failed_attempts" => 0, "reported" => {}
           }
           events.each { |data| fold(row, data) }
