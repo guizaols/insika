@@ -416,6 +416,8 @@ module Insika
           channels: spine.channel_registry, profiles: profiles,
           task_store: spine.task_store, http: Insika::HttpClient.new
         )
+        # a worker delivers an alert whose webhook another worker registered
+        channel_delivery.missing_channel = executor.alert_dispatcher.method(:channel_for)
 
         Graph::Result.new(
           backend: spine.backend, event_stream: spine.event_stream,

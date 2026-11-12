@@ -89,6 +89,28 @@ RSpec.describe Insika::AlertDispatcher do
     expect(outbox.find(delivery.id).status).to eq(:delivered)
   end
 
+  it "a webhook set after boot is delivered by a worker that never registered it, with no restart" do
+    url = "https://8.8.8.8/alerts"
+    none = Insika::StaticProfileSource.new({ "bia" => Insika::AgentProfile.build(id: "bia", model: "m") })
+    # this worker booted before the URL existed; another worker recorded the alert
+    other_worker = described_class.new(event_stream: event_stream, outbox: outbox, channels: channels,
+                                       profiles: none, task_store: task_store, http: http)
+    channel_id = "webhook:#{Digest::SHA1.hexdigest(url)[0, 8]}"
+    expect(channels.find(channel_id)).to be_nil
+    delivery = outbox.create(channel: channel_id, to: url, task_id: "t-1", session_id: "s-1",
+                             payload: { "type" => "budget_warning", "agent" => "bia" })
+    stray = outbox.create(channel: "webhook:deadbeef", to: url, task_id: "t-2", session_id: "s-1", payload: {})
+    allow(http).to receive(:request).and_return(status: 200, body: "ok")
+
+    delivery_service = Insika::ChannelDelivery.new(channels: channels, outbox: outbox,
+                                                   session_store: nil, sleeper: ->(_s) {})
+    delivery_service.missing_channel = other_worker.method(:channel_for)
+    delivery_service.sweep
+
+    expect(outbox.find(delivery.id).status).to eq(:delivered)
+    expect(outbox.find(stray.id).status).to eq(:failed) # a channel id that is not this URL's stays refused
+  end
+
   it "an agent without alerts config answers nothing" do
     plain = Insika::AgentProfile.build(id: "silent", model: "m")
     profiles = Insika::StaticProfileSource.new({ "silent" => plain })

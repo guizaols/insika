@@ -30,11 +30,15 @@ module Insika
     # ponytail: count cap, not idle TTL — add a TTL if idle sockets pile up.
     MAX_CLIENTS = 200
 
+    # What a client is built from. A record that differs in any of these needs a
+    # new client; the tools cache and the per-tool overrides do not.
+    CONNECTION = %w[transport command args env url headers].freeze
+
     def initialize(mcp_store:, client_factory: Insika::McpClient.method(:for), max_clients: MAX_CLIENTS)
       @mcp_store = mcp_store
       @client_factory = client_factory
       @max_clients = max_clients
-      @clients = {} # [instance, conversation] -> client, oldest use first
+      @clients = {} # [instance, conversation] -> [connection, client], oldest use first
       @mutex = Mutex.new
     end
 
@@ -76,7 +80,7 @@ module Insika
     def evict(name)
       gone = @mutex.synchronize do
         keys = @clients.keys.select { |instance, _| instance == name.to_s }
-        keys.map { |key| @clients.delete(key) }
+        keys.map { |key| @clients.delete(key).last }
       end
       gone.each { |client| close_quietly(client) }
     end
@@ -123,6 +127,9 @@ module Insika
     # MCP session (Mcp-Session-Id): a client shared by every conversation leaked
     # one chat's target store and confirmation tokens into another. A stdio
     # instance stays one shared process — a process per chat is too costly.
+    # A client built from an older version of the record (its url, command, env
+    # or headers were edited since, in this worker or another) is closed and
+    # replaced, so an edit reaches every worker's next call without a restart.
     # Raises on a gated/unreachable instance; only called from `refresh` and
     # from a running McpLiveTool's `#execute` (which rescues) — never from
     # `entries`/`build_tool`, so a downed server never breaks turn ASSEMBLY,
@@ -130,14 +137,20 @@ module Insika
     def client_for(record, session_id = nil)
       session_id = nil if record["transport"].to_s == "stdio"
       key = [record["name"], session_id&.to_s]
-      stale = nil
+      connection = record.values_at(*CONNECTION)
+      stale = []
       client = @mutex.synchronize do
-        found = @clients.delete(key) || @client_factory.call(record)
-        @clients[key] = found # re-insert: most recently used goes last
-        stale = @clients.shift.last if @clients.size > @max_clients
+        built, found = @clients.delete(key)
+        if found && built != connection
+          stale << found
+          found = nil
+        end
+        found ||= @client_factory.call(record)
+        @clients[key] = [connection, found] # re-insert: most recently used goes last
+        stale << @clients.shift.last.last if @clients.size > @max_clients
         found
       end
-      close_quietly(stale) if stale
+      stale.each { |old| close_quietly(old) }
       client
     end
 

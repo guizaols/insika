@@ -246,6 +246,20 @@ RSpec.describe Insika::McpToolRegistry do
         expect(built.map(&:closed)).to eq([true, true])
       end
 
+      it "an edited url replaces the client on the next call, with no evict (another worker made the edit)" do
+        built = []
+        registry = http_registry(built)
+        call_in(registry, "chat-a")
+        call_in(registry, "chat-a")
+        expect(built.size).to eq(1)
+
+        mcp_store.upsert(name: "fs", transport: "http", url: "https://mcp.example.com/v2")
+        call_in(registry, "chat-a")
+        call_in(registry, "chat-a")
+
+        expect(built.map(&:closed)).to eq([true, nil])
+      end
+
       it "a stdio instance stays one shared process" do
         seed
         mcp_store.set_tools_cache("fs", [{ "name" => "list_files", "description" => "d", "inputSchema" => {} }])
