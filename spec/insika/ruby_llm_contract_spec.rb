@@ -3,7 +3,7 @@
 require "spec_helper"
 
 # The real chat lifecycle runs here; only the provider network boundary is stubbed.
-RSpec.describe "RubyLLM boundary contract" do
+RSpec.describe "RubyLLM boundary contract", :provider_tool_call_ids do
   before do
     raise "real ruby_llm 2 gem is required for the boundary contract" unless defined?(RubyLLM::Chat)
     expect(Gem.loaded_specs.fetch("ruby_llm").version.segments.first).to eq(2)
@@ -42,7 +42,7 @@ RSpec.describe "RubyLLM boundary contract" do
 
   it "exposes every chat method used by Insika" do
     methods = %i[with_instructions with_tools with_tool_options add_message before_tool_call after_tool_result
-                 after_message ask_later step complete? awaiting_approval? messages model provider
+                 after_message ask_later step complete? pending_questions messages model provider
                  with_temperature with_max_output_tokens with_provider_options with_thinking]
     expect(methods - RubyLLM::Chat.public_instance_methods).to be_empty
   end
@@ -145,7 +145,8 @@ RSpec.describe "RubyLLM boundary contract" do
   end
 
   it "leaves a text tool call for a tool the chat does not offer as the answer" do
-    leaked = RubyLLM::Message.new(role: :assistant, content: "<tool_call>\nsend_pix\n</tool_call>")
+    leaked = RubyLLM::Message.new(role: :assistant, content: "<tool_call>\nsend_pix\n</tool_call>",
+      finish_reason: "stop")
     chat.with_tools(tool("search_faq") { raise "must not execute" })
     state.chat = chat
     expect(chat.provider).to receive(:complete).once.and_return(leaked)
@@ -161,7 +162,7 @@ RSpec.describe "RubyLLM boundary contract" do
     chat.with_tools(guarded)
     chat.add_message(tool_message(call("c1", name: "guarded")))
     expect(chat.provider).not_to receive(:complete)
-    expect(chat.awaiting_approval?).to be(true)
+    expect(chat.pending_questions.any?(&:approval?)).to be(true)
     expect(chat.complete?).to be(false)
     expect(chat.step).to be_nil
   end

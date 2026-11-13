@@ -381,8 +381,8 @@ module Insika
           end
           response_schema = schema || { "type" => "object", "properties" => { "items" => CONCEPT_SCHEMA.json_schema },
                                         "required" => ["items"], "additionalProperties" => false }
-          llm.chat(model: model, provider: provider, assume_model_exists: true)
-             .with_temperature(0).with_schema("schema" => response_schema, "strict" => false).ask(prompt)
+          chat = llm.chat(model: model, provider: provider, assume_model_exists: true).with_temperature(0)
+          Insika::StructuredOutput.apply(chat, response_schema).ask(prompt)
         end
       end
     end

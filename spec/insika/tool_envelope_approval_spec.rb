@@ -16,6 +16,10 @@ RSpec.describe "ToolEnvelope — approval gate" do
 
     def initialize = (@calls = [])
     def name = "charge"
+    # what RubyLLM 2.2's with_tools reads off a tool
+    def qualified_name = name
+    def deferred? = false
+    def namespace = nil
     def call(args) = (@calls << args) && "charged"
   end
 
@@ -230,7 +234,7 @@ RSpec.describe "ToolEnvelope — approval gate" do
       chat.add_message(role: :assistant, content: nil, tool_calls: { call.id => call })
       allow(coordinator).to receive(:approval_decision).and_return(nil)
       chat.approve(call)
-      expect(chat.awaiting_approval?).to be(true)
+      expect(chat.pending_questions.any?(&:approval?)).to be(true)
       expect(chat.step).to be_nil
       expect(tool.calls).to be_empty
       expect(coordinator.requested).to be_empty

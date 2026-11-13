@@ -164,7 +164,8 @@ class FakeChat
   end
 
   def complete? = @complete
-  def awaiting_approval? = false
+  def pending_questions = []
+  def waiting? = false
 
   # The gem's `Chat#complete`: another model step on the history AS IT IS, with no
   # new user message. The steer overflow round goes through here — `ask(nil)` would
