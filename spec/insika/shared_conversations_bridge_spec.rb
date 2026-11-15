@@ -23,11 +23,15 @@ RSpec.describe 'Shared conversation HTTP bridge' do
   before do
     allow(bridge).to receive(:request) do |method, path, data = nil, **_options|
       calls << [method,path,data]
+      if path == "/v1/conversations/#{ids['conversation_id']}"
+        next nil if method == 'GET' && @missing_conversation
+        @missing_conversation = false if method == 'PUT'
+      end
       case path
       when /\/memories\/conversation\// then {'memories'=>[]}
       when /\/messages\?/ then {'messages'=>[], 'through_sequence'=>0, 'next_sequence'=>0}
       when /\/native-run$/ then {'native_run_id'=>task.id,'state'=>'running'}
-      when /\/turns$/ then {'id'=>ids['turn_id'],'state'=>'running','native_run_id'=>nil}
+      when /\/turns$/ then {'id'=>ids['turn_id'],'state'=>'running','native_run_id'=>nil,'generation'=>conversation['generation']}
       when /\/complete$/ then {'state'=>'completed'}
       when /\/messages$/ then {'last_sequence'=>3}
       when /\/bindings\// then {}
@@ -55,6 +59,36 @@ RSpec.describe 'Shared conversation HTTP bridge' do
     expect(input['content']).to eq([{'type'=>'text','text'=>'original speech'}])
     expect(calls.map { _1[1] }.last).to end_with('/native-run')
     expect(input['id']).to eq(ids['message_id'])
+  end
+
+  it 'creates a new central chat automatically' do
+    ids.delete('generation')
+    @missing_conversation = true
+    expect(bridge.begin_turn(task: task, profile: profile)).to eq([])
+    expect(calls).to include(['PUT', "/v1/conversations/#{ids['conversation_id']}", ids.slice('user_id','agent_id').merge('harness'=>'insika')])
+  end
+
+  it 'binds the customer of imported history before reserving the next turn' do
+    ids.delete('generation')
+    ids['history_required'] = true
+    conversation.merge!('user_id'=>ids['conversation_id'],'user_id_pending'=>1,'last_sequence'=>2)
+    allow(bridge).to receive(:request).with('PUT', "/v1/conversations/#{ids['conversation_id']}", anything) do |_method,path,data|
+      calls << ['PUT',path,data]
+      conversation.merge!('user_id'=>data.fetch('user_id'),'user_id_pending'=>0)
+    end
+    allow(bridge).to receive(:request).with('GET', /messages\?/).and_return(
+      {'messages'=>[{'role'=>'user','content'=>[{'type'=>'text','text'=>'old question'}]},
+        {'role'=>'assistant','content'=>[{'type'=>'text','text'=>'old answer'}]}],'next_sequence'=>2})
+    expect(bridge.begin_turn(task: task, profile: profile).last['content']).to eq('old answer')
+    expect(calls.find { _1[0]=='PUT' }.last['user_id']).to eq(ids['user_id'])
+  end
+
+  it 'holds an old chat until migration without creating an empty record' do
+    ids.delete('generation')
+    ids['history_required'] = true
+    @missing_conversation = true
+    expect { bridge.begin_turn(task: task, profile: profile) }.to raise_error(Insika::StoreError, /migrate existing chat history/)
+    expect(calls.none? { _1[0] == 'PUT' }).to eq(true)
   end
 
   it 'refuses mismatched identity before reservation or model work' do
