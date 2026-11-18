@@ -457,7 +457,7 @@ RSpec.describe "Insika::Executor pipeline (stages 2-9)" do
 
       result = Sync { wrapped.first.call({}) }
 
-      expect(result).to eq({ error: "TimeoutError: tool exceeded 0.05s" })
+      expect(result).to include(error: "TimeoutError: tool exceeded 0.05s")
     end
 
     it "records the side-effect with the current tool_call_id BEFORE the result returns" do

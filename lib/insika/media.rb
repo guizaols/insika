@@ -175,15 +175,38 @@ module Insika
     # url is consumer config/input, so a private/loopback/metadata target is
     # refused (SSRF) unless the deployment opts out. Size-capped (the caller
     # picks the ceiling; the default is the audio one).
-    def self.fetch_binary(url, max_bytes: MAX_AUDIO_BYTES)
+    # A 5xx or a timeout is retried ONCE after a short pause: the customer's photo
+    # behind a busy proxy is usually there a second later, and losing it means the
+    # agent answers without seeing what was sent.
+    MEDIA_RETRY_DELAY = 1 # second
+
+    class MediaUnavailable < Insika::MediaError; end
+
+    def self.fetch_binary(url, max_bytes: MAX_AUDIO_BYTES, retry_delay: MEDIA_RETRY_DELAY)
       violation = Insika::EgressGuard.violation(url, **egress_opt_out)
       raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
 
-      uri = URI.parse(url)
-      opts = { use_ssl: uri.scheme == "https", open_timeout: 30, read_timeout: 60 }
+      attempt = 0
+      begin
+        attempt += 1
+        fetch_once(URI.parse(url), max_bytes)
+      rescue MediaUnavailable, Net::OpenTimeout, Net::ReadTimeout => e
+        if attempt < 2
+          sleep(retry_delay)
+          retry
+        end
+        raise Insika::MediaError, (e.is_a?(Insika::MediaError) ? e.message : "media fetch timed out")
+      end
+    rescue URI::InvalidURIError
+      raise Insika::MediaError, "invalid media URL"
+    end
+
+    def self.fetch_once(uri, max_bytes)
+      opts = { use_ssl: uri.scheme == "https", open_timeout: 10, read_timeout: 20 }
       Net::HTTP.start(uri.host, uri.port, opts) do |http|
         buf = +"".b
         http.request(Net::HTTP::Get.new(uri)) do |resp|
+          raise MediaUnavailable, "media fetch HTTP #{resp.code}" if resp.is_a?(Net::HTTPServerError)
           raise Insika::MediaError, "media fetch HTTP #{resp.code}" unless resp.is_a?(Net::HTTPSuccess)
 
           resp.read_body { |chunk| buf << chunk; break if buf.bytesize > max_bytes }
@@ -191,8 +214,6 @@ module Insika
         raise Insika::MediaError, "media exceeds #{max_bytes} bytes" if buf.bytesize > max_bytes
         buf
       end
-    rescue URI::InvalidURIError
-      raise Insika::MediaError, "invalid media URL"
     end
 
     # The opt-out the comment above promises, read from the SAME env the
