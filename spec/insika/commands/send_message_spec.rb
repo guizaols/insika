@@ -133,10 +133,12 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(timing.marked?(:inbound)).to be(true)
     end
 
-    it "no clock for a non-channel transport — there is no inbound balloon to measure" do
+    # /v1/responses (achei-b2b) waits in the same SessionActor FIFO; without the
+    # clock its queue_ms was never recorded and a burst in one chat stayed invisible.
+    it "an http transport starts the clock too, so its queue wait is measured" do
       send_from(:http)
 
-      expect(executor.spawned_timing.first).to be_nil
+      expect(executor.spawned_timing.first.marked?(:inbound)).to be(true)
     end
   end
 
