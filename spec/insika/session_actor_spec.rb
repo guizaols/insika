@@ -50,7 +50,7 @@ RSpec.describe Insika::SessionActor do
     end
 
     # Mirrors the real guard: appending to a task that already left :queued raises.
-    def append_message(id, text)
+    def append_message(id, text, parts: nil)
       raise ArgumentError, "task #{id} is running, not queued" if @released.include?(id)
 
       @messages[id] << text

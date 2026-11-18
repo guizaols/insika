@@ -40,8 +40,12 @@ class FakeTurnExecutor
     @spawned_timing << timing
   end
 
-  def collect_into_pending(session_id, text, profile:)
+  # [[session_id, parts], …] — the media each collect carried (nil for text).
+  def collected_parts = @collected_parts ||= []
+
+  def collect_into_pending(session_id, text, profile:, parts: nil)
     @asked << [:collect, session_id, text]
+    collected_parts << [session_id, parts]
     @collect
   end
 
