@@ -76,11 +76,11 @@ module Insika
     # Runs on the REQUEST's fiber, not the loop's; both are on the same reactor
     # and neither yields between the check and the write below, so the "is it
     # still mergeable" test and the append cannot interleave.
-    def collect(text)
+    def collect(text, parts: nil)
       pending = @doors.values.last
       return nil if pending.nil?
 
-      @executor.task_store.append_message(pending[:task_id], text)
+      @executor.task_store.append_message(pending[:task_id], text, parts: parts)
       pending[:count] += 1
       # A merged fragment leaves NO task of its own (see #hold_at_the_door), so this
       # is the only record that it arrived as a separate message. Kept as arrival

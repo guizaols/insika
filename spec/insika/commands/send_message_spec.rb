@@ -183,15 +183,30 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(collecting_executor.asked).to be_empty
     end
 
-    # `collect`/`steer` move TEXT into a task already at the door; the parts
-    # would stay behind, and the customer's photo would silently not exist.
-    it "a message carrying MEDIA never joins another turn — it gets its own" do
-      result = send_from(:"http:json",
-                         parts: [{ "type" => "image", "url" => "https://cdn.example.com/f.png" }])
+    # A burst of screenshots must not become one turn per photo (ACHEI-B2B-1FW):
+    # the parts ride onto the task at the door.
+    it "a message carrying MEDIA joins the waiting turn, its parts with it" do
+      image = { "type" => "image", "url" => "https://cdn.example.com/f.png" }
+      result = send_from(:"http:json", parts: [image])
+
+      expect(result).to eq({ task_id: "t-open", merged: true })
+      expect(collecting_executor.collected_parts).to eq([["s1", [image]]])
+      expect(collecting_executor.spawned).to be_empty
+    end
+
+    it "a MEDIA message never steers into a running turn — that turn already read its parts" do
+      steering = FakeTurnExecutor.new(steer: "t-running")
+      session_store.create(id: "s1")
+      parts = [{ "type" => "image", "url" => "https://cdn.example.com/f.png" }]
+
+      result = described_class.new(profiles: profiles, session_store: session_store,
+                                   task_store: task_store, executor: steering)
+                              .call(Insika::Command.build(:send_message, payload(session_id: "s1", parts: parts),
+                                                           transport: :"http:json"))
 
       expect(result).to match({ task_id: kind_of(String) })
-      expect(collecting_executor.asked).to be_empty
-      expect(collecting_executor.spawned.size).to eq(1)
+      expect(steering.asked.map(&:first)).to eq([:collect])
+      expect(steering.spawned.size).to eq(1)
     end
 
     it "validation still runs BEFORE the door: a bad message never reaches collect" do

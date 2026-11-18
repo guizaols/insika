@@ -277,6 +277,27 @@ RSpec.describe Insika::TaskStore do
     it "raises NotFoundError for an unknown task" do
       expect { tasks.append_message("nope", "x") }.to raise_error(Insika::NotFoundError)
     end
+
+    it "appends media parts without a text fragment, leaving the message as is" do
+      id = tasks.create(command: command, id: "t").id
+      img = { type: "image", url: "https://cdn.example.com/a.png" }
+
+      tasks.append_message(id, nil, parts: [img])
+      task = tasks.append_message(id, "", parts: [img.merge(url: "https://cdn.example.com/b.png")])
+
+      expect(task.command["payload"]["message"]).to eq("oi")
+      expect(task.command["payload"]["parts"].map { |p| p["url"] })
+        .to eq(%w[https://cdn.example.com/a.png https://cdn.example.com/b.png])
+    end
+
+    it "refuses past MAX_MERGED_PARTS so the caller starts a fresh turn" do
+      id = tasks.create(command: command, id: "t").id
+      img = { "type" => "image", "url" => "https://cdn.example.com/a.png" }
+      tasks.append_message(id, nil, parts: [img] * Insika::TaskStore::MAX_MERGED_PARTS)
+
+      expect { tasks.append_message(id, "e mais", parts: [img]) }.to raise_error(ArgumentError, /parts/)
+      expect(tasks.find(id).command["payload"]["message"]).to eq("oi")
+    end
   end
 
   describe "timing on the task record " do

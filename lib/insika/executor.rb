@@ -378,7 +378,7 @@ module Insika
     # Asking first is what keeps the store clean: creating a task and then
     # discarding it would leave an orphan :queued record for every fragment, and
     # `queued` is what Recovery replays at boot.
-    def collect_into_pending(session_id, text, profile:)
+    def collect_into_pending(session_id, text, profile:, parts: nil)
       return nil unless @supervised && session_id
 
       policy = queue_policy(profile, session_id)
@@ -400,7 +400,10 @@ module Insika
       # arrived as one run-on paragraph, and a trailing constraint got answered by
       # nothing. `steer_join` is the knob that already exists for exactly this, and a
       # nil one returns the text untouched, so a wiring that never set it is unchanged.
-      actor.collect(policy.frame(text))
+      # A media-only fragment has no text to frame: an empty frame would add a
+      # stray separator line, so only the parts ride along.
+      framed = text.to_s.strip.empty? ? nil : policy.frame(text)
+      actor.collect(framed, parts: parts)
     end
 
     # the `steer` door: a message for a session whose turn is ALREADY
