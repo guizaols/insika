@@ -126,9 +126,16 @@ module Insika
         prefix = Insika::ToolDefinition::CTX_PREFIX
         if name.start_with?(prefix)
           @turn_context[name.delete_prefix(prefix).to_sym]
+        elsif name == Insika::ToolDefinition::ARGS_PLACEHOLDER && !declared?(name)
+          kwargs.compact
         else
           kwargs[name.to_sym]
         end
+      end
+
+      def declared?(name)
+        props = (@definition.parameters || {}).then { |p| p["properties"] || p[:properties] } || {}
+        props.key?(name) || props.key?(name.to_sym)
       end
 
       def symbolize_ctx(ctx)

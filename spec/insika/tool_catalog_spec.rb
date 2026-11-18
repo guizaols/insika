@@ -110,6 +110,15 @@ RSpec.describe Insika::ToolCatalog do
       expect(out).to include("tool_search")
     end
 
+    it "lists only the first sentence, capped at 120 chars" do
+      registry.register("report") { FakeTool.new("Relatório de vendas. Detalhes longos que ficam de fora.") }
+      registry.register("long") { FakeTool.new("x" * 300) }
+      out = catalog.format_for_prompt(catalog.all)
+      expect(out).to include(%(<tool name="report">Relatório de vendas.</tool>))
+      expect(out).not_to include("Detalhes longos")
+      expect(out[/<tool name="long">(.*)<\/tool>/, 1].length).to eq(120)
+    end
+
     it "format_for_prompt([]) -> ''" do
       expect(catalog.format_for_prompt([])).to eq("")
     end

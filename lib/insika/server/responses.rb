@@ -32,7 +32,9 @@ module Insika
       # gets that filtered structurally instead of by a regex on the leading tag.
       # Omitted = a customer typed it, which is what every turn meant before.
       def parse_request(body, req)
-        agent = body[:model].to_s.sub(/\Ainsika:/, "")
+        # `openclaw:` too: a consumer still built for the OpenClaw gateway (the
+        # achei-b2b co-pilot) points its URL here without a code change.
+        agent = body[:model].to_s.sub(/\A(?:insika|openclaw):/, "")
         agent = req.get_header("HTTP_X_INSIKA_AGENT").to_s if agent.empty?
         raise Insika::ValidationError, "model/agent missing" if agent.strip.empty?
 
