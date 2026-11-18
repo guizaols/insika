@@ -65,6 +65,11 @@ module Insika
     # error, not a silently empty header).
     CTX_PREFIX = "ctx."
     CTX_FIELDS = %w[chat_id store_id agent_id tenant image_url].freeze
+    # `{{args}}` in the BODY = every argument the model sent, as one JSON object
+    # (absent optionals stay absent, never "null"). For a backend that takes the
+    # whole set under one key, like the achei-b2b co-pilot's
+    # `{"tool_name":…,"params":{{args}}}`. A declared param named `args` wins.
+    ARGS_PLACEHOLDER = "args"
 
     # ---- safe subset of JSON Schema (R1) --------------------------------------
     # Types supported by EVERY provider (OpenAI/Anthropic/Gemini/DeepSeek/Bedrock).
@@ -372,7 +377,8 @@ module Insika
       query = stringify_values(r[:query])
       body = r[:body].nil? ? nil : r[:body].to_s
 
-      check_placeholders!([url, *headers.values, *query.values, body].compact, param_names)
+      check_placeholders!([url, *headers.values, *query.values].compact, param_names)
+      check_placeholders!([body].compact, param_names | [ARGS_PLACEHOLDER]) # {{args}}: body only
 
       { method: method, url: url, headers: headers, query: query, body: body }
     end

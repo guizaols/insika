@@ -53,6 +53,29 @@ RSpec.describe Insika::Tools::DataDefinedTool do
     expect(t.parameters_schema["required"]).to include("cep")
   end
 
+  describe "{{args}} in the body" do
+    let(:exec_def) do
+      { name: "get_report", description: "relatório",
+        parameters: { "type" => "object",
+                      "properties" => { "merchant_id" => { "type" => "string" },
+                                        "days" => { "type" => "integer" } } },
+        request: { method: "POST", url: "https://api.test/execute",
+                   body: '{"tool_name":"get_report","params":{{args}}}' } }
+    end
+
+    it "forwards only the args the model sent, as one JSON object" do
+      t = tool(exec_def, result: { status: 200, body: "ok" })
+      t.execute(days: 7)
+      expect(JSON.parse(t.instance_variable_get(:@http).last[:body]))
+        .to eq("tool_name" => "get_report", "params" => { "days" => 7 })
+    end
+
+    it "is refused outside the body" do
+      bad = exec_def.merge(request: { method: "POST", url: "https://api.test/{{args}}" })
+      expect { Insika::ToolDefinition.build(**bad) }.to raise_error(Insika::ValidationError, /args/)
+    end
+  end
+
   # — PROOF: a NESTED parameter (search_products) is exposed to the
   # model via parameters_schema (what the providers serialize) AND interpolated into the body.
   describe "nested param (JSON Schema)" do

@@ -9,6 +9,12 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- `{{args}}` in a data tool's body: every argument the model sent, as one JSON
+  object, without the ones it left out. For a backend that takes them under one key.
+  See [Tools](docs/TOOLS.md).
+- `POST /v1/responses` also accepts `model: "openclaw:<agent>"`, so a client built for
+  the OpenClaw gateway can point at Insika without a code change.
+
 - Studio cost now includes distillation and harvest. Their model calls run outside a
   turn and were not recorded anywhere; each one is now a request on Studio Models
   (`operation` `distill` or `harvest`), priced like a turn's, peak hours included.
@@ -34,6 +40,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Changed
 
+- The `tool_search` catalog lists each deferred tool's first sentence, at most 120
+  characters, instead of its whole description. 592 full descriptions were ~64k
+  tokens, over an agent's whole context budget; the tool search enables still carries
+  its full description.
 - RubyLLM 2.2. Inside a turn's tool loop, one tool result is capped at 25% of the
   model's context window and the oldest results are left out past 70% (RubyLLM's
   `context_budget`), for models whose window the catalog knows. A network failure now
@@ -47,6 +57,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- `scripts/migrate_openclaw.rb convert` kept the model of an agent whose OpenClaw
+  `agents.list` entry writes it as `{ primary: … }`; the pack had no provider.
 - An MCP server edited in the Studio (url, command, args, env, headers) is used on
   every worker's next call. Each worker kept its old connection until a restart.
 - An alert webhook set or changed after boot is delivered by whichever worker picks

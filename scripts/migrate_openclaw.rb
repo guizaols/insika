@@ -212,7 +212,10 @@ module MigrateOpenclaw
   # the model choice (validated against the real state).
   def resolve_model(defaults, entry)
     override = entry["model"]
-    if override
+    if override.is_a?(Hash) # agents.list[].model may be { primary:, fallbacks: } like the defaults
+      { "primary" => override["primary"], "source" => "openclaw.json agents.list",
+        "fallbacks" => override["fallbacks"] || [] }
+    elsif override
       { "primary" => override, "source" => "openclaw.json agents.list", "fallbacks" => [] }
     else
       dmodel = (defaults["model"] || {})
@@ -759,7 +762,9 @@ module MigrateOpenclaw
       uri = URI.join(base.end_with?("/") ? base : "#{base}/", "v1/conversations/#{URI.encode_www_form_component(id)}/seed")
       req = Net::HTTP::Post.new(uri, "Authorization" => "Bearer #{token}", "Content-Type" => "application/json")
       req.body = body.to_json
-      Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |h| h.request(req) }.code
+      res = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https") { |h| h.request(req) }
+      warn "seed #{id}: HTTP #{res.code} #{res["server"]} #{res.body.to_s[0, 300]}" if %w[401 403].include?(res.code)
+      res.code
     end
   end
 
