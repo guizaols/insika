@@ -57,6 +57,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- **A tool found by `tool_search` now gets the turn context.** It was built without it, so `{{ctx.*}}` headers went out empty (the achei-b2b co-pilot got "Sessão do co-pilot não encontrada").
+
 - `scripts/migrate_openclaw.rb convert` kept the model of an agent whose OpenClaw
   `agents.list` entry writes it as `{ primary: … }`; the pack had no provider.
 - An MCP server edited in the Studio (url, command, args, env, headers) is used on
