@@ -68,7 +68,7 @@ module Insika
     def format_for_prompt(entries = all)
       return "" if entries.empty?
 
-      lines = entries.map { |e| %(  <tool name="#{e.name}">#{e.description}</tool>) }.join("\n")
+      lines = entries.map { |e| %(  <tool name="#{e.name}">#{summary(e.description)}</tool>) }.join("\n")
 
       <<~PROMPT.strip
         <available_tools>
@@ -81,6 +81,16 @@ module Insika
     end
 
     private
+
+    # The catalog only has to make the model search; the full description comes with
+    # the tool once tool_search wires it. First sentence, capped: 592 full co-pilot
+    # descriptions were ~64k tokens, over the agent's whole context budget.
+    SUMMARY_MAX = 120
+
+    def summary(description)
+      first = description.to_s.strip.split(/(?<=[.!?])\s/, 2).first.to_s
+      first.length > SUMMARY_MAX ? "#{first[0, SUMMARY_MAX - 1]}…" : first
+    end
 
     def build_entries
       @tool_registry.entries.map do |entry|

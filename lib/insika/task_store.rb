@@ -193,9 +193,17 @@ module Insika
     # context and possibly sent to the provider — rewriting it there would mean the
     # transcript disagrees with what the model actually saw. ArgumentError on any
     # other status, so a lost race fails loudly instead of corrupting a turn.
-    def append_message(id, text, separator: "\n")
+    #
+    # `parts` (media: images, audio, documents) ride along onto the task's own
+    # parts, so a burst of photos becomes one turn that sees them all. Capped at
+    # MAX_MERGED_PARTS: past it this raises ArgumentError too, and the caller's
+    # fallback (a turn of its own, whose door the next photos join) batches the rest.
+    MAX_MERGED_PARTS = 10
+
+    def append_message(id, text, separator: "\n", parts: nil)
       fragment = presence(text)
-      return to_task(fetch!(id)) if fragment.nil?
+      extra = Array(parts)
+      return to_task(fetch!(id)) if fragment.nil? && extra.empty?
 
       record = fetch!(id)
       unless record["status"] == "queued"
@@ -203,8 +211,14 @@ module Insika
       end
 
       payload = (record["command"]["payload"] ||= {})
+      unless extra.empty?
+        merged = Array(payload["parts"]) + deep_stringify(extra)
+        raise ArgumentError, "task #{id} already holds #{MAX_MERGED_PARTS} parts" if merged.size > MAX_MERGED_PARTS
+
+        payload["parts"] = merged
+      end
       current = presence(payload["message"])
-      payload["message"] = current ? "#{current}#{separator}#{fragment}" : fragment
+      payload["message"] = current ? "#{current}#{separator}#{fragment}" : fragment if fragment
       record["updated_at"] = timestamp
       @store.set(SCOPE, key_for(id), record)
       to_task(record)

@@ -30,6 +30,12 @@ RSpec.describe MigrateOpenclaw do
       expect(by_id["beta"]["entry_extra"]).not_to have_key("model")
     end
 
+    it "unwraps an agents.list model written as { primary:, fallbacks: }" do
+      model = described_class.resolve_model({}, { "model" => { "primary" => "minimax/MiniMax-M3",
+                                                               "fallbacks" => ["x/y"] } })
+      expect(model.slice("primary", "fallbacks")).to eq("primary" => "minimax/MiniMax-M3", "fallbacks" => ["x/y"])
+    end
+
     it "classifies skills: byte-identical copy and symlink are shared; the rest own" do
       alpha = by_id["alpha"]["skills"].to_h { |s| [s["name"], s] }
       expect(alpha["conduct-guardrails"]["shared"]).to be(true)

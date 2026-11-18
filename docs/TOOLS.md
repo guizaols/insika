@@ -62,6 +62,12 @@ or Studio needs the literal header value instead; see
 `{{ctx.chat_id}}` is the external session ID. In multi-tenant mode, it excludes
 the authenticated tenant prefix used by Insika to isolate stored sessions.
 
+`{{args}}`, in the `body` only, is every argument the model sent as one JSON
+object. Arguments the model left out stay out (a per-param `"{{x}}"` would send
+`"null"`). Use it when the backend takes the whole set under one key:
+`"body": "{\"tool_name\":\"get_report\",\"params\":{{args}}}"`. A declared param
+named `args` wins over it.
+
 ### Parameters: the schema is the contract
 
 `parameters` is **JSON Schema**, and it reaches the provider verbatim — it is the only
@@ -753,8 +759,10 @@ held client, which does its own discovery on first use regardless of whether
    type: deny wins, otherwise the agent sees `tools_allow ∪ tools_allow_groups`
    (or all, when both are absent). See [Agents](AGENTS.md#the-allowlist-convention).
 4. **Deferred tools** (`tools_deferred`) are *not* offered directly — they appear
-   as a short "available tools" list and the model must call `tool_search` to
-   enable one. This is progressive disclosure for large toolsets — see
+   as a short "available tools" list (name + the description's first sentence,
+   at most 120 characters) and the model must call `tool_search` to enable one;
+   the enabled tool carries its full description. This is progressive
+   disclosure for large toolsets — see
    [Context](CONTEXT.md).
 
 ## Parallel tool calls

@@ -158,11 +158,14 @@ module Insika
         # boot). Only offered on a surface that can report the verdict back —
         # coalescing a caller that cannot hear `merged` makes it deliver the
         # same answer twice.
-        # A message carrying MEDIA never joins another turn: `collect`/`steer`
-        # move TEXT into a task that is already at the door, and its parts would
-        # be left behind — the customer's photo would silently not exist.
-        if !profile.shared_conversations && coalescable?(command) && !media?(p[:parts])
-          if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile))
+        # A message carrying MEDIA joins too, its parts riding onto the waiting
+        # task: a burst of 40 screenshots used to be 40 turns in a row, and the
+        # last ones waited minutes in the FIFO (Sentry ACHEI-B2B-1FW).
+        # `steer` stays text-only: a running turn has already read its parts.
+        media = media?(p[:parts])
+        if !profile.shared_conversations && coalescable?(command)
+          if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile,
+                                                                                parts: (p[:parts] if media)))
             return { task_id: joined, merged: true }
           end
 
@@ -171,7 +174,7 @@ module Insika
           # answer comes out of `task_id`, which is not this call's to deliver. Asked
           # after `collect` because the two cannot both apply — a turn is either still at
           # the door or running.
-          if (steered = @executor.steer_into_running(p[:session_id], message, profile: profile))
+          if !media && (steered = @executor.steer_into_running(p[:session_id], message, profile: profile))
             return { task_id: steered, steered: true }
           end
         end

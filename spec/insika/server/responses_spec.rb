@@ -24,6 +24,11 @@ RSpec.describe Insika::Server::Responses do
       expect(out).to eq(agent: "agent-store-x", user: "chat-1", message: "oi")
     end
 
+    it "accepts the OpenClaw gateway's 'openclaw:<agent>' model too" do
+      body = { model: "openclaw:agent-acheib2b-admin", user: "s-1", input: "oi" }
+      expect(described_class.parse_request(body, req)[:agent]).to eq("agent-acheib2b-admin")
+    end
+
     it "keeps an optional String customer_name; ignores any other shape" do
       body = { model: "insika:a", user: "c", input: "oi", customer_name: "Maria" }
       expect(described_class.parse_request(body, req)[:customer_name]).to eq("Maria")
