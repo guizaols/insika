@@ -191,17 +191,16 @@ module Insika
         # No-op in every other mode.
         @executor.interrupt_running(p[:session_id], profile: profile, replaced_by: task.id) unless profile.shared_conversations
         @executor.spawn_in_session(task, profile: profile,
-                                          timing: channel_inbound_timing(command))
+                                          timing: inbound_timing)
         { task_id: task.id }
       end
 
-      # allocate the channel clock at 202 acceptance and stamp
-      # `:inbound` — the window's start. `breakdown: false` when INSIKA_TURN_TIMING
-      # is off, so a channel turn measures ONLY first_balloon_ms (H-latência never
-      # depends on the flag). nil for every non-channel transport: no clock to start.
-      def channel_inbound_timing(command)
-        return nil unless command.meta[:transport].to_s.start_with?("channel:")
-
+      # allocate the clock at acceptance and stamp `:inbound` — the window's start,
+      # before the SessionActor FIFO. Every transport: /v1/responses waits in the same
+      # FIFO, and queue_ms (inbound -> pipeline start) is how that wait shows up.
+      # `breakdown: false` when INSIKA_TURN_TIMING is off (only first_balloon_ms is
+      # exposed); the metrics row keeps every window either way.
+      def inbound_timing
         timing = Insika::TurnTiming.new(breakdown: Insika::TurnTiming.enabled?)
         timing.mark(:inbound)
         timing
