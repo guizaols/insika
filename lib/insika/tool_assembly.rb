@@ -110,7 +110,7 @@ module Insika
     def instantiate_tools(allowed, state = nil)
       Array(allowed).map do |t|
         tool = t.respond_to?(:factory) ? t.factory.call : t
-        inject_turn_context(tool, state)
+        self.class.inject_turn_context(tool, state)
         tool
       end
     end
@@ -121,7 +121,8 @@ module Insika
     # receives it; a tool that exposes `turn_state=` (a presentation tool, which
     # reads the ledger and the hoarded cards) receives the state itself. nil (a
     # state with no turn_context, e.g. a test stub) -> no-op.
-    def inject_turn_context(tool, state)
+    # Class-level so tool_search's promoted (deferred) tools get it too.
+    def self.inject_turn_context(tool, state)
       return if state.nil?
 
       tool.turn_state = state if tool.respond_to?(:turn_state=)
@@ -139,7 +140,7 @@ module Insika
       names.map do |impl_name, capability_name|
         entry = @tool_registry.entries.find { |e| e.name == impl_name }
         tool = entry.factory.call
-        inject_turn_context(tool, state)
+        self.class.inject_turn_context(tool, state)
         Capability::ResolvedTool.new(tool, capability_name: capability_name,
                                            impl_name: impl_name)
       end
