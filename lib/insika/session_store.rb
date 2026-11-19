@@ -235,9 +235,11 @@ module Insika
     # `flags` is the turn's full list: the persisted ones are its prefix, so only the
     # tail is appended (reviews on the prefix survive; a rerun is a no-op). amend —
     # a flag is not conversation activity. NotFoundError for an unknown session.
+    # The turn's user message is the FIRST of the task: a message steered in mid-run
+    # shares the task_id, and picking the last one copied the input flags onto it.
     def add_guardrail_flags(id, task_id:, flags:)
       record = fetch!(id)
-      target = Array(record["messages"]).reverse_each.find do |m|
+      target = Array(record["messages"]).find do |m|
         m.is_a?(Hash) && m["role"] == "user" && m["task_id"] == task_id.to_s
       end
       existing = target ? Array(target["guardrail_flags"]) : []
