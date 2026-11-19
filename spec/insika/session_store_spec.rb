@@ -456,6 +456,20 @@ RSpec.describe Insika::SessionStore do
       expect(sessions.all_stats.first.flagged).to eq(1)
     end
 
+    it "add_guardrail_flags lands on the turn's first user message, not on one steered in mid-run" do
+      sessions.create(id: "a")
+      sessions.append_messages("a", [{ "role" => "user", "content" => "foto", "task_id" => "t1",
+                                       "guardrail_flags" => [{ "category" => "injection" }] },
+                                     { "role" => "user", "content" => "O cliente acabou de acrescentar: Obg", "task_id" => "t1" },
+                                     { "role" => "assistant", "content" => "y", "task_id" => "t1" }])
+
+      sessions.add_guardrail_flags("a", task_id: "t1", flags: [{ category: "injection" }, { category: "promise" }])
+
+      first, steered = sessions.find("a").messages
+      expect(first["guardrail_flags"].map { _1["category"] }).to eq(%w[injection promise])
+      expect(steered).not_to have_key("guardrail_flags")
+    end
+
     it "deleting a session deletes its stats" do
       sessions.create(id: "a")
       sessions.delete("a")
