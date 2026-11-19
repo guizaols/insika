@@ -141,8 +141,16 @@ module Insika
       end
 
       started = monotonic
+      if unavailable_tools&.include?(real_name)
+        err = { error: "#{real_name} is unavailable for the rest of this turn (an earlier call timed out or the " \
+                       "backend failed); it was not called again", hint: UNAVAILABLE_HINT }
+        trace(call_id, args, err, started)
+        return err
+      end
+
       Thread.current[TIMING_KEY] = nil
       result = with_gate { Async::Task.current.with_timeout(@timeout, ToolTimeout) { invoke(args) } }
+      result = mark_unavailable(result) if backend_down?(result)
       # the ONE seam every tool result passes on its way to the model.
       # For a declared-evidence tool: reshape to the lean envelope, record the ids
       # on the ledger, hoard the attachments. No evidence = the result passes
@@ -159,12 +167,33 @@ module Insika
       trace(call_id, args, result, started)
       result
     rescue ToolTimeout
-      err = { error: "TimeoutError: tool exceeded #{@timeout}s" }
+      err = mark_unavailable({ error: "TimeoutError: tool exceeded #{@timeout}s" })
       trace(call_id, args, err, started)
       err
     end
 
     def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    UNAVAILABLE_HINT = "Do not call this tool again in this turn. Tell the customer the system is slow right " \
+                       "now and ask them to try again in a moment. Never say the item does not exist: it was " \
+                       "not checked."
+
+    # A timeout or a 5xx means the backend is slow or down, not that the call was
+    # wrong: a retry (same args or rephrased) queues behind the same backlog. The
+    # error strings matched here are written by this engine (DataDefinedTool,
+    # HttpClient), never free text.
+    BACKEND_DOWN = /\A(HTTP 5\d\d|HTTP call failed: Net::(Read|Open)Timeout)/
+
+    def backend_down?(result)
+      result.is_a?(Hash) && BACKEND_DOWN.match?((result[:error] || result["error"]).to_s)
+    end
+
+    def mark_unavailable(result)
+      unavailable_tools&.add(real_name)
+      result.merge(hint: UNAVAILABLE_HINT)
+    end
+
+    def unavailable_tools = (@state.unavailable_tools if @state.respond_to?(:unavailable_tools))
 
     def invoke(args)
       tool = __getobj__

@@ -46,8 +46,14 @@ module Insika
       req = Net::HTTP.const_get(method.to_s.capitalize).new(uri)
       headers.each { |k, v| req[k] = v }
       req.body = body if body && !body.to_s.empty?
+      timeout ||= DEFAULT_TIMEOUT
+      # Epoch ms: lets the backend measure how long the request sat in its queue
+      # and drop one we already gave up on (past the deadline nobody reads it).
+      start_ms = (Time.now.to_f * 1000).round
+      req["X-Request-Start"] = "t=#{start_ms}"
+      req["X-Request-Deadline"] = (start_ms + (timeout * 1000)).to_s
 
-      with_connection(uri, timeout || DEFAULT_TIMEOUT) do |http|
+      with_connection(uri, timeout) do |http|
         result = nil
         http.request(req) do |resp|
           # Accumulate in BINARY: Net::HTTP yields ASCII-8BIT chunks and a

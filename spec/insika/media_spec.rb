@@ -128,6 +128,43 @@ RSpec.describe Insika::Media do
     end
   end
 
+  describe ".fetch_binary retry" do
+    let(:http) { double("http") }
+    let(:url) { "https://cdn.example.com/foto.png" }
+
+    def respond_with(*responses)
+      allow(Insika::EgressGuard).to receive(:violation).and_return(nil)
+      allow(Net::HTTP).to receive(:start).and_yield(http)
+      allow(http).to receive(:request) do |_req, &block|
+        resp = responses.shift
+        raise resp if resp.is_a?(Class)
+
+        allow(resp).to receive(:read_body).and_yield("img")
+        block.call(resp)
+      end
+    end
+
+    it "retries ONCE on a 5xx and returns the second answer" do
+      respond_with(Net::HTTPGatewayTimeout.new("1.1", "504", "x"), Net::HTTPOK.new("1.1", "200", "OK"))
+      expect(described_class.fetch_binary(url, retry_delay: 0)).to eq("img")
+    end
+
+    it "retries ONCE on a read timeout" do
+      respond_with(Net::ReadTimeout, Net::HTTPOK.new("1.1", "200", "OK"))
+      expect(described_class.fetch_binary(url, retry_delay: 0)).to eq("img")
+    end
+
+    it "gives up after the second 5xx with a MediaError" do
+      respond_with(Net::HTTPBadGateway.new("1.1", "502", "x"), Net::HTTPGatewayTimeout.new("1.1", "504", "x"))
+      expect { described_class.fetch_binary(url, retry_delay: 0) }.to raise_error(Insika::MediaError, /HTTP 504/)
+    end
+
+    it "does NOT retry a 4xx" do
+      respond_with(Net::HTTPForbidden.new("1.1", "403", "x"), Net::HTTPOK.new("1.1", "200", "OK"))
+      expect { described_class.fetch_binary(url, retry_delay: 0) }.to raise_error(Insika::MediaError, /HTTP 403/)
+    end
+  end
+
   describe ".url_attachment" do
     it "fetches through the CAPPED, egress-guarded fetch and wraps bytes we hold (no URL left for the gem)" do
       require "ruby_llm"

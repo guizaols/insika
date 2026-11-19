@@ -81,8 +81,43 @@ RSpec.describe Insika::ToolEnvelope do
 
       result = Sync { env.call({ "x" => 1 }) }
 
-      expect(result).to eq({ error: "TimeoutError: tool exceeded 0.01s" })
+      expect(result).to include(error: "TimeoutError: tool exceeded 0.01s", hint: /Do not call this tool again/)
       expect(tool.calls).to eq([{ "x" => 1 }]) # the tool WAS entered; it was interrupted midway
+    end
+
+    it "after a timeout the same tool is NOT called again this turn; another tool still runs" do
+      slow = EnvSleepyTool.new
+      echo = EnvEchoTool.new
+      st = state_for
+
+      Sync { envelope(slow, st, timeout: 0.01).call({ "q" => "a" }) }
+      again = Sync { envelope(slow, st, timeout: 0.01).call({ "q" => "rephrased" }) }
+      other = Sync { envelope(echo, st).call({}) }
+
+      expect(slow.calls.size).to eq(1)
+      expect(again).to include(error: /slow is unavailable/, hint: /Never say the item does not exist/)
+      expect(other).to eq("echoed")
+    end
+
+    it "a 5xx or a socket timeout from a data-tool blocks the next call too; a 4xx does not" do
+      calls = []
+      results = [{ error: "HTTP 504: <html>" }, { error: "HTTP call failed: Net::ReadTimeout with #<TCPSocket:(closed)>" },
+                 { error: "HTTP 404: not found" }]
+      tool = Class.new do
+        define_method(:name) { "search" }
+        define_method(:call) { |args| (calls << args) && results[calls.size - 1] }
+      end.new
+
+      st = state_for
+      expect(Sync { envelope(tool, st).call({}) }).to include(hint: /Do not call/)
+      expect(Sync { envelope(tool, st).call({}) }[:error]).to match(/unavailable/)
+      expect(calls.size).to eq(1)
+
+      calls.clear
+      results.replace([{ error: "HTTP 404: not found" }, "ok"])
+      fresh = state_for
+      Sync { envelope(tool, fresh).call({}) }
+      expect(Sync { envelope(tool, fresh).call({}) }).to eq("ok")
     end
 
     it "timeout does NOT record a side-effect (recorded only after a successful return)" do

@@ -36,6 +36,30 @@ RSpec.describe Insika::HttpClient do
 
   def get(url, **over) = described_class.new(**over).request(method: "GET", url: url)
 
+  it "sends X-Request-Start and X-Request-Deadline (start + timeout) in epoch ms" do
+    server = TCPServer.new("127.0.0.1", 0)
+    seen = {}
+    thread = Thread.new do
+      socket = server.accept
+      while (line = socket.gets) && !line.strip.empty?
+        k, v = line.split(":", 2)
+        seen[k.downcase] = v.to_s.strip
+      end
+      socket.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+      socket.close
+    end
+    before = (Time.now.to_f * 1000).round
+    described_class.new.request(method: "GET", url: "http://127.0.0.1:#{server.addr[1]}/", timeout: 7)
+    thread.join
+
+    start = Integer(seen["x-request-start"].delete_prefix("t="))
+    expect(start).to be_between(before, before + 1000)
+    expect(Integer(seen["x-request-deadline"])).to eq(start + 7000)
+  ensure
+    thread&.kill
+    server&.close
+  end
+
   it "returns an accented body as valid UTF-8 (not BINARY)" do
     payload = JSON.generate(msg: "pedido não encontrado 🚀")
 

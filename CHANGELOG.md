@@ -9,6 +9,14 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Added
 
+- After a tool times out or gets a 5xx, Insika does not call it again in the same
+  turn. The model gets a short error telling it to ask the customer to wait, instead
+  of queueing another search behind the same slow backend.
+- Every data tool request carries `X-Request-Start` (`t=<epoch ms>`) and
+  `X-Request-Deadline` (epoch ms, start + timeout), so the backend can measure its
+  queue and drop a request Insika already gave up on.
+- A media download that gets a 5xx or times out is tried once more after 1s.
+  Timeouts are now 10s to connect and 20s to read (were 30s and 60s).
 - `{{args}}` in a data tool's body: every argument the model sent, as one JSON
   object, without the ones it left out. For a backend that takes them under one key.
   See [Tools](docs/TOOLS.md).

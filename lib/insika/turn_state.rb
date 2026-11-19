@@ -158,6 +158,11 @@ module Insika
     # ChatBuilder hands the model a per-turn notice built from it.
     attr_accessor :security_notice
 
+    # Tools that timed out or got a 5xx this turn. The ToolEnvelope refuses a
+    # second call to them: every retry waits at the back of the same slow
+    # backend's queue and spends the turn's budget for nothing.
+    def unavailable_tools = (@unavailable_tools ||= Set.new)
+
     # Internal: turn context deposited into the data-tools to
     # resolve {{ctx.*}} (chat_id/agent_id/tenant/store_id) and emit
     # X-Chat-Id/X-Store-Id/X-Agent-Id. A Hash of symbols, set in run_pipeline.
