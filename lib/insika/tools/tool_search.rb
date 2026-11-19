@@ -57,6 +57,7 @@ module Insika
         timeout = @state.profile.limits[:tool_timeout] || 60
         wrapped = entries.filter_map do |entry|
           tool = @tool_registry.resolve(entry.name)
+          ToolAssembly.inject_turn_context(tool, @state) # {{ctx.*}} headers, like eager tools
           @promoted << entry.name
           ToolEnvelope.new(tool, state: @state, checkpoint_store: @checkpoint_store,
                                  tool_registry: @tool_registry, timeout: timeout,

@@ -47,6 +47,14 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(build_search(FakeChat.new).name).to eq("tool_search")
   end
 
+  it "a promoted tool gets the turn context ({{ctx.*}} headers), like an eager one" do
+    tool = registry.resolve("send_email")
+    tool.singleton_class.attr_accessor :turn_context
+    state.turn_context = { chat_id: "c1" }
+    build_search(FakeChat.new).execute(query: "send email")
+    expect(tool.turn_context).to eq(chat_id: "c1")
+  end
+
   it "match within deferred_allowed: promotes (ToolEnvelope) via chat.with_tools + describes" do
     chat = FakeChat.new
     result = build_search(chat).execute(query: "send email")
