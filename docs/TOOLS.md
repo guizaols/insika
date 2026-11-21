@@ -63,8 +63,8 @@ or Studio needs the literal header value instead; see
 the authenticated tenant prefix used by Insika to isolate stored sessions.
 
 `{{args}}`, in the `body` only, is every argument the model sent as one JSON
-object. Arguments the model left out stay out (a per-param `"{{x}}"` would send
-`"null"`). Use it when the backend takes the whole set under one key:
+object. Arguments the model left out stay out (a per-param `"{{x}}"` sends JSON
+`null` for them). Use it when the backend takes the whole set under one key:
 `"body": "{\"tool_name\":\"get_report\",\"params\":{{args}}}"`. A declared param
 named `args` wins over it.
 
