@@ -118,7 +118,9 @@ module Insika
         reset_after_fork
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         while (conn, at = @idle[key].pop)
-          break conn if now - at <= @keep_alive
+          # Margin: `at` is stamped at checkin, a bit after the last read Net::HTTP
+          # measures from, so near the limit it would still reopen to the old IP.
+          break conn if now - at < @keep_alive - 0.5
 
           stale << conn
         end
