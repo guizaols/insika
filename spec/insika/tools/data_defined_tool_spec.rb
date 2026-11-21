@@ -114,6 +114,22 @@ RSpec.describe Insika::Tools::DataDefinedTool do
       expect(items.dig("properties", "filters", "type")).to eq("object")
     end
 
+    it "sends a missing optional quoted param as JSON null, not the string \"null\"" do
+      d = { name: "fin", description: "x",
+            parameters: [{ name: "message", type: "string", required: true },
+                         { name: "delivery", type: "string", required: false }],
+            request: { method: "POST", url: "https://api.test/fin",
+                       body: '{"message":"{{message}}","delivery":"{{delivery}}"}' },
+            response: { extract: "body_raw" } }
+      t = tool(d, result: { status: 200, body: "ok" })
+      t.execute(message: "oi {{delivery}}")
+      body = JSON.parse(t.instance_variable_get(:@http).last[:body])
+      expect(body).to eq("message" => "oi {{delivery}}", "delivery" => nil)
+
+      t.execute(message: "oi", delivery: "text")
+      expect(JSON.parse(t.instance_variable_get(:@http).last[:body])["delivery"]).to eq("text")
+    end
+
     it "interpolates the nested value (array of objects) into the body as JSON" do
       t = tool(search_def, result: { status: 200, body: "ok" })
       pairs = [{ "query" => "arroz", "filters" => { "brand" => "tio" } }]

@@ -114,8 +114,26 @@ module Insika
       end
 
       def interpolate(template, kwargs, mode)
+        return interpolate_body(template, kwargs) if mode == :body
+
         template.to_s.gsub(Insika::ToolDefinition::PLACEHOLDER_RE) do
           encode(resolve(Regexp.last_match(1), kwargs), mode)
+        end
+      end
+
+      # A quoted `"{{x}}"` whose value is missing becomes JSON `null`, not the string
+      # "null": a backend that validates the value (achei-b2b finalize_button, 20/11/2026)
+      # answered 422 to every call that left the optional param out. One pass, so a
+      # model-supplied value that contains `{{...}}` is never re-expanded.
+      BODY_PLACEHOLDER_RE = /("?)#{Insika::ToolDefinition::PLACEHOLDER_RE.source}("?)/
+
+      def interpolate_body(template, kwargs)
+        template.to_s.gsub(BODY_PLACEHOLDER_RE) do
+          open_q, name, close_q = Regexp.last_match.captures
+          value = resolve(name, kwargs)
+          next "null" if value.nil? && open_q == '"' && close_q == '"'
+
+          "#{open_q}#{encode(value, :body)}#{close_q}"
         end
       end
 
