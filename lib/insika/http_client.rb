@@ -109,18 +109,31 @@ module Insika
       http.start
     end
 
+    # An idle connection past keep-alive is dropped, not reused: Net::HTTP would
+    # reopen it to the IP it was built with, without resolving again, so a host
+    # that moved (a load balancer swapping IPs) kept getting dialed at the old one.
     def checkout(key)
-      @lock.synchronize do
+      stale = []
+      http = @lock.synchronize do
         reset_after_fork
-        @idle[key].pop
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        while (conn, at = @idle[key].pop)
+          # Margin: `at` is stamped at checkin, a bit after the last read Net::HTTP
+          # measures from, so near the limit it would still reopen to the old IP.
+          break conn if now - at < @keep_alive - 0.5
+
+          stale << conn
+        end
       end
+      stale.each { |c| c.finish if c.started? }
+      http
     end
 
     def checkin(key, http)
       kept = @lock.synchronize do
         next false if @idle[key].size >= MAX_IDLE_PER_HOST
 
-        @idle[key].push(http)
+        @idle[key].push([http, Process.clock_gettime(Process::CLOCK_MONOTONIC)])
         true
       end
       http.finish unless kept
