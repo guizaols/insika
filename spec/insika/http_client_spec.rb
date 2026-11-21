@@ -197,6 +197,22 @@ RSpec.describe Insika::HttpClient do
     end
   end
 
+  # Net::HTTP reopens a stale keep-alive socket to the IP it was built with, never
+  # resolving again. When the load balancer swapped IPs, pooled connections kept
+  # dialing the old ones (timeouts, another domain's certificate).
+  it "resolves the host again when an idle connection is past keep-alive" do
+    allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp("127.0.0.1", 0)])
+    client = described_class.new(keep_alive: 0, dns_ttl: 0)
+    with_keep_alive_server do |url, _accepted|
+      host_url = url.sub("127.0.0.1", "api.example.test")
+      client.request(method: "GET", url: host_url)
+      sleep 0.01
+      client.request(method: "GET", url: host_url)
+    end
+
+    expect(Addrinfo).to have_received(:getaddrinfo).twice
+  end
+
   it "does not reuse a connection whose request raised" do
     client = described_class.new(max_bytes: 1)
     with_keep_alive_server do |url, accepted|
