@@ -185,17 +185,21 @@ module Insika
     def self.fetch_binary(url, max_bytes: MAX_AUDIO_BYTES, retry_delay: MEDIA_RETRY_DELAY)
       violation = Insika::EgressGuard.violation(url, **egress_opt_out)
       raise Insika::MediaError, "media egress blocked for #{url}: #{violation}" if violation
+      require "openssl" # the rescue below names OpenSSL::SSL::SSLError
 
       attempt = 0
       begin
         attempt += 1
         fetch_once(URI.parse(url), max_bytes)
-      rescue MediaUnavailable, Net::OpenTimeout, Net::ReadTimeout => e
+      # A connection reset or TLS failure is as transient as a timeout: the
+      # second try usually lands. Raised raw, it failed the turn with no retry.
+      rescue MediaUnavailable, Net::OpenTimeout, Net::ReadTimeout,
+             Errno::ECONNRESET, OpenSSL::SSL::SSLError => e
         if attempt < 2
           sleep(retry_delay)
           retry
         end
-        raise Insika::MediaError, (e.is_a?(Insika::MediaError) ? e.message : "media fetch timed out")
+        raise Insika::MediaError, (e.is_a?(Insika::MediaError) ? e.message : "media fetch failed: #{e.message}")
       end
     rescue URI::InvalidURIError
       raise Insika::MediaError, "invalid media URL"
