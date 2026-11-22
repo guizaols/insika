@@ -154,6 +154,18 @@ RSpec.describe Insika::Media do
       expect(described_class.fetch_binary(url, retry_delay: 0)).to eq("img")
     end
 
+    # The connection dropped during the TLS handshake ("Connection reset by peer -
+    # SSL_connect") escaped raw and failed the turn without a second try.
+    it "retries ONCE on a connection reset" do
+      respond_with(Errno::ECONNRESET, Net::HTTPOK.new("1.1", "200", "OK"))
+      expect(described_class.fetch_binary(url, retry_delay: 0)).to eq("img")
+    end
+
+    it "gives up after the second reset with a MediaError" do
+      respond_with(Errno::ECONNRESET, OpenSSL::SSL::SSLError)
+      expect { described_class.fetch_binary(url, retry_delay: 0) }.to raise_error(Insika::MediaError, /media fetch failed/)
+    end
+
     it "gives up after the second 5xx with a MediaError" do
       respond_with(Net::HTTPBadGateway.new("1.1", "502", "x"), Net::HTTPGatewayTimeout.new("1.1", "504", "x"))
       expect { described_class.fetch_binary(url, retry_delay: 0) }.to raise_error(Insika::MediaError, /HTTP 504/)
