@@ -68,6 +68,19 @@ RSpec.describe Insika::SessionInsights do
                                                    "message" => "tem pix?", "reply" => "Pix com 3% de desconto.")
     end
 
+    it "reports as reply the turn's last assistant text, not the empty tool call after the message" do
+      sessions.create(id: "tool", vars: { "agent" => "shop" })
+      sessions.append_messages("tool", [{ "role" => "user", "content" => "frete?", "guardrail_flags" => [flag] },
+                                        { "role" => "assistant", "content" => "" },
+                                        { "role" => "tool", "content" => "{\"faq\":\"...\"}" },
+                                        { "role" => "assistant", "content" => "O frete sai pelo CEP no checkout." },
+                                        { "role" => "user", "content" => "ok" },
+                                        { "role" => "assistant", "content" => "Outro turno." }])
+      tasks.create(command: { "type" => "send_message" }, session_id: "tool")
+      row = insights.list_flags.find { _1["session_id"] == "tool" }
+      expect(row["reply"]).to eq("O frete sai pelo CEP no checkout.")
+    end
+
     it "filters by category" do
       expect(insights.list_flags(category: "injection")).to be_empty
     end

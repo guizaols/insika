@@ -144,6 +144,29 @@ RSpec.describe Insika::Safety::OutputValidator do
       expect(prompts.first).to include("O cliente ainda pode usar cupom.")
     end
 
+    # Session c823a003: the order was paid in the purchase history the caller sent, and
+    # "pago e confirmado" was flagged because only a TOOL RESULT counted for a status.
+    it "lets this turn's context (purchase history) back a payment status, still asking for a source" do
+      st = state("Esse comprovante é do pedido do escapulário — ele já está pago e confirmado.",
+                 guardrails: { "moderator" => "on" })
+      st.caller_context = "<historico_compras>\n- 03/11/2026 — 1x Escapulário — R$ 41,16 — Pago, Confirmado\n</historico_compras>"
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("R$ 41,16 — Pago, Confirmado")
+      expect(prompts.first).to include("neither a TOOL RESULT nor this turn's context",
+                                       "a payment confirmed, a handoff opened (false status)")
+    end
+
+    it "tells the moderator that checkout-by-CEP and facts read from the customer's image are not invented" do
+      st = state("O frete e o prazo aparecem no checkout, com o CEP.", guardrails: { "moderator" => "on" })
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("o frete e o prazo saem pelo CEP no checkout",
+                                       "read from an image the customer sent")
+    end
+
     it "keeps a whole real-sized pack (66k characters)" do
       st = state("ok", guardrails: { "moderator" => "on" })
       text = ("x" * 60_000) + "POLICY IN TOOLS.MD" + ("y" * 6_000)
