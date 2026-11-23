@@ -111,9 +111,17 @@ module Insika
           { "session_id" => session.id, "agent" => session.vars["agent"], "updated_at" => session.updated_at,
             "message_index" => i, "role" => m["role"], "category" => f["category"], "source" => f["source"],
             "action" => f["action"], "detail" => f["detail"], "review" => f["review"],
-            "message" => text_of(m)[0, SNIPPET], "reply" => text_of(messages[i + 1])[0, SNIPPET] }.compact
+            "message" => text_of(m)[0, SNIPPET], "reply" => reply_after(messages, i)[0, SNIPPET] }.compact
         end
       end
+    end
+
+    # The text the customer got for the turn that starts at `index`: the turn's last
+    # assistant message with text (the one the validator judged). The message right
+    # after is often a tool call with no text.
+    def reply_after(messages, index)
+      turn = messages[(index + 1)..].take_while { |m| m.is_a?(Hash) && m["role"] != "user" }
+      turn.select { |m| m["role"] == "assistant" }.map { |m| text_of(m) }.reject { |t| t.strip.empty? }.last.to_s
     end
 
     # A message's text: a plain string, or the text parts of a multi-part content.
