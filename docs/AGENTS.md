@@ -103,7 +103,7 @@ lookups.
 DEFAULT_LIMITS = {
   turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
   context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
-  approval_timeout: 3_600
+  approval_timeout: 3_600, tool_search_limit: 8
 }
 ```
 
@@ -122,6 +122,10 @@ arguments** that many times in a row gets ONE in-turn warning (a user message at
 the next tool-batch boundary: "you already ran this, answer with what you
 have"). A repeat after the warning aborts the turn like `max_tool_calls` does.
 Set it below 2 to switch it off.
+
+`tool_search_limit` caps how many deferred tools one `tool_search` call wires into
+the chat (each with its full schema) and lists in its result. Set it below 1 to
+remove the cap. See [Tools](TOOLS.md).
 
 ### `tool_persistence` — don't give up on the first empty result
 
