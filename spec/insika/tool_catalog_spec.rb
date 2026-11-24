@@ -83,9 +83,9 @@ RSpec.describe Insika::ToolCatalog do
       expect(catalog.search("invoice", within: ["send_email"])).to eq([])
     end
 
-    it "ranking: a name match (weight 2) comes before a description-only match (weight 1)" do
+    it "ranking: a name match comes before a description-only match" do
       registry.register("report") { FakeTool.new("faz um email resumido") } # 'email' in the desc
-      # 'email' hits the name of send_email (2) and the desc of report (1)
+      # 'email' hits the name of send_email and only the desc of report
       expect(catalog.search("email").map(&:name)).to eq(%w[send_email report])
     end
 
@@ -96,6 +96,63 @@ RSpec.describe Insika::ToolCatalog do
       cat = described_class.new(tool_registry: reg)
       # both hit only the desc ('xyz'), equal score -> registration order (z before a)
       expect(cat.search("xyz").map(&:name)).to eq(%w[z_tool a_tool])
+    end
+
+    it "compares words by their stem, so a verb form meets its noun" do
+      registry.register("list_products") { FakeTool.new("Lista os produtos do catálogo da loja.") }
+      # "listar" is not a substring of "Lista", but they share the stem
+      expect(catalog.search("listar").map(&:name)).to eq(["list_products"])
+    end
+
+    it "a query word equal to a tool name puts that tool first" do
+      registry.register("send_email_report") { FakeTool.new("Sends the e-mail report to the recipient") }
+      # send_email_report hits more words (report x2, recipient), but the name asked wins
+      expect(catalog.search("recipient report create_invoice").map(&:name).first).to eq("create_invoice")
+    end
+
+    it "several exact names in one query all come first" do
+      registry.register("report") { FakeTool.new("Sends a report to the recipient") }
+      names = catalog.search("send_email create_invoice recipient").map(&:name)
+      expect(names.first(2)).to contain_exactly("send_email", "create_invoice")
+    end
+
+    it "a word every tool shares cannot outrank a rare one (IDF)" do
+      reg = Insika::ToolRegistry.new
+      reg.register("store_hours") { FakeTool.new("Horário de atendimento da loja da sessão") }
+      reg.register("store_faq") { FakeTool.new("FAQ da loja da sessão, da categoria pedida") }
+      reg.register("queue_state") { FakeTool.new("Estado das filas do Sidekiq da loja") }
+      cat = described_class.new(tool_registry: reg)
+      # by raw count the three tie; "da"/"loja" are in every description, "sidekiq" in one
+      expect(cat.search("da loja da sessão sidekiq").map(&:name).first).to eq("queue_state")
+    end
+
+    it "the description's first sentence outweighs the rest" do
+      reg = Insika::ToolRegistry.new
+      reg.register("switch_a") { FakeTool.new("Turns the banner on or off. Use after list_faqs, not for FAQs.") }
+      reg.register("switch_b") { FakeTool.new("Turns a FAQ on or off. The panel asks for approval.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("turn faq off").map(&:name)).to eq(%w[switch_b switch_a])
+    end
+
+    it "limit: caps the result at the best matches" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("sends recipient", limit: 1).map(&:name)).to eq(["send_email"])
+      expect(catalog.search("sends recipient").map(&:name)).to eq(%w[send_email send_sms])
+    end
+
+    it "punctuation and one-letter words do not become terms" do
+      expect(catalog.search("(e) , .")).to eq([])
+      expect(catalog.search("(send_email)").map(&:name).first).to eq("send_email")
+    end
+
+    it "reload drops the word index, so a changed description is searchable" do
+      desc = "Sends a message"
+      reg = Insika::ToolRegistry.new
+      reg.register("notify") { FakeTool.new(desc) }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("webhook")).to eq([])
+      desc = "Calls the webhook"
+      expect(cat.reload.search("webhook").map(&:name)).to eq(["notify"])
     end
   end
 

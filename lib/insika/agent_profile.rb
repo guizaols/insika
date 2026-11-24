@@ -327,7 +327,9 @@ module Insika
       # consecutive identical (tool, args) calls that trigger the ONE
       # loop warning; a repeat after it aborts like max_tool_calls. < 2 = off.
       max_tool_repeat: 3,
-      approval_timeout: 3_600 # cap on the wait for human approval (~1h)
+      approval_timeout: 3_600, # cap on the wait for human approval (~1h)
+      # deferred tools one tool_search call wires into the chat; < 1 = no cap.
+      tool_search_limit: 8
       # tool_concurrency is absent on purpose: it has a platform layer
       # (Settings["tool_concurrency"]), and a default here would make the key present
       # on every agent, so the platform value would apply to nobody. Resolved by

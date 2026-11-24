@@ -101,6 +101,36 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(result2[:matched].map { |m| m[:name] }).to eq(["send_email"]) # still found
   end
 
+  describe "tool_search_limit" do
+    let(:registry) do
+      reg = Insika::ToolRegistry.new
+      %w[send_email send_sms send_push].each { |n| reg.register(n) { deferred_tool(n, "Sends a message") } }
+      reg
+    end
+
+    def search_with(limits)
+      profile = Insika::AgentProfile.build(id: "a", model: "m", limits: limits)
+      st = Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "hi")
+      chat = FakeChat.new
+      search = described_class.new(catalog, %w[send_email send_sms send_push], chat,
+                                   tool_registry: registry, event_stream: event_stream,
+                                   checkpoint_store: checkpoint_store, state: st)
+      [search.execute(query: "sends message"), chat]
+    end
+
+    it "promotes and lists at most limits[:tool_search_limit] tools" do
+      result, chat = search_with(tool_search_limit: 2)
+      expect(chat.tools.map(&:name)).to eq(%w[send_email send_sms])
+      expect(result[:matched].map { |m| m[:name] }).to eq(%w[send_email send_sms])
+      expect(events.last.data[:matched]).to eq(%w[send_email send_sms])
+    end
+
+    it "below 1 means no cap" do
+      _result, chat = search_with(tool_search_limit: 0)
+      expect(chat.tools.size).to eq(3)
+    end
+  end
+
   it "state.skip_side_effects nil -> ToolEnvelope receives [] without raising" do
     chat = FakeChat.new
     expect { build_search(chat).execute(query: "email") }.not_to raise_error

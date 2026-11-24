@@ -35,7 +35,7 @@ module Insika
       end
 
       def execute(query:)
-        matches = @catalog.search(query, within: @deferred_allowed)
+        matches = @catalog.search(query, within: @deferred_allowed, limit: search_limit)
         emit_tool_search(query, matches.map(&:name))
         if matches.empty?
           return { matched: [], message: "no tool found for '#{query}'" }
@@ -48,6 +48,13 @@ module Insika
       end
 
       private
+
+      # Each match is wired with its full schema and listed in the result, so the cap is
+      # what keeps one search from filling the window. Below 1 means no cap.
+      def search_limit
+        limit = @state.profile.limits[:tool_search_limit] || AgentProfile::DEFAULT_LIMITS[:tool_search_limit]
+        limit.to_i.positive? ? limit.to_i : nil
+      end
 
       # Instantiates (via tool_registry), wraps in the SAME ToolEnvelope as the eager
       # ones (profile timeout + state's skip_side_effects) and promotes via

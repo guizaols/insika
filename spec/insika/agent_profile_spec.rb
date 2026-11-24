@@ -157,7 +157,7 @@ RSpec.describe Insika::AgentProfile do
       expect(described_class::DEFAULT_LIMITS).to eq(
         turn_timeout: 300, tool_timeout: 60, provider_timeout: 5,
         context_budget: 8_000, max_tool_calls: 50, max_tool_repeat: 3,
-        approval_timeout: 3_600
+        approval_timeout: 3_600, tool_search_limit: 8
       )
     end
 
