@@ -209,7 +209,7 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(result[:message]).to include("Not available to this agent: create_invoice")
   end
 
-  it "description searches stop after the per-chat budget; exact names still work" do
+  it "description searches stop after the per-turn budget; exact names still work" do
     state.profile.limits[:tool_search_limit] = 1
     reg = Insika::ToolRegistry.new
     4.times { |i| reg.register("mail_#{i}") { deferred_tool("mail_#{i}", "Sends mail #{i}") } }

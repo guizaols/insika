@@ -78,7 +78,7 @@ module Insika
       # A value that is not a number ("", "abc") falls back to the default instead of
       # turning into 0, which would lift the cap silently.
       def search_limit
-        limit = Integer(@state.profile.limits[:tool_search_limit], exception: false) || DEFAULT_LIMIT
+        limit = Integer(@state.profile.limits[:tool_search_limit].to_s, 10, exception: false) || DEFAULT_LIMIT
         limit.positive? ? limit : nil
       end
 

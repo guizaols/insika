@@ -30,8 +30,9 @@ module Insika
     # SkillCatalog#reload — level-1/tool_search starts seeing the new tool without a
     # restart. An in-flight turn has already captured `all`.
     def reload
+      gen = registry_generation # read first: a change during the build stays detectable
       @snapshot = build_snapshot
-      @generation = registry_generation
+      @generation = gen
       self
     end
 
@@ -86,7 +87,7 @@ module Insika
     # - more: how many description matches the limit cut.
     #
     # `ranked_cap:` caps the description matches on top of `limit:` (the caller's
-    # per-chat budget).
+    # per-turn budget).
     Found = Data.define(:entries, :named, :known, :left_out, :unavailable, :more)
 
     def find(query, within: nil, listed: nil, limit: nil, known: [], ranked_cap: nil)
