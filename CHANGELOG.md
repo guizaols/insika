@@ -65,6 +65,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 
 ### Fixed
 
+- **A turn resumed after an approval no longer sends again the tools `tool_search` had enabled before the pause.** They came back in the chat but not in the search's list of enabled tools, so a similar search sent their schemas again and spent the limit on them.
+
 - **A missing optional param in a quoted body placeholder (`"{{x}}"`) is now sent as JSON `null`, not the string `"null"`.** achei-b2b's `finalize_button` answered 422 "unsupported checkout delivery" to every call without `delivery` (20/11/2026).
 - **`tool_search` enables at most 8 tools per call** (`limits[:tool_search_limit]`;
   below 1 = no cap). It returned every deferred tool sharing any word with the
