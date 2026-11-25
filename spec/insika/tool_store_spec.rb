@@ -26,6 +26,17 @@ RSpec.describe Insika::ToolStore do
     }
   end
 
+  it "all and all_raw read the whole scope in one store call, not one per tool" do
+    config = Insika::ConfigStore.new(store: Insika::Stores::Memory.new)
+    tools = described_class.new(config_store: config)
+    %w[a b c].each { |n| tools.write(def_attrs(name: n)) }
+    allow(config).to receive(:get).and_call_original
+
+    expect(tools.all_raw.map { _1["name"] }).to eq(%w[a b c])
+    expect(tools.all.map { _1["name"] }).to eq(%w[a b c])
+    expect(config).not_to have_received(:get)
+  end
+
   it "write/get round-trip; names/all list; all_raw for overlay" do
     store.write(def_attrs(name: "cep"))
     store.write(def_attrs(name: "clima", request: { url: "https://c.test/{{cep}}" }))

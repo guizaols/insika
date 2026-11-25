@@ -47,14 +47,11 @@ module Insika
     def names = @cs.keys(SCOPE)
 
     # -> [Hash] all MASKED (for the UI).
-    def all
-      names.filter_map { |n| get(n) }
-    end
+    def all = all_raw.map { |r| mask(r) }
 
     # -> [Hash] all with REAL env (for an MCP client). Never goes to the screen.
-    def all_raw
-      names.filter_map { |n| raw(n) }
-    end
+    # One bulk read, not a read per name (see ToolStore#all_raw).
+    def all_raw = @cs.all(SCOPE).filter_map { |r| migrate_legacy_headers(r) }
 
     # System-written cache of the instance's discovered tools:
     # Insika::McpToolRegistry#refresh connects live and writes the result here
