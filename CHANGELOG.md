@@ -66,6 +66,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
 ### Fixed
 
 - **A missing optional param in a quoted body placeholder (`"{{x}}"`) is now sent as JSON `null`, not the string `"null"`.** achei-b2b's `finalize_button` answered 422 "unsupported checkout delivery" to every call without `delivery` (20/11/2026).
+- **`tool_search` enables at most 8 tools per call** (`limits[:tool_search_limit]`;
+  below 1 = no cap). It returned every deferred tool sharing any word with the
+  query, and words like "da" or "do" sit in almost every description: on the
+  achei-b2b co-pilot (590 deferred tools) a Portuguese query matched 382 to 590 of
+  them, so every call after the search read 120k–513k tokens. The search now weighs
+  words by how rare they are, compares them by their first five characters (a
+  shorter word meets the words it starts, and the word itself counts more than a
+  stem-only hit; a final "s" is dropped, so "tags" meets "tag"), counts the name and
+  the description's first sentence above the rest, and enables every tool asked for
+  by its exact name, first and past the cap (up to three times it, kept in the order
+  asked); a query of names alone enables just those tools, while a plain word that
+  is also a name ("orders") still ranks the rest. A listed but denied name enables
+  nothing and the result says it is not available, instead of enabling lookalikes.
+  Matches under a quarter of the best score are dropped, and one turn enables at
+  most three times the cap by description (exact names stay open), so repeated
+  vague searches no longer refill the window. camelCase names are split into words. Tools already
+  enabled in the chat leave the ranking (listed in `already_enabled`), so a similar
+  search brings the next ones, and the result says what the caps cut. The default cap lives in `ToolSearch::DEFAULT_LIMIT`, not in
+  `AgentProfile::DEFAULT_LIMITS`, so agents saved in the Studio do not store it.
+  The `<available_tools>` instruction and `tool_search`'s own schema now tell the
+  model to search by name. See [Tools](docs/TOOLS.md).
+
+- `docs/plans/` no longer ships in the gem: it holds internal plans, like
+  `docs/superpowers/`, and its pt-BR prose failed the domain-boundary spec.
 
 - **A tool found by `tool_search` now gets the turn context.** It was built without it, so `{{ctx.*}}` headers went out empty (the achei-b2b co-pilot got "Sessão do co-pilot não encontrada").
 

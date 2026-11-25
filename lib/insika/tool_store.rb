@@ -39,14 +39,12 @@ module Insika
     def version_token = @cs.version_token
 
     # -> [Hash] MASKED definitions (for the UI).
-    def all
-      names.filter_map { |n| get(n) }
-    end
+    def all = all_raw.map { |d| mask_definition(d) }
 
     # -> [Hash] definitions with REAL headers (for the overlay/registry). Never to the screen.
-    def all_raw
-      names.filter_map { |n| raw_definition(n) }
-    end
+    # One bulk read: a read per name cost every worker ~670 store calls on the
+    # first turn after any config write.
+    def all_raw = @cs.all(SCOPE).filter_map { |rec| rec["definition"] }
 
     # Writes (upsert). `attrs` is a ToolDefinition Hash (the UI may send secret
     # headers as sentinel: preserves what was stored). create_only refuses to overwrite.

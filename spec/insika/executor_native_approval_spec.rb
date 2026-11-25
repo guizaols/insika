@@ -40,7 +40,8 @@ RSpec.describe "Executor native approvals", :provider_tool_call_ids do
     policy = double(decide: Resolution.new(allowed, [], ["write"]))
     registry = FakeToolRegistry.new(side_effect_names: ["write"])
     allow(registry).to receive(:resolve).with("write").and_return(writer)
-    catalog = double(search: [Insika::ToolCatalog::Entry.new(name: "write", description: "Write")])
+    write = Insika::ToolCatalog::Entry.new(name: "write", description: "Write")
+    catalog = double(find: Insika::ToolCatalog::Found.new(entries: [write], named: 1, known: [], left_out: [], unavailable: [], more: 0))
     Insika::Executor.new(context_builder: FakeContextBuilder.new, policy_engine: policy,
       middleware: PassthroughMiddleware.new, hooks: NullHooks.new,
       tool_registry: registry, tool_catalog: catalog, skill_catalog: Insika::SkillCatalog.new([]),
