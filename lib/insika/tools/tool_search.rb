@@ -39,26 +39,49 @@ module Insika
         super()
       end
 
+      # Tools already enabled in this chat leave the ranking (named in
+      # `already_enabled`, without their schema again), so a similar search brings the
+      # next ones instead of the same top. What the caps cut is said in `message`.
       def execute(query:)
-        matches = @catalog.search(query, within: @deferred_allowed, limit: search_limit)
+        limit = search_limit
+        found = @catalog.find(query, within: @deferred_allowed, limit: limit, known: @promoted)
+        matches = found.entries
         emit_tool_search(query, matches.map(&:name))
-        if matches.empty?
+        if matches.empty? && found.known.empty?
           return { matched: [], message: "no tool found for '#{query}'" }
         end
 
-        new_matches = matches.reject { |m| @promoted.include?(m.name) }
-        promote(new_matches) unless new_matches.empty?
+        promote(matches.reject { |m| @promoted.include?(m.name) }) unless matches.empty?
 
-        { matched: matches.map { |m| describe(m) } }
+        result = { matched: matches.map { |m| describe(m) } }
+        result[:already_enabled] = found.known unless found.known.empty?
+        notes = cut_notes(found, limit)
+        result[:message] = notes.join(" ") unless notes.empty?
+        result
       end
 
       private
 
       # Each match is wired with its full schema and listed in the result, so the cap is
       # what keeps one search from filling the window. Below 1 means no cap.
+      # A value that is not a number ("", "abc") falls back to the default instead of
+      # turning into 0, which would lift the cap silently.
       def search_limit
-        limit = @state.profile.limits[:tool_search_limit] || DEFAULT_LIMIT
-        limit.to_i.positive? ? limit.to_i : nil
+        limit = Integer(@state.profile.limits[:tool_search_limit], exception: false) || DEFAULT_LIMIT
+        limit.positive? ? limit : nil
+      end
+
+      def cut_notes(found, limit)
+        notes = []
+        if found.more.positive?
+          notes << "#{found.more} more tools match past the limit of #{limit}: ask for them by exact name, " \
+                   "or describe the need more precisely."
+        end
+        unless found.left_out.empty?
+          notes << "Not enabled, over the cap of names per call: #{found.left_out.join(", ")}. " \
+                   "Ask for them in another call."
+        end
+        notes
       end
 
       # Instantiates (via tool_registry), wraps in the SAME ToolEnvelope as the eager

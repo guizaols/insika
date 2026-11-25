@@ -75,8 +75,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   shorter word meets the words it starts, and the word itself counts more than a
   stem-only hit; a final "s" is dropped, so "tags" meets "tag"), counts the name and
   the description's first sentence above the rest, and enables every tool asked for
-  by its exact name, first and past the cap; a query of names alone enables just
-  those tools. The default cap lives in `ToolSearch::DEFAULT_LIMIT`, not in
+  by its exact name, first and past the cap (up to three times it); a query of names
+  alone enables just those tools. camelCase names are split into words. Tools already
+  enabled in the chat leave the ranking (listed in `already_enabled`), so a similar
+  search brings the next ones, and the result says what the caps cut. The default cap lives in `ToolSearch::DEFAULT_LIMIT`, not in
   `AgentProfile::DEFAULT_LIMITS`, so agents saved in the Studio do not store it.
   The `<available_tools>` instruction and `tool_search`'s own schema now tell the
   model to search by name. See [Tools](docs/TOOLS.md).

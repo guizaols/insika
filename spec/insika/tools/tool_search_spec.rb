@@ -91,14 +91,15 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(ev.meta).to eq({ task_id: "t1", session_id: "s1" })
   end
 
-  it "idempotency: re-searching does not re-promote or re-resolve (but still lists)" do
+  it "idempotency: re-searching does not re-promote, and names the tool as already enabled" do
     chat = FakeChat.new
     search = build_search(chat)
     search.execute(query: "email")
     expect(chat.tools.size).to eq(1)
     result2 = search.execute(query: "email")
     expect(chat.tools.size).to eq(1) # did not duplicate
-    expect(result2[:matched].map { |m| m[:name] }).to eq(["send_email"]) # still found
+    expect(result2[:matched]).to eq([]) # no schema sent again
+    expect(result2[:already_enabled]).to eq(["send_email"]) # still found
   end
 
   describe "tool_search_limit" do
@@ -108,14 +109,16 @@ RSpec.describe Insika::Tools::ToolSearch do
       reg
     end
 
-    def search_with(limits)
+    def search_with(limits) = search_with_query(limits, "sends message")
+
+    def search_with_query(limits, query)
       profile = Insika::AgentProfile.build(id: "a", model: "m", limits: limits)
       st = Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "hi")
       chat = FakeChat.new
       search = described_class.new(catalog, %w[send_email send_sms send_push], chat,
                                    tool_registry: registry, event_stream: event_stream,
                                    checkpoint_store: checkpoint_store, state: st)
-      [search.execute(query: "sends message"), chat]
+      [search.execute(query: query), chat]
     end
 
     it "promotes and lists at most limits[:tool_search_limit] tools" do
@@ -130,6 +133,42 @@ RSpec.describe Insika::Tools::ToolSearch do
       _result, chat = search_with({})
       expect(chat.tools.size).to eq(2)
       expect(Insika::AgentProfile.build(id: "a", model: "m").limits).not_to have_key(:tool_search_limit)
+    end
+
+    # Review r3 of insika#2: the cap was applied before dropping the enabled tools, so a
+    # similar search brought the same top again and the next tool never came.
+    it "a repeated search brings the next tools, and says what the limit cut" do
+      profile = Insika::AgentProfile.build(id: "a", model: "m", limits: { tool_search_limit: 1 })
+      st = Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "hi")
+      chat = FakeChat.new
+      search = described_class.new(catalog, %w[send_email send_sms send_push], chat,
+                                   tool_registry: registry, event_stream: event_stream,
+                                   checkpoint_store: checkpoint_store, state: st)
+      first = search.execute(query: "sends message")
+      expect(first[:matched].map { |m| m[:name] }).to eq(%w[send_email])
+      expect(first[:message]).to include("2 more tools match")
+
+      second = search.execute(query: "sends a message")
+      expect(second[:matched].map { |m| m[:name] }).to eq(%w[send_sms])
+      expect(second[:already_enabled]).to eq(%w[send_email])
+      expect(chat.tools.map(&:name)).to eq(%w[send_email send_sms])
+    end
+
+    it "names asked for past the name cap are left out, and the result says which" do
+      result, chat = search_with_query({ tool_search_limit: 1 }, "send_email send_sms send_push")
+      expect(chat.tools.size).to eq(3) # 3 x limit 1
+      expect(result[:message]).to be_nil
+
+      stub_const("Insika::ToolCatalog::NAME_CAP_FACTOR", 2)
+      result, chat = search_with_query({ tool_search_limit: 1 }, "send_email send_sms send_push")
+      expect(chat.tools.map(&:name)).to eq(%w[send_email send_sms])
+      expect(result[:message]).to include("Not enabled, over the cap of names per call: send_push")
+    end
+
+    it "a limit that is not a number falls back to the default instead of lifting the cap" do
+      stub_const("Insika::Tools::ToolSearch::DEFAULT_LIMIT", 2)
+      _result, chat = search_with(tool_search_limit: "")
+      expect(chat.tools.size).to eq(2)
     end
 
     it "below 1 means no cap" do

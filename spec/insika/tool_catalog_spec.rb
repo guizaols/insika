@@ -203,6 +203,53 @@ RSpec.describe Insika::ToolCatalog do
       expect(cat.search("listar lista").map(&:name).first).to eq("list_orders")
     end
 
+    # Review r3 of insika#2: MCP tools are often camelCase, and "getOrderStatus" was
+    # one word that "order" never met.
+    it "a camelCase name meets the words it is made of" do
+      reg = Insika::ToolRegistry.new
+      reg.register("getOrderStatus") { FakeTool.new("Returns the status.") }
+      reg.register("createInvoice") { FakeTool.new("Generates a PDF.") }
+      reg.register("list_orders") { FakeTool.new("Lists them.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("order").map(&:name)).to contain_exactly("getOrderStatus", "list_orders")
+      expect(cat.search("getorderstatus").map(&:name)).to eq(["getOrderStatus"])
+    end
+
+    it "a stem the plural cut shortened is not a prefix of other words" do
+      reg = Insika::ToolRegistry.new
+      reg.register("send_mail") { FakeTool.new("Sends a mail to the menu owner.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("mais")).to eq([])
+      expect(cat.search("meus")).to eq([])
+      expect(cat.search("mai").map(&:name)).to eq(["send_mail"]) # typed short: still a prefix
+    end
+
+    describe "#find" do
+      before do
+        registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+        registry.register("send_push") { FakeTool.new("Sends a push message to the recipient") }
+      end
+
+      it "known tools leave the ranking, so the limit goes to the next ones" do
+        found = catalog.find("sends recipient", limit: 1, known: ["send_email"])
+        expect(found.entries.map(&:name)).to eq(["send_sms"])
+        expect(found.known).to eq(["send_email"])
+        expect(found.more).to eq(1) # send_push
+      end
+
+      it "exact names stop at NAME_CAP_FACTOR times the limit and report the rest" do
+        found = catalog.find("send_email create_invoice send_sms send_push", limit: 1)
+        expect(found.entries.map(&:name)).to eq(%w[send_email create_invoice send_sms])
+        expect(found.left_out).to eq(["send_push"])
+      end
+
+      it "a known exact name is listed as known and does not take the cap" do
+        found = catalog.find("send_email send_sms", limit: 1, known: ["send_email"])
+        expect(found.entries.map(&:name)).to eq(["send_sms"])
+        expect(found.known).to eq(["send_email"])
+      end
+    end
+
     it "punctuation and one-letter words do not become terms" do
       expect(catalog.search("(e) , .")).to eq([])
       expect(catalog.search("(send_email)").map(&:name).first).to eq("send_email")
