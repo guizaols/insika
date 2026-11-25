@@ -27,7 +27,8 @@ module Insika
         { "name" => "agent_summary",
           "title" => "Traffic per agent",
           "description" => "One row per agent: sessions, sessions with turns (imported transcripts have none), " \
-                           "turns by status, flagged sessions, first and last turn.",
+                           "turns by status, flagged sessions, flagged messages (open flags, the total " \
+                           "list_flags pages through), first and last turn.",
           "inputSchema" => { "type" => "object", "properties" => {
             "since" => { "type" => "string", "description" => "ISO-8601; count only turns created after it." },
             "include_synthetic" => SYNTHETIC
@@ -56,11 +57,14 @@ module Insika
         { "name" => "list_flags",
           "title" => "List guardrail flags",
           "description" => "One row per guardrail flag with its category, source, reason, the message it judged " \
-                           "and the reply that followed. Open flags only unless include_resolved.",
+                           "and the reply that followed. Open flags only unless include_resolved. Newest " \
+                           "sessions first; a session's flags are never split, so a page can pass limit. " \
+                           "Next page: before = the oldest updated_at returned.",
           "inputSchema" => { "type" => "object", "properties" => {
             "agent" => AGENT,
             "category" => { "type" => "string", "description" => "e.g. invented_policy, injection." },
             "include_resolved" => { "type" => "boolean" },
+            "before" => { "type" => "string", "description" => "ISO-8601; only sessions updated before it (paging)." },
             "include_synthetic" => SYNTHETIC,
             "limit" => { "type" => "integer", "minimum" => 1, "maximum" => 500, "default" => 100 }
           } } },
@@ -153,7 +157,7 @@ module Insika
           @insights.list_flags(agent: str(args, "agent"), category: str(args, "category"),
                                include_resolved: args["include_resolved"] == true,
                                include_synthetic: args["include_synthetic"] == true,
-                               limit: int(args, "limit", 100, 1..500))
+                               before: str(args, "before"), limit: int(args, "limit", 100, 1..500))
         when "turn_metrics"
           raise ArgumentError, "unknown tool: #{name}" unless @metrics
 

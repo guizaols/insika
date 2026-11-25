@@ -21,6 +21,8 @@ module Insika
 
     SCOPE = "sessions"
     STATS_SCOPE = "session_stats" # one small record per session, see #write
+    FLAGS_SCOPE = "session_flags" # the flags of a session that has any, see #flag_rows
+    FLAG_SNIPPET = 400 # chars of the judged message and of the reply kept per flag
     # Optional Strings a caller sends to label a conversation in the Studio
     # (shown and searched there; no effect on memory scope).
     CUSTOMER_LABELS = %w[customer_name customer_phone].freeze
@@ -253,7 +255,29 @@ module Insika
     # -> bool (delegates to the backend: false for a nonexistent id)
     def delete(id)
       @store.delete(STATS_SCOPE, key_for(id))
+      @store.delete(FLAGS_SCOPE, key_for(id))
       @store.delete(SCOPE, key_for(id))
+    end
+
+    # -> [Hash] one row per guardrail flag of the session, open and resolved: where
+    # it fired, what it said, the message it judged and the reply that came next —
+    # enough to tell a true positive from a false one without opening the session.
+    # Read from FLAGS_SCOPE, written with the session; built from the record for a
+    # session stored before the index existed (backfill_stats writes those).
+    # [] for an unknown session.
+    def flag_rows(id)
+      key = key_for(id)
+      @store.get(FLAGS_SCOPE, key) || ((record = @store.get(SCOPE, key)) ? flag_rows_of(record) : [])
+    end
+
+    # A message's text: a plain string, or the text parts of a multi-part content.
+    def self.text_of(message)
+      return "" unless message.is_a?(Hash)
+
+      content = message["content"]
+      return content.to_s unless content.is_a?(Array)
+
+      content.filter_map { |part| part.is_a?(Hash) ? part["text"] : part.to_s }.join("\n")
     end
 
     # -> enumerates ids without the "session:" prefix. Without a block,
@@ -284,9 +308,12 @@ module Insika
     # flag stays on the message as history); reported: flags a person
     # marked as a false positive and nobody resolved yet. Both 0 on stats
     # written before they existed, until the session's next write.
-    # reported_at: the newest of those reports.
-    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role, :flagged, :reported, :reported_at) do
-      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil, flagged: 0, reported: 0, reported_at: nil) = super
+    # reported_at: the newest of those reports. flags: every guardrail flag, resolved
+    # ones too (0 = nothing in FLAGS_SCOPE).
+    Stat = Data.define(:id, :updated_at, :message_count, :vars, :last_role, :flagged, :reported, :reported_at,
+                       :flags) do
+      def initialize(id:, updated_at:, message_count:, vars:, last_role: nil, flagged: 0, reported: 0,
+                     reported_at: nil, flags: 0) = super
     end
 
     # -> [Stat] every session's stats, in no particular order: small enough to read
@@ -296,9 +323,9 @@ module Insika
     end
 
     # Bumped when stats gain a field (2: flagged/reported; 3: flagged skips
-    # resolved flags), so backfill_stats rewrites the older ones instead of
-    # only filling the missing.
-    STATS_VERSION = 3
+    # resolved flags; 4: flags count + the FLAGS_SCOPE index), so backfill_stats
+    # rewrites the older ones instead of only filling the missing.
+    STATS_VERSION = 4
 
     # A guardrail flag still marks its conversation until a person resolves it.
     def self.open_flag?(flag) = !(flag.is_a?(Hash) && flag.dig("review", "status") == "resolved")
@@ -317,13 +344,15 @@ module Insika
             next if current_stat?(@store.get(STATS_SCOPE, key))
 
             record = @store.get(SCOPE, key) or next
-            @store.set(STATS_SCOPE, key, stats_of(record))
+            write_derived(key, record)
             written += 1
           end
         end
       end
       live = @store.list(SCOPE, KEY_PREFIX).to_set
-      @store.list(STATS_SCOPE, KEY_PREFIX).each { |key| @store.delete(STATS_SCOPE, key) unless live.include?(key) }
+      [STATS_SCOPE, FLAGS_SCOPE].each do |scope|
+        @store.list(scope, KEY_PREFIX).each { |key| @store.delete(scope, key) unless live.include?(key) }
+      end
       written
     end
 
@@ -341,12 +370,46 @@ module Insika
 
     private
 
-    # The one write of a session record: the record and its stats, side by side.
-    # amend: an edit that is not activity keeps the session's place in #recent.
+    # The one write of a session record: the record, its stats and its flag index,
+    # side by side. amend: an edit that is not activity keeps the session's place
+    # in #recent.
     def write(record, amend: false)
       key = key_for(record["id"])
       amend ? @store.amend(SCOPE, key, record) : @store.set(SCOPE, key, record)
+      write_derived(key, record)
+    end
+
+    # A session never loses a flag (a resolved one stays as history), so one with no
+    # flags has nothing in FLAGS_SCOPE to clear: no extra write for most sessions.
+    def write_derived(key, record)
       @store.set(STATS_SCOPE, key, stats_of(record))
+      rows = flag_rows_of(record)
+      @store.set(FLAGS_SCOPE, key, rows) if rows.any?
+    end
+
+    def flag_rows_of(record)
+      messages = Array(record["messages"])
+      messages.each_with_index.flat_map do |m, i|
+        next [] unless m.is_a?(Hash)
+
+        Array(m["guardrail_flags"]).filter_map do |f|
+          next unless f.is_a?(Hash)
+
+          { "message_index" => i, "role" => m["role"], "category" => f["category"], "source" => f["source"],
+            "action" => f["action"], "detail" => f["detail"], "review" => f["review"],
+            "message" => self.class.text_of(m)[0, FLAG_SNIPPET],
+            "reply" => reply_after(messages, i)[0, FLAG_SNIPPET] }.compact
+        end
+      end
+    end
+
+    # The text the customer got for the turn that starts at `index`: the turn's last
+    # assistant message with text (the one the validator judged). The message right
+    # after is often a tool call with no text.
+    def reply_after(messages, index)
+      turn = messages[(index + 1)..].take_while { |m| m.is_a?(Hash) && m["role"] != "user" }
+      turn.select { |m| m["role"] == "assistant" }.map { |m| self.class.text_of(m) }
+          .reject { |t| t.strip.empty? }.last.to_s
     end
 
     def current_stat?(stat) = stat.is_a?(Hash) && stat["v"].to_i >= STATS_VERSION
@@ -361,6 +424,7 @@ module Insika
       { "v" => STATS_VERSION, "updated_at" => record["updated_at"], "message_count" => messages.size,
         "agent" => vars["agent"], "customer" => vars["customer"],
         "last_role" => last.is_a?(Hash) ? last["role"] : nil, "flagged" => (flagged if flagged.positive?),
+        "flags" => (flags.sum(&:size) if flags.any?(&:any?)),
         "reported" => (reported.size if reported.any?), "reported_at" => reported.filter_map { |f| f.dig("review", "at") }.max,
         **vars.slice(*CUSTOMER_LABELS) }.compact
     end
@@ -370,7 +434,7 @@ module Insika
                message_count: stat["message_count"].to_i,
                vars: stat.slice("agent", "customer", *CUSTOMER_LABELS),
                last_role: stat["last_role"], flagged: stat["flagged"].to_i, reported: stat["reported"].to_i,
-               reported_at: stat["reported_at"])
+               reported_at: stat["reported_at"], flags: stat["flags"].to_i)
     end
 
     def key_for(id)

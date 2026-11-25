@@ -503,4 +503,53 @@ RSpec.describe Insika::SessionStore do
       expect(sessions.all_stats.map(&:id)).to eq(%w[a])
     end
   end
+
+  describe "flag index" do
+    let(:pix) { { "category" => "invented_policy", "detail" => "Pix 3%" } }
+
+    before do
+      sessions.create(id: "a", vars: { "agent" => "shop" })
+      sessions.append_messages("a", [{ "role" => "user", "content" => "tem pix?", "guardrail_flags" => [pix] },
+                                     { "role" => "assistant", "content" => "" },
+                                     { "role" => "assistant", "content" => "Pix com 3%." }])
+    end
+
+    it "is written with the session: the flag, the message it judged and the reply" do
+      rows = backend.get(described_class::FLAGS_SCOPE, "session:a")
+      expect(rows).to eq([{ "message_index" => 0, "role" => "user", "category" => "invented_policy",
+                            "detail" => "Pix 3%", "message" => "tem pix?", "reply" => "Pix com 3%." }])
+      expect(sessions.all_stats.first.flags).to eq(1)
+    end
+
+    it "writes nothing for a session with no flag" do
+      sessions.create(id: "clean")
+      sessions.append_messages("clean", [{ "role" => "user", "content" => "oi" }])
+      expect(backend.get(described_class::FLAGS_SCOPE, "session:clean")).to be_nil
+    end
+
+    it "follows a review: a resolved flag stays as history" do
+      sessions.review_guardrail_flag("a", message: 0, flag: 0, status: "resolved")
+      expect(sessions.flag_rows("a").first.dig("review", "status")).to eq("resolved")
+      expect(sessions.all_stats.first).to have_attributes(flagged: 0, flags: 1)
+    end
+
+    it "is built from the record for a session stored before the index, and backfill_stats writes it" do
+      backend.delete(described_class::FLAGS_SCOPE, "session:a")
+      expect(sessions.flag_rows("a").first["category"]).to eq("invented_policy")
+
+      backend.set(described_class::STATS_SCOPE, "session:a", { "v" => 3, "updated_at" => "2026-01-01T00:00:00Z" })
+      expect(sessions.backfill_stats).to eq(1)
+      expect(backend.get(described_class::FLAGS_SCOPE, "session:a")).not_to be_nil
+    end
+
+    it "goes with the session, and backfill_stats removes one whose session is gone" do
+      backend.set(described_class::FLAGS_SCOPE, "session:ghost", [{ "category" => "pii" }])
+      sessions.backfill_stats
+      expect(backend.get(described_class::FLAGS_SCOPE, "session:ghost")).to be_nil
+
+      sessions.delete("a")
+      expect(backend.get(described_class::FLAGS_SCOPE, "session:a")).to be_nil
+      expect(sessions.flag_rows("a")).to eq([])
+    end
+  end
 end
