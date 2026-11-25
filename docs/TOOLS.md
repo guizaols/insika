@@ -781,14 +781,16 @@ held client, which does its own discovery on first use regardless of whether
    disclosure for large toolsets — see
    [Context](CONTEXT.md).
 
-   `tool_search` takes tool names or a description of the need. A query word equal
-   to a tool's name puts that tool first. Otherwise words are compared by their
-   first five characters and weighed by how rare they are among the deferred
-   tools, so a word in almost every description ("the", "da", "store") counts for
-   next to nothing; a hit in the name counts most, then the description's first
-   sentence, then the rest. At most `limits[:tool_search_limit]` tools (default
-   8) are enabled per call — without the cap, a 590-tool catalog had one query
-   enable nearly all of them.
+   `tool_search` takes tool names or a description of the need. Every tool asked
+   for by its exact name is enabled, first. Otherwise words are compared by their
+   first five characters (a shorter word meets the words it starts: "tag" meets
+   "tags"), the word itself counts twice a stem-only hit, and each word is weighed
+   by how rare it is among the deferred tools, so a word in almost every
+   description ("the", "da", "store") counts for next to nothing; a hit in the name
+   counts most, then the description's first sentence, then the rest. At most
+   `limits[:tool_search_limit]` tools (default 8) are enabled per call, counting the
+   exact names; names asked for past the cap still come — without the cap, a
+   590-tool catalog had one query enable nearly all of them.
 
 ## Parallel tool calls
 

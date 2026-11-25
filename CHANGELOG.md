@@ -71,10 +71,15 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   query, and words like "da" or "do" sit in almost every description: on the
   achei-b2b co-pilot (590 deferred tools) a Portuguese query matched 382 to 590 of
   them, so every call after the search read 120k–513k tokens. The search now weighs
-  words by how rare they are, compares them by their first five characters, counts
-  the name and the description's first sentence above the rest, and puts a tool
-  asked for by its exact name first. The `<available_tools>` instruction now tells
-  the model to search by name. See [Tools](docs/TOOLS.md).
+  words by how rare they are, compares them by their first five characters (a
+  shorter word meets the words it starts, and the word itself counts more than a
+  stem-only hit), counts the name and the description's first sentence above the
+  rest, and enables every tool asked for by its exact name, first and past the cap.
+  The `<available_tools>` instruction and `tool_search`'s own schema now tell the
+  model to search by name. See [Tools](docs/TOOLS.md).
+
+- `docs/plans/` no longer ships in the gem: it holds internal plans, like
+  `docs/superpowers/`, and its pt-BR prose failed the domain-boundary spec.
 
 - **A tool found by `tool_search` now gets the turn context.** It was built without it, so `{{ctx.*}}` headers went out empty (the achei-b2b co-pilot got "Sessão do co-pilot não encontrada").
 
