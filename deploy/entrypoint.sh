@@ -75,6 +75,20 @@ prepare_db() {
   bundle exec ruby -Ilib -rinsika -e 'Insika::Stores::SQLite.new(path: ARGV[0]).close' "${DB}"
 }
 
+# A new container starts with an empty page cache, and at boot every worker
+# reloads the skill catalog: thousands of scattered reads that, cold, held all
+# workers ~45s after each Railway deploy. One sequential read of the file fills
+# the cache far faster. In the background, so the workers start at once as
+# before; the log line says how long it took.
+warm_db() {
+  [ -f "${DB}" ] || return 0
+  (
+    start=$(date +%s)
+    cat "${DB}" "${DB}-wal" > /dev/null 2>&1 || true
+    echo "[entrypoint] page cache warmed: ${DB} in $(( $(date +%s) - start ))s"
+  ) &
+}
+
 # Postgres store: no SQLite file to prepare and nothing for Litestream to replicate —
 # Postgres owns durability (its own backups / point-in-time recovery).
 if [ -n "${INSIKA_DATABASE_URL}" ]; then
@@ -86,6 +100,7 @@ fi
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
   echo "[entrypoint] Litestream disabled (LITESTREAM_REPLICA_URL unset) — booting app directly."
   prepare_db
+  warm_db
   exec sh -c "${APP_CMD}"
 fi
 
@@ -104,6 +119,7 @@ else
 fi
 
 prepare_db
+warm_db
 
 # Supervise: Litestream replicates the WAL and forwards signals to the child.
 # When the app exits, Litestream final-syncs and exits too (Railway restarts the
