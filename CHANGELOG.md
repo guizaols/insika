@@ -73,8 +73,11 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   them, so every call after the search read 120k–513k tokens. The search now weighs
   words by how rare they are, compares them by their first five characters (a
   shorter word meets the words it starts, and the word itself counts more than a
-  stem-only hit), counts the name and the description's first sentence above the
-  rest, and enables every tool asked for by its exact name, first and past the cap.
+  stem-only hit; a final "s" is dropped, so "tags" meets "tag"), counts the name and
+  the description's first sentence above the rest, and enables every tool asked for
+  by its exact name, first and past the cap; a query of names alone enables just
+  those tools. The default cap lives in `ToolSearch::DEFAULT_LIMIT`, not in
+  `AgentProfile::DEFAULT_LIMITS`, so agents saved in the Studio do not store it.
   The `<available_tools>` instruction and `tool_search`'s own schema now tell the
   model to search by name. See [Tools](docs/TOOLS.md).
 

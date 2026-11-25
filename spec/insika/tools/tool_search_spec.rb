@@ -125,6 +125,13 @@ RSpec.describe Insika::Tools::ToolSearch do
       expect(events.last.data[:matched]).to eq(%w[send_email send_sms])
     end
 
+    it "without a limit the default applies, and the profile does not store it" do
+      stub_const("Insika::Tools::ToolSearch::DEFAULT_LIMIT", 2)
+      _result, chat = search_with({})
+      expect(chat.tools.size).to eq(2)
+      expect(Insika::AgentProfile.build(id: "a", model: "m").limits).not_to have_key(:tool_search_limit)
+    end
+
     it "below 1 means no cap" do
       _result, chat = search_with(tool_search_limit: 0)
       expect(chat.tools.size).to eq(3)

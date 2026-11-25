@@ -21,6 +21,10 @@ module Insika
       # the catalog/docs/tests.
       def name = "tool_search"
 
+      # Tools wired per call when the agent sets no limits[:tool_search_limit]. Kept
+      # here, not in AgentProfile::DEFAULT_LIMITS, so saved agents do not store it.
+      DEFAULT_LIMIT = 8
+
       def initialize(catalog, deferred_allowed, chat, tool_registry:, event_stream:,
                      checkpoint_store:, state:, trace_recorder: nil)
         @catalog = catalog
@@ -53,7 +57,7 @@ module Insika
       # Each match is wired with its full schema and listed in the result, so the cap is
       # what keeps one search from filling the window. Below 1 means no cap.
       def search_limit
-        limit = @state.profile.limits[:tool_search_limit] || AgentProfile::DEFAULT_LIMITS[:tool_search_limit]
+        limit = @state.profile.limits[:tool_search_limit] || DEFAULT_LIMIT
         limit.to_i.positive? ? limit.to_i : nil
       end
 
