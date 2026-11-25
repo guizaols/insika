@@ -166,6 +166,13 @@ RSpec.describe Insika::Commands::SendMessage do
       expect(task_store.each_id.to_a).to be_empty       # and NO orphan :queued task
     end
 
+    it "a caller-composed message (origin: engine) never joins a customer turn" do
+      result = send_from(:"http:json", origin: "engine")
+
+      expect(result).to match({ task_id: kind_of(String) })
+      expect(collecting_executor.asked).to be_empty
+    end
+
     it "a channel surface coalesces too (defines the field)" do
       expect(send_from(:"channel:relay")).to eq({ task_id: "t-open", merged: true })
     end
