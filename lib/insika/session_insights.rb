@@ -17,8 +17,6 @@ module Insika
   # one record at a time, keeping three fields (TaskStore#session_refs). Memory stays
   # flat; add a per-session task index when a call gets slow.
   class SessionInsights
-    SNIPPET = 400
-
     def initialize(session_store:, task_store:)
       @sessions = session_store
       @tasks = task_store
@@ -37,6 +35,7 @@ module Insika
           "turns" => mine.size,
           "turns_by_status" => mine.map { |t| t.status.to_s }.tally,
           "flagged_sessions" => rows.count { |s| s.flagged.positive? },
+          "flagged_messages" => rows.sum(&:flagged),
           "first_turn" => times.first, "last_turn" => times.last }
       end.sort_by { |row| -row["turns"] }
     end
@@ -69,21 +68,36 @@ module Insika
         "turns" => turns_by_session(nil).fetch(session.id, []).size,
         "messages" => Array(session.messages).each_with_index.map do |m, i|
           { "index" => i, "role" => m["role"], "origin" => m["origin"],
-            "content" => text_of(m)[0, max_chars], "guardrail_flags" => m["guardrail_flags"] }.compact
+            "content" => SessionStore.text_of(m)[0, max_chars], "guardrail_flags" => m["guardrail_flags"] }.compact
         end }
     end
 
     # -> [Hash] one row per guardrail flag: where it fired, what it said, the message
     # it judged and the reply that came next — enough to tell a true positive from a
     # false one without opening the session. Resolved flags only when asked.
-    def list_flags(agent: nil, category: nil, include_resolved: false, include_synthetic: false, limit: 100)
-      ids = stats(include_synthetic).select do |s|
+    #
+    # Newest sessions first, from the flag index (no transcript is opened), one
+    # session at a time until `limit` rows.
+    # A session's flags are never split, so a page can pass `limit`; sessions that
+    # share the last updated_at all go in, so `before:` that updated_at is the next
+    # page with nothing skipped.
+    def list_flags(agent: nil, category: nil, include_resolved: false, include_synthetic: false,
+                   before: nil, limit: 100)
+      candidates = stats(include_synthetic).select do |s|
         (agent.nil? || s.vars["agent"] == agent) &&
-          (include_resolved || s.flagged.positive? || s.reported.positive?)
-      end.map(&:id)
+          (s.flagged.positive? || s.reported.positive? || (include_resolved && s.flags.positive?)) &&
+          (before.nil? || s.updated_at.to_s < before)
+      end
 
-      ids.flat_map { |id| flags_of(@sessions.find(id), category, include_resolved) }
-         .sort_by { |row| row["updated_at"].to_s }.reverse.first(limit)
+      rows = []
+      last_at = nil
+      candidates.sort_by { |s| s.updated_at.to_s }.reverse_each do |s|
+        break if rows.size >= limit && s.updated_at.to_s != last_at
+
+        rows.concat(flags_in(s, category, include_resolved))
+        last_at = s.updated_at.to_s
+      end
+      rows
     end
 
     private
@@ -99,39 +113,14 @@ module Insika
       tasks.group_by(&:session_id)
     end
 
-    def flags_of(session, category, include_resolved)
-      return [] if session.nil?
+    # The session's rows from the flag index (SessionStore#flag_rows): no transcript is read.
+    def flags_in(stat, category, include_resolved)
+      @sessions.flag_rows(stat.id).filter_map do |row|
+        next unless include_resolved || SessionStore.open_flag?(row)
+        next if category && row["category"].to_s != category
 
-      messages = Array(session.messages)
-      messages.each_with_index.flat_map do |m, i|
-        Array(m["guardrail_flags"]).filter_map do |f|
-          next unless include_resolved || SessionStore.open_flag?(f)
-          next if category && f["category"].to_s != category
-
-          { "session_id" => session.id, "agent" => session.vars["agent"], "updated_at" => session.updated_at,
-            "message_index" => i, "role" => m["role"], "category" => f["category"], "source" => f["source"],
-            "action" => f["action"], "detail" => f["detail"], "review" => f["review"],
-            "message" => text_of(m)[0, SNIPPET], "reply" => reply_after(messages, i)[0, SNIPPET] }.compact
-        end
+        { "session_id" => stat.id, "agent" => stat.vars["agent"], "updated_at" => stat.updated_at }.merge(row)
       end
-    end
-
-    # The text the customer got for the turn that starts at `index`: the turn's last
-    # assistant message with text (the one the validator judged). The message right
-    # after is often a tool call with no text.
-    def reply_after(messages, index)
-      turn = messages[(index + 1)..].take_while { |m| m.is_a?(Hash) && m["role"] != "user" }
-      turn.select { |m| m["role"] == "assistant" }.map { |m| text_of(m) }.reject { |t| t.strip.empty? }.last.to_s
-    end
-
-    # A message's text: a plain string, or the text parts of a multi-part content.
-    def text_of(message)
-      return "" unless message.is_a?(Hash)
-
-      content = message["content"]
-      return content.to_s unless content.is_a?(Array)
-
-      content.filter_map { |part| part.is_a?(Hash) ? part["text"] : part.to_s }.join("\n")
     end
   end
 end

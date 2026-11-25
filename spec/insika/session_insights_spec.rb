@@ -90,5 +90,43 @@ RSpec.describe Insika::SessionInsights do
     it "filters by category" do
       expect(insights.list_flags(category: "injection")).to be_empty
     end
+
+    it "lists a resolved flag only with include_resolved" do
+      sessions.create(id: "done", vars: { "agent" => "shop" })
+      resolved = flag.merge("review" => { "status" => "resolved" })
+      sessions.append_messages("done", [{ "role" => "user", "content" => "x", "guardrail_flags" => [resolved] }])
+      expect(insights.list_flags.map { _1["session_id"] }).not_to include("done")
+      expect(insights.list_flags(include_resolved: true).map { _1["session_id"] }).to include("done")
+    end
+
+    it "opens sessions newest first only until limit, and pages with before" do
+      3.times do |i|
+        sessions.create(id: "f#{i}", vars: { "agent" => "shop" })
+        sessions.append_messages("f#{i}", [{ "role" => "user", "content" => "m#{i}", "guardrail_flags" => [flag] }])
+      end
+      ages = { "real" => "2026-11-01T00:00:00Z", "f0" => "2026-11-02T00:00:00Z",
+               "f1" => "2026-11-03T00:00:00Z", "f2" => "2026-11-03T00:00:00Z" }
+      allow(sessions).to receive(:all_stats).and_wrap_original do |orig|
+        orig.call.map { |s| ages[s.id] ? s.with(updated_at: ages[s.id]) : s }
+      end
+      allow(sessions).to receive(:flag_rows).and_call_original
+      allow(sessions).to receive(:find).and_call_original
+
+      page = insights.list_flags(limit: 1)
+      # f1 and f2 share the newest updated_at: both go in, so the next page skips nothing
+      expect(page.map { _1["session_id"] }).to contain_exactly("f1", "f2")
+      expect(sessions).to have_received(:flag_rows).twice
+      expect(sessions).not_to have_received(:find)
+
+      expect(insights.list_flags(limit: 1, before: "2026-11-03T00:00:00Z").map { _1["session_id"] }).to eq(["f0"])
+    end
+  end
+
+  describe "#agent_summary flagged_messages" do
+    it "totals open flagged messages from stats, without opening a session" do
+      allow(sessions).to receive(:find).and_call_original
+      expect(insights.agent_summary.first["flagged_messages"]).to eq(1)
+      expect(sessions).not_to have_received(:find)
+    end
   end
 end
