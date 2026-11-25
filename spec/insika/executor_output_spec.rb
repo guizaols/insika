@@ -199,6 +199,32 @@ RSpec.describe "Insika::Executor turn output" do
       expect(terminal_content).to eq("vou te conectar agora")
       expect(terminal_content).not_to include("CALL_SUPPORT")
     end
+
+    # The model announces the escalation in the same message as the call, and the
+    # channel's own handoff follows: two messages. `drop_lead_in` drops the first.
+    describe "a tool with drop_lead_in" do
+      def dropping(say) = Insika::ToolDefinition.wrap_halt({ "tool_result" => "x" }, say, drop_lead_in: true)
+
+      it "publishes only the tool's `say`, never the lead-in" do
+        chat = FakeChat.new
+        chat.script = proc { emit_chunk("vou abrir um chamado com o seu caso") }
+        chat.halt_with!(dropping("CALL_SUPPORT"))
+
+        run_turn(build_executor, chat)
+
+        expect(terminal_content).to eq("CALL_SUPPORT")
+      end
+
+      it "publishes nothing when the tool declared no `say`" do
+        chat = FakeChat.new
+        chat.script = proc { emit_chunk("vou abrir um chamado com o seu caso") }
+        chat.halt_with!(dropping(nil))
+
+        run_turn(build_executor, chat)
+
+        expect(deltas(:content)).to be_empty
+      end
+    end
   end
 
   describe "an :agent after-hook that replaces the response" do
