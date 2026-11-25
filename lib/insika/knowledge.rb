@@ -533,8 +533,9 @@ module Insika
       # embeddings. Case-insensitive substring match per query term, the name
       # weighted over the description and the description over the body (RFC
       # §3.7), times a confidence × recency multiplier. (`ToolCatalog#search`
-      # used to share this shape; it now weighs words by rarity and stem.) Correct on every backend; at the scale that matters (a
-      # few hundred concepts per agent) this is sub-millisecond.
+      # used to share this shape; it now weighs words by rarity and stem.)
+      # Correct on every backend; at the scale that matters (a few hundred
+      # concepts per agent) this is sub-millisecond.
       class Scan
         NAME_WEIGHT = 3
         DESCRIPTION_WEIGHT = 2
