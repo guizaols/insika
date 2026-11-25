@@ -181,6 +181,46 @@ RSpec.describe Insika::ToolCatalog do
       expect(catalog.search("send_email", limit: 8).map(&:name)).to eq(["send_email"])
     end
 
+    # Review r3 of insika#2: a plain word equal to a name was dropped from the ranking.
+    it "a plain word that is also a tool name still ranks the other tools" do
+      reg = Insika::ToolRegistry.new
+      reg.register("orders") { FakeTool.new("Order overview.") }
+      reg.register("list_faqs") { FakeTool.new("List the FAQs.") }
+      reg.register("list_orders") { FakeTool.new("List the orders.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("list orders", limit: 2).map(&:name)).to eq(%w[orders list_orders])
+    end
+
+    it "a denied tool asked by name enables nothing and brings no lookalike" do
+      reg = Insika::ToolRegistry.new
+      reg.register("delete_order") { FakeTool.new("Deletes an order.") }
+      reg.register("cancel_order") { FakeTool.new("Cancels an order.") }
+      found = described_class.new(tool_registry: reg).find("delete_order", within: ["cancel_order"], limit: 8)
+      expect(found.entries).to eq([])
+      expect(found.unavailable).to eq(["delete_order"])
+    end
+
+    it "matches far below the best one are dropped, not counted as more" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_orders") { FakeTool.new("Lista os pedidos da loja.") }
+      9.times { |i| reg.register("tool_#{i}") { FakeTool.new("Configura a loja #{i}.") } }
+      found = described_class.new(tool_registry: reg).find("pedidos da loja", limit: 8)
+      expect(found.entries.map(&:name)).to eq(["list_orders"])
+      expect(found.more).to eq(0)
+    end
+
+    it "the name cap keeps the names in the order asked" do
+      %w[a_tool b_tool].each { |name| registry.register(name) { FakeTool.new("Other") } }
+      names = catalog.find("b_tool create_invoice a_tool send_email", limit: 1).entries.map(&:name)
+      expect(names).to eq(%w[b_tool create_invoice a_tool])
+    end
+
+    it "ranked_cap: caps the description matches below the limit" do
+      found = catalog.find("recipient", limit: 8, ranked_cap: 0)
+      expect(found.entries).to eq([])
+      expect(found.more).to be_positive
+    end
+
     it "a plural meets its singular" do
       reg = Insika::ToolRegistry.new
       reg.register("list_tag") { FakeTool.new("Lista a tag da loja.") }

@@ -782,8 +782,12 @@ held client, which does its own discovery on first use regardless of whether
    [Context](CONTEXT.md).
 
    `tool_search` takes tool names or a description of the need. Every tool asked
-   for by its exact name is enabled, first, and its name is not read as description
-   words too: a query of names alone enables just those tools. The other words lose
+   for by its exact name is enabled, first, in the order asked, and a name written
+   as one (`send_email`, `getOrder`) is not read as description words too: a query
+   of names alone enables just those tools. A plain word that is also a name
+   ("orders") still ranks the other tools. A name listed in `<available_tools>` but
+   denied to the agent enables nothing, brings no lookalike, and `message` says it
+   is not available. The other words lose
    a final "s" and are compared by their first five characters ("tags" meets "tag";
    a word typed shorter than that meets the words it starts: "tag" meets "tagged",
    but "mais", cut to "mai", does not meet "mail"), the word itself counts twice a
@@ -792,14 +796,16 @@ held client, which does its own discovery on first use regardless of whether
    so a word in almost every description ("the", "da", "store") counts for next to
    nothing; a hit in the name counts most (camelCase names are split:
    `getOrderStatus` meets "order"), then the description's first sentence, then the
-   rest.
+   rest. A match scoring under a quarter of the best one is dropped.
 
    At most `limits[:tool_search_limit]` tools (default 8; a value that is not a
    number keeps the default, below 1 removes the cap) are enabled per call, counting
    the exact names. Names asked for past the cap still come, up to three times the
    cap; the result names the ones left out. Tools already enabled in the chat leave
    the ranking and are listed by name in `already_enabled`, so a similar search
-   brings the next ones; `message` says how many matches the cap cut. Without the
+   brings the next ones; `message` says how many matches the cap cut. One chat
+   enables at most three times the cap by description; past that only exact names
+   work, and `message` says so. Without the
    cap, a 590-tool catalog had one query enable nearly all of them.
 
 ## Parallel tool calls

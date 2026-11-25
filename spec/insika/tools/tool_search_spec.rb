@@ -198,6 +198,27 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(result[:matched].first[:parameters]).to eq({}) # describe fell into the rescue
   end
 
+  it "a denied tool asked by name says so and enables nothing" do
+    chat = FakeChat.new
+    result = build_search(chat).execute(query: "create_invoice")
+    expect(chat.tools).to eq([])
+    expect(result[:message]).to include("Not available to this agent: create_invoice")
+  end
+
+  it "description searches stop after the per-chat budget; exact names still work" do
+    state.profile.limits[:tool_search_limit] = 1
+    reg = Insika::ToolRegistry.new
+    4.times { |i| reg.register("mail_#{i}") { deferred_tool("mail_#{i}", "Sends mail #{i}") } }
+    cat = Insika::ToolCatalog.new(tool_registry: reg)
+    search = described_class.new(cat, cat.all.map(&:name), FakeChat.new, tool_registry: reg,
+                                 event_stream: event_stream, checkpoint_store: checkpoint_store, state: state)
+    3.times { search.execute(query: "mail") }
+    spent = search.execute(query: "mail")
+    expect(spent[:matched]).to eq([])
+    expect(spent[:message]).to include("ask for tools by exact name")
+    expect(search.execute(query: "mail_3")[:matched].map { |m| m[:name] }).to eq(["mail_3"])
+  end
+
   describe "mid-loop propagation with FakeChat" do
     it "chat.with_tools inside execute is visible in chat.tools immediately" do
       chat = FakeChat.new

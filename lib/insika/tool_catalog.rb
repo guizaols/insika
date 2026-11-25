@@ -45,8 +45,10 @@ module Insika
     # - A query word equal to a tool's name (`fashion_v3_rollout`) enables that tool,
     #   first and past `limit:` (up to NAME_CAP_FACTOR times it): the model reads the
     #   names in <available_tools> and asks for the ones it needs, so a list of names
-    #   gets all of them. A matched name is not read as description words too, so
-    #   "send_email" alone does not bring every tool that says "send" or "email".
+    #   gets all of them. A matched name written as a name (`send_email`) is not read as
+    #   description words too, so it does not bring every tool saying "send" or "email";
+    #   a plain word that is also a name ("orders") is. A name outside `within:` enables
+    #   nothing and is never read as words (see Found#unavailable).
     # - The other words lose a final "s" and are compared by their first STEM_CHARS
     #   characters, so "listar" meets "Lista", "produtos" meets "produto" and "tags"
     #   meets "tag". A query word already shorter than that meets any word it starts
@@ -57,7 +59,7 @@ module Insika
     #   (`getOrderStatus` meets "order").
     # - Each word weighs by how rare it is in the universe (IDF). With 590 co-pilot
     #   tools, "do", "da" or "loja" sit in almost every description and add next to
-    #   nothing, while "sidekiq" decides.
+    #   nothing, while "sidekiq" decides. A match under MIN_SHARE of the best is dropped.
     # - A hit in the name weighs NAME_WEIGHT, in the description's first sentence (what
     #   the tool does) FIRST_SENTENCE_WEIGHT, in the rest REST_WEIGHT: long descriptions
     #   mention other tools, so the rest is mostly noise.
@@ -71,30 +73,28 @@ module Insika
     def search(query, within: nil, limit: nil) = find(query, within: within, limit: limit).entries
 
     # What #search returns, plus what the caller has to tell the model:
-    # - entries: tools to enable, the exact names first;
+    # - entries: tools to enable, the exact names first, in the order asked;
+    # - named: how many of entries came by exact name (the rest came by description);
     # - known: matches among `known:` (already enabled), never in entries nor counted
     #   against the limit, so asking again brings the next ones instead of the same top;
     # - left_out: exact names past the name cap, to ask for in another call;
+    # - unavailable: exact names of catalog tools outside `within:` (listed in the
+    #   prompt but denied); never split into words, so no lookalike comes instead;
     # - more: how many description matches the limit cut.
-    Found = Data.define(:entries, :known, :left_out, :more)
+    #
+    # `ranked_cap:` caps the description matches on top of `limit:` (the caller's
+    # per-chat budget).
+    Found = Data.define(:entries, :named, :known, :left_out, :unavailable, :more)
 
-    def find(query, within: nil, limit: nil, known: [])
+    def find(query, within: nil, limit: nil, known: [], ranked_cap: nil)
       current = snapshot # one index for the whole search, even if `reload` runs meanwhile
       universe = within ? select_names(current.entries, within) : current.entries
       known = Array(known).map(&:to_s)
       tokens = query.to_s.scan(NAME_TOKEN)
-      lowered = tokens.map(&:downcase)
-      exact = universe.select { |entry| lowered.include?(entry.name.downcase) }
-      repeated, fresh = exact.partition { |entry| known.include?(entry.name) }
-      kept = limit ? fresh.first(limit * NAME_CAP_FACTOR) : fresh
-
-      exact_names = exact.map { |entry| entry.name.downcase }
-      terms = stem_groups(tokens.reject { |token| exact_names.include?(token.downcase) }.join(" "))
-      found_known, ranked = rank(terms, universe, current.terms, skip: exact).partition { |entry| known.include?(entry.name) }
-      room = limit ? [limit - kept.size, 0].max : ranked.size
-
-      Found.new(entries: kept + ranked.first(room), known: (repeated + found_known).map(&:name),
-                left_out: (fresh - kept).map(&:name), more: [ranked.size - room, 0].max)
+      named = by_name(tokens, current.entries, universe, known, limit)
+      ranked = rank(stem_groups(rank_words(tokens, named).join(" ")), universe, current.terms,
+                    skip: named[:exact])
+      build_found(named, ranked, known, limit, ranked_cap)
     end
 
     # Level 1 injected into the prompt — mirror of SkillCatalog#format_for_prompt,
@@ -116,6 +116,41 @@ module Insika
     end
 
     private
+
+    # Query words that are tool names. In the query's order, so a cap keeps the first asked.
+    def by_name(tokens, entries, universe, known, limit)
+      lowered = tokens.map(&:downcase)
+      matched = entries.select { |entry| lowered.include?(entry.name.downcase) }
+                       .sort_by { |entry| lowered.index(entry.name.downcase) }
+      exact = matched & universe
+      repeated, fresh = exact.partition { |entry| known.include?(entry.name) }
+      kept = limit ? fresh.first(limit * NAME_CAP_FACTOR) : fresh
+      { matched: matched, exact: exact, repeated: repeated, fresh: fresh, kept: kept,
+        unavailable: matched - universe }
+    end
+
+    # A matched name that looks like one (`send_email`, `getOrder`) stays out of the
+    # ranking, so it does not bring every tool saying "send" or "email". A plain word
+    # that happens to be a name (`orders`) still ranks: "list orders" must reach
+    # `list_orders`. A denied name never ranks, so no lookalike comes in its place.
+    def rank_words(tokens, named)
+      names = named[:matched].map { |entry| entry.name.downcase }
+      denied = named[:unavailable].map { |entry| entry.name.downcase }
+      tokens.reject do |token|
+        name = token.downcase
+        denied.include?(name) || (names.include?(name) && token.match?(NAME_SHAPE))
+      end
+    end
+
+    def build_found(named, ranked, known, limit, ranked_cap)
+      found_known, ranked = ranked.partition { |entry| known.include?(entry.name) }
+      room = limit ? [limit - named[:kept].size, 0].max : ranked.size
+      room = [room, ranked_cap].min if ranked_cap
+      Found.new(entries: named[:kept] + ranked.first(room), named: named[:kept].size,
+                known: (named[:repeated] + found_known).map(&:name),
+                left_out: (named[:fresh] - named[:kept]).map(&:name),
+                unavailable: named[:unavailable].map(&:name), more: [ranked.size - room, 0].max)
+    end
 
     # The catalog only has to make the model search; the full description comes with
     # the tool once tool_search wires it. First sentence, capped: 592 full co-pilot
@@ -148,18 +183,20 @@ module Insika
       Snapshot.new(entries: entries, terms: entries.to_h { |entry| [entry.name, sections_of(entry)] })
     end
 
-    # Every entry with a positive score, best first; `skip:` stays out.
+    # Every entry scoring at least MIN_SHARE of the best, best first; `skip:` stays out.
     def rank(terms, universe, index, skip:)
       return [] if terms.empty?
 
-      idf = idf_for(terms, universe, index)
+      hits = universe.to_h { |entry| [entry.name, hits_of(index.fetch(entry.name), terms)] }
+      idf = idf_for(terms, hits)
       scored = universe.each_with_index.filter_map do |entry, idx|
         next if skip.include?(entry)
 
-        score = score_entry(index.fetch(entry.name), terms, idf)
+        score = score_entry(hits.fetch(entry.name), idf)
         [entry, score, idx] if score.positive?
       end
-      scored.sort_by { |_entry, score, idx| [-score, idx] }.map(&:first)
+      floor = (scored.map { |_entry, score, _idx| score }.max || 0) * MIN_SHARE
+      scored.select { |_entry, score, _idx| score >= floor }.sort_by { |_entry, score, idx| [-score, idx] }.map(&:first)
     end
 
     def select_names(entries, names)
@@ -181,6 +218,12 @@ module Insika
     SECTIONS = { name: NAME_WEIGHT, first: FIRST_SENTENCE_WEIGHT, rest: REST_WEIGHT }.freeze
     WORD = /[\p{L}\p{N}]+/
     NAME_TOKEN = /[\p{L}\p{N}_-]+/
+    # snake_case, kebab-case or camelCase: a word written as a tool name, not prose.
+    NAME_SHAPE = /[_-]|\p{Ll}\p{Lu}/
+    # A description match must score at least this share of the best one. IDF keeps
+    # a shared word above zero, so without a floor "pedidos da loja" matched almost
+    # every co-pilot tool, and each repeat of it wired the next weak ones.
+    MIN_SHARE = 0.25
 
     def words(text) = text.to_s.downcase.scan(WORD).select { |word| word.length >= MIN_WORD }
 
@@ -226,22 +269,26 @@ module Insika
 
     def prefix?(stem, query_words) = stem.length < STEM_CHARS && query_words.include?(stem)
 
-    # Smoothed so that a stem every entry shares still scores above zero: in a catalog
-    # of two tools a shared word must still match, it just cannot rank.
-    def idf_for(terms, universe, index)
-      size = universe.size
+    # {stem => {section => hit}} for one entry: each hit is computed once per search,
+    # then read by both the IDF and the score.
+    def hits_of(sections, terms)
       terms.to_h do |stem, query_words|
-        hits = universe.count do |entry|
-          index.fetch(entry.name).each_value.any? { |section| hit(section, stem, query_words).positive? }
-        end
-        [stem, Math.log((size + 1.0) / (hits + 0.5))]
+        [stem, SECTIONS.keys.to_h { |key| [key, hit(sections[key], stem, query_words)] }]
       end
     end
 
-    def score_entry(sections, terms, idf)
-      terms.sum do |stem, query_words|
-        SECTIONS.sum { |key, weight| weight * hit(sections[key], stem, query_words) } * idf[stem]
+    # Smoothed so that a stem every entry shares still scores above zero: in a catalog
+    # of two tools a shared word must still match, it just cannot rank.
+    def idf_for(terms, hits)
+      size = hits.size
+      terms.keys.to_h do |stem|
+        count = hits.each_value.count { |by_stem| by_stem[stem].each_value.any?(&:positive?) }
+        [stem, Math.log((size + 1.0) / (count + 0.5))]
       end
+    end
+
+    def score_entry(by_stem, idf)
+      by_stem.sum { |stem, by_section| SECTIONS.sum { |key, weight| weight * by_section[key] } * idf[stem] }
     end
 
     def registry_generation = @tool_registry.respond_to?(:generation) ? @tool_registry.generation : nil

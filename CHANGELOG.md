@@ -75,8 +75,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   shorter word meets the words it starts, and the word itself counts more than a
   stem-only hit; a final "s" is dropped, so "tags" meets "tag"), counts the name and
   the description's first sentence above the rest, and enables every tool asked for
-  by its exact name, first and past the cap (up to three times it); a query of names
-  alone enables just those tools. camelCase names are split into words. Tools already
+  by its exact name, first and past the cap (up to three times it, kept in the order
+  asked); a query of names alone enables just those tools, while a plain word that
+  is also a name ("orders") still ranks the rest. A listed but denied name enables
+  nothing and the result says it is not available, instead of enabling lookalikes.
+  Matches under a quarter of the best score are dropped, and one chat enables at
+  most three times the cap by description (exact names stay open), so repeated
+  vague searches no longer refill the window. camelCase names are split into words. Tools already
   enabled in the chat leave the ranking (listed in `already_enabled`), so a similar
   search brings the next ones, and the result says what the caps cut. The default cap lives in `ToolSearch::DEFAULT_LIMIT`, not in
   `AgentProfile::DEFAULT_LIMITS`, so agents saved in the Studio do not store it.

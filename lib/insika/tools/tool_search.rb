@@ -24,6 +24,9 @@ module Insika
       # Tools wired per call when the agent sets no limits[:tool_search_limit]. Kept
       # here, not in AgentProfile::DEFAULT_LIMITS, so saved agents do not store it.
       DEFAULT_LIMIT = 8
+      # Tools one chat may enable by description, as a multiple of the limit. Exact
+      # names stay open (capped per call): vague repeats are what refilled the window.
+      RANKED_BUDGET_FACTOR = 3
 
       def initialize(catalog, deferred_allowed, chat, tool_registry:, event_stream:,
                      checkpoint_store:, state:, trace_recorder: nil)
@@ -36,6 +39,7 @@ module Insika
         @state = state
         @trace_recorder = trace_recorder
         @promoted = [] # names already promoted IN THIS chat — idempotency
+        @ranked_count = 0 # tools this chat enabled by description, against the budget
         super()
       end
 
@@ -44,18 +48,20 @@ module Insika
       # next ones instead of the same top. What the caps cut is said in `message`.
       def execute(query:)
         limit = search_limit
-        found = @catalog.find(query, within: @deferred_allowed, limit: limit, known: @promoted)
+        found = @catalog.find(query, within: @deferred_allowed, limit: limit, known: @promoted,
+                                     ranked_cap: ranked_left(limit))
         matches = found.entries
         emit_tool_search(query, matches.map(&:name))
+        notes = cut_notes(found, limit)
         if matches.empty? && found.known.empty?
-          return { matched: [], message: "no tool found for '#{query}'" }
+          return { matched: [], message: (["no tool found for '#{query}'."] + notes).join(" ") }
         end
 
+        @ranked_count += matches.size - found.named
         promote(matches.reject { |m| @promoted.include?(m.name) }) unless matches.empty?
 
         result = { matched: matches.map { |m| describe(m) } }
         result[:already_enabled] = found.known unless found.known.empty?
-        notes = cut_notes(found, limit)
         result[:message] = notes.join(" ") unless notes.empty?
         result
       end
@@ -71,9 +77,16 @@ module Insika
         limit.positive? ? limit : nil
       end
 
+      def ranked_left(limit) = limit && [(limit * RANKED_BUDGET_FACTOR) - @ranked_count, 0].max
+
       def cut_notes(found, limit)
         notes = []
-        if found.more.positive?
+        unless found.unavailable.empty?
+          notes << "Not available to this agent: #{found.unavailable.join(", ")}. Do not use another tool in its place."
+        end
+        if limit && ranked_left(limit).zero? && found.more.positive?
+          notes << "This conversation has used its searches by description: ask for tools by exact name."
+        elsif found.more.positive?
           notes << "#{found.more} more tools match past the limit of #{limit}: ask for them by exact name, " \
                    "or describe the need more precisely."
         end
