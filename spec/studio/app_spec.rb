@@ -1155,6 +1155,18 @@ end
     expect(guardrails["corpora"]).to eq("languages" => ["en"])
   end
 
+  it "config save round-trips guardrails.echo_allow (one text per blank-line block)" do
+    agent = Insika::AgentProfile.build(id: "bia", model: "m", guardrails: { "echo_allow" => ["First text.", "Second\ntext."] })
+    app, bus = build_app(agents: [agent])
+    client = login(app)
+    page = client.get("/agents/bia").body
+    expect(page).to include("First text.\n\nSecond\ntext.")
+
+    client.post("/agents/bia/config", params: { "model" => "x", "_csrf" => csrf_from(page),
+                                                "guardrail_echo_allow" => "First text.\r\n\r\nSecond\r\ntext.\r\n" })
+    expect(bus.last(:update_agent).payload[:guardrails]["echo_allow"]).to eq(["First text.", "Second\r\ntext."])
+  end
+
   # --- The full config surface: EVERY profile field is editable here ---------
   # The pack import is one door; the config form is the other. Each feature's
   # block round-trips: the form renders the current value, the patch parses it

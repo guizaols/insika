@@ -407,7 +407,8 @@ module Insika
       values = Array(h[:equals]).map(&:to_s)
       raise Insika::ValidationError, "halt_when requires a non-empty equals list" if values.empty?
 
-      { json_path: path, equals: values, say: normalize_halt_say(h[:say]) }.compact
+      { json_path: path, equals: values, say: normalize_halt_say(h[:say]),
+        drop_lead_in: (true if h[:drop_lead_in] == true) }.compact
     end
     private_class_method :normalize_halt_when
 
@@ -561,13 +562,23 @@ module Insika
     # they are on sight. Unwrapped tools are untouched: no `say`, no wrapper.
     SAY_KEY = "__insika_halt_say"
     PAYLOAD_KEY = "__insika_halt_payload"
+    DROP_LEAD_IN_KEY = "__insika_halt_drop_lead_in"
 
-    def self.wrap_halt(payload, say) = { SAY_KEY => say, PAYLOAD_KEY => payload }
+    def self.wrap_halt(payload, say, drop_lead_in: false)
+      { SAY_KEY => say, PAYLOAD_KEY => payload, DROP_LEAD_IN_KEY => (true if drop_lead_in) }.compact
+    end
 
     # -> the text to publish, or nil when this halt carries none.
     def self.halt_say_of(content)
       content.is_a?(Hash) ? Coercion.presence(content[SAY_KEY]) : nil
     end
+
+    # `halt_when.drop_lead_in`: the model's text before the call is never published,
+    # only `say` (or nothing). For a tool whose own confirmation makes any lead-in a
+    # second, wrong message ("vou abrir um chamado" next to the channel's handoff).
+    def self.drop_lead_in?(content) = content.is_a?(Hash) && content[DROP_LEAD_IN_KEY] == true
+
+    def drop_lead_in? = halt_when&.dig(:drop_lead_in) == true
 
     # Walks a dotted path. Returns PATH_MISS (not nil) when a segment is absent, so a
     # key whose stored value IS nil stays distinguishable from a missing key.

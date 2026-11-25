@@ -84,7 +84,10 @@ module Insika
           # the model wrote no lead-in. Wrapped only when there is one, so every tool
           # that declares no `say` keeps producing exactly the payload it always did.
           say = @definition.halt_say(result[:body])
-          return Insika::ToolDefinition::Halt.new(say ? Insika::ToolDefinition.wrap_halt(payload, say) : payload)
+          drop = @definition.drop_lead_in?
+          return Insika::ToolDefinition::Halt.new(payload) unless say || drop
+
+          return Insika::ToolDefinition::Halt.new(Insika::ToolDefinition.wrap_halt(payload, say, drop_lead_in: drop))
         end
 
         payload

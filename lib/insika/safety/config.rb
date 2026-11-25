@@ -18,7 +18,12 @@ module Insika
     #     responses:  { <category> => "<safe reply>", ... }  # per-agent override, see below
     #     corpora:    { "languages" => ["en"], "extra" => { "abuse" => ["/\\bdupa\\b/i"] } }
     #     injection:  "flag"|"block"     # what an injection hit does (default flag), see below
+    #     echo_allow: ["<canned text>", ...]  # texts the prompt-echo cut never treats as a leak
     #   }
+    #
+    # `echo_allow`: exact canned texts from the prompt that the agent must repeat
+    # word for word. PromptEcho cuts any 400+ char run of the prompt in a reply;
+    # a listed text is taken out of the prompt first, so repeating it is not a leak.
     #
     # `injection`: "flag" (default) lets the turn reach the model with a per-turn
     # notice and an audit flag, so a legitimate request riding in the same message is
@@ -57,10 +62,12 @@ module Insika
 
       INJECTION_MODES = %i[flag block].freeze
 
-      attr_reader :input, :output, :moderator, :strictness, :responses, :corpora, :injection
+      attr_reader :input, :output, :moderator, :strictness, :responses, :corpora, :injection, :echo_allow
 
-      def initialize(input:, output:, moderator:, strictness:, responses: {}, corpora: nil, injection: :flag)
+      def initialize(input:, output:, moderator:, strictness:, responses: {}, corpora: nil, injection: :flag,
+                     echo_allow: [])
         @input = input
+        @echo_allow = echo_allow
         @output = output
         @moderator = moderator
         @strictness = strictness
@@ -85,7 +92,8 @@ module Insika
           strictness: normalize_strictness(h[:strictness]),
           responses: normalize_responses(h[:responses]),
           corpora: normalize_corpora(h[:corpora]),
-          injection: normalize_injection(h[:injection])
+          injection: normalize_injection(h[:injection]),
+          echo_allow: normalize_echo_allow(h[:echo_allow])
         )
       end
 
@@ -159,8 +167,15 @@ module Insika
         { "languages" => h["languages"], "extra" => h["extra"] }
       end
 
+      # -> [String], blanks dropped; anything but a list reads as none.
+      def self.normalize_echo_allow(v)
+        return [] unless v.is_a?(Array)
+
+        v.map { |t| t.to_s.strip }.reject(&:empty?)
+      end
+
       private_class_method :symbolize, :bool, :presence, :normalize_strictness, :normalize_responses,
-                           :normalize_corpora
+                           :normalize_corpora, :normalize_echo_allow
     end
   end
 end
