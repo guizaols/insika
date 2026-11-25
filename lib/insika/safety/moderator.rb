@@ -57,6 +57,9 @@ module Insika
         action = "unavailable" unless ACTIONS.include?(action)
         category = data["category"].to_s.strip.downcase
         category = "safe" unless CATEGORIES.include?(category)
+        # Harmless categories never block, as in JudgeModerator. A refused off_topic
+        # sent the canned refusal to "Vc não vende pó kilo" (SCRUM-7415).
+        action = "allow" if %w[off_topic safe].include?(category) && %w[refuse escalate].include?(action)
         Verdict.new(category: category, action: action, reason: data["reason"].to_s)
       rescue JSON::ParserError
         unavailable_verdict
