@@ -173,6 +173,36 @@ RSpec.describe Insika::ToolCatalog do
       expect(catalog.search("create_invoice recipient", limit: 2).map(&:name)).to eq(%w[create_invoice send_email])
     end
 
+    # Review r2 of insika#2: the matched name was also read as words, so "send_email"
+    # brought every tool saying "send" or "email" and 4 extra schemas per search.
+    it "a query of exact names brings only those tools" do
+      registry.register("send_email_report") { FakeTool.new("Emails the weekly report") }
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("send_email", limit: 8).map(&:name)).to eq(["send_email"])
+    end
+
+    it "a plural meets its singular" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_tag") { FakeTool.new("Lista a tag da loja.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("tags").map(&:name)).to eq(["list_tag"])
+      expect(cat.search("lojas").map(&:name)).to eq(["list_tag"])
+    end
+
+    it "query words sharing a stem all count as words, in any order" do
+      reg = Insika::ToolRegistry.new
+      reg.register("configure_store") { FakeTool.new("Configure the store settings.") }
+      reg.register("confirm_order") { FakeTool.new("Confirmar o pedido do cliente.") }
+      reg.register("export_orders") { FakeTool.new("Listagem dos pedidos.") }
+      reg.register("list_orders") { FakeTool.new("Lista os pedidos.") }
+      cat = described_class.new(tool_registry: reg)
+      both = %w[configure_store confirm_order]
+      expect(cat.search("configure confirmar", limit: 2).map(&:name)).to eq(both)
+      expect(cat.search("confirmar configure", limit: 2).map(&:name)).to eq(both)
+      # "lista" is kept next to "listar": the tool saying "Lista" scores the whole word
+      expect(cat.search("listar lista").map(&:name).first).to eq("list_orders")
+    end
+
     it "punctuation and one-letter words do not become terms" do
       expect(catalog.search("(e) , .")).to eq([])
       expect(catalog.search("(send_email)").map(&:name).first).to eq("send_email")

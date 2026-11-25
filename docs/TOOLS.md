@@ -782,9 +782,12 @@ held client, which does its own discovery on first use regardless of whether
    [Context](CONTEXT.md).
 
    `tool_search` takes tool names or a description of the need. Every tool asked
-   for by its exact name is enabled, first. Otherwise words are compared by their
-   first five characters (a shorter word meets the words it starts: "tag" meets
-   "tags"), the word itself counts twice a stem-only hit, and each word is weighed
+   for by its exact name is enabled, first, and its name is not read as description
+   words too: a query of names alone enables just those tools. The other words lose
+   a final "s" and are compared by their first five characters ("tags" meets "tag",
+   a shorter word meets the words it starts: "tag" meets "tagged"), the word itself
+   counts twice a stem-only hit (query words sharing a stem count once, by the best
+   of them, in any order), and each word is weighed
    by how rare it is among the deferred tools, so a word in almost every
    description ("the", "da", "store") counts for next to nothing; a hit in the name
    counts most, then the description's first sentence, then the rest. At most

@@ -24,19 +24,13 @@ module Insika
       @tool_registry = tool_registry
     end
 
-    def all
-      gen = registry_generation
-      @entries = @terms = nil if gen != @generation
-      @generation = gen
-      @entries ||= build_entries
-    end
+    def all = snapshot.entries
 
     # Reloads the index (after authoring a data-tool in the overlay). Mirrors
     # SkillCatalog#reload — level-1/tool_search starts seeing the new tool without a
     # restart. An in-flight turn has already captured `all`.
     def reload
-      @terms = nil
-      @entries = build_entries
+      @snapshot = build_snapshot
       @generation = registry_generation
       self
     end
@@ -44,20 +38,21 @@ module Insika
     # Allowed deferred slice (typically allowed_tools ∩ tools_deferred).
     # Names outside the catalog are silently ignored (safe failure: less
     # exposure, never more).
-    def subset(names)
-      wanted = Array(names).map(&:to_s)
-      all.select { |e| wanted.include?(e.name) }
-    end
+    def subset(names) = select_names(all, names)
 
     # PURE matcher for `tool_search`: no embeddings, no per-language word list.
     #
     # - A query word equal to a tool's name (`fashion_v3_rollout`) enables that tool,
     #   first and past `limit:`: the model reads the names in <available_tools> and
-    #   asks for the ones it needs, so a list of names gets all of them.
-    # - The other words are compared by their first STEM_CHARS characters, so "listar"
-    #   meets "Lista" and "produtos" meets "produto". A word shorter than that meets
-    #   any word it starts ("tag" meets "tags", "loja" meets "lojas"). The word itself
-    #   counts twice as much as a stem-only hit ("confirmar" over "configure").
+    #   asks for the ones it needs, so a list of names gets all of them. A matched
+    #   name is not read as description words too, so "send_email" alone does not
+    #   bring every tool that says "send" or "email".
+    # - The other words lose a final "s" and are compared by their first STEM_CHARS
+    #   characters, so "listar" meets "Lista", "produtos" meets "produto" and "tags"
+    #   meets "tag". A word shorter than that meets any word it starts ("tag" meets
+    #   "tagged"). The word itself counts twice as much as a stem-only hit
+    #   ("confirmar" over "configure"); query words that share a stem count once,
+    #   by the best of them, whatever their order.
     # - Each word weighs by how rare it is in the universe (IDF). With 590 co-pilot
     #   tools, "do", "da" or "loja" sit in almost every description and add next to
     #   nothing, while "sidekiq" decides.
@@ -72,17 +67,19 @@ module Insika
     # Ties keep the universe's order (Ruby's sort_by is not stable, hence the index).
     # `within:` restricts the universe via subset, and IDF is computed over it.
     def search(query, within: nil, limit: nil)
-      universe = within ? subset(within) : all
-      names = query.to_s.downcase.scan(NAME_TOKEN)
-      exact = universe.select { |entry| names.include?(entry.name.downcase) }
-      terms = words(query).map { |word| [word, stem(word)] }.uniq(&:last)
+      current = snapshot # one index for the whole search, even if `reload` runs meanwhile
+      universe = within ? select_names(current.entries, within) : current.entries
+      tokens = query.to_s.downcase.scan(NAME_TOKEN)
+      exact = universe.select { |entry| tokens.include?(entry.name.downcase) }
+      exact_names = exact.map { |entry| entry.name.downcase }
+      terms = stem_groups(tokens.reject { |token| exact_names.include?(token) }.join(" "))
       return exact if terms.empty?
 
-      idf = idf_for(terms, universe)
+      idf = idf_for(terms, universe, current.terms)
       scored = universe.each_with_index.filter_map do |entry, idx|
         next if exact.include?(entry)
 
-        score = score_entry(terms_for(entry), terms, idf)
+        score = score_entry(current.terms.fetch(entry.name), terms, idf)
         [entry, score, idx] if score.positive?
       end
       ranked = scored.sort_by { |_entry, score, idx| [-score, idx] }.map(&:first)
@@ -122,10 +119,27 @@ module Insika
     # [first sentence, the rest]
     def sentences(description) = description.to_s.strip.split(/(?<=[.!?])\s/, 2)
 
-    def build_entries
-      @tool_registry.entries.map do |entry|
+    # The entries and their search index, built together so a search never reads one
+    # registry generation's entries against another's words.
+    Snapshot = Data.define(:entries, :terms)
+
+    def snapshot
+      gen = registry_generation
+      @snapshot = nil if gen != @generation
+      @generation = gen
+      @snapshot ||= build_snapshot
+    end
+
+    def build_snapshot
+      entries = @tool_registry.entries.map do |entry|
         Entry.new(name: entry.name, description: entry.factory.call.description.to_s, plugin: entry.plugin)
       end
+      Snapshot.new(entries: entries, terms: entries.to_h { |entry| [entry.name, sections_of(entry)] })
+    end
+
+    def select_names(entries, names)
+      wanted = Array(names).map(&:to_s)
+      entries.select { |e| wanted.include?(e.name) }
     end
 
     # Search weights and word shape (see #search).
@@ -135,13 +149,23 @@ module Insika
     FIRST_SENTENCE_WEIGHT = 2
     REST_WEIGHT = 0.5
     STEM_ONLY = 0.5
+    PLURAL_MIN = 3
     SECTIONS = { name: NAME_WEIGHT, first: FIRST_SENTENCE_WEIGHT, rest: REST_WEIGHT }.freeze
     WORD = /[\p{L}\p{N}]+/
     NAME_TOKEN = /[\p{L}\p{N}_-]+/
 
     def words(text) = text.to_s.downcase.scan(WORD).select { |word| word.length >= MIN_WORD }
 
-    def stem(word) = word[0, STEM_CHARS]
+    # A final "s" goes first ("tags" -> "tag", "lojas" -> "loja"), only when a word of
+    # at least three letters remains: "os" or "as" cut to one letter would meet everything.
+    def stem(word)
+      word = word.delete_suffix("s") if word.length > PLURAL_MIN && word.end_with?("s")
+      word[0, STEM_CHARS]
+    end
+
+    # {stem => [query words with that stem]}: "listar lista" is one stem, scored by
+    # its best word, so neither the order nor the repetition changes the score.
+    def stem_groups(text) = words(text).uniq.group_by { |word| stem(word) }
 
     Section = Data.define(:words, :stems)
 
@@ -150,19 +174,17 @@ module Insika
       Section.new(words: found, stems: Set.new(found.map { |word| stem(word) }))
     end
 
-    # Sections of one entry. Memoized with the entries: `all` and `reload` drop it, and
-    # 590 descriptions take ~30 ms to cut.
-    def terms_for(entry)
-      (@terms ||= {})[entry.name] ||= begin
-        first, rest = sentences(entry.description)
-        { name: section_of(entry.name), first: section_of(first), rest: section_of(rest) }
-      end
+    # Sections of one entry, cut once per snapshot: 590 descriptions take ~30 ms.
+    def sections_of(entry)
+      first, rest = sentences(entry.description)
+      { name: section_of(entry.name), first: section_of(first), rest: section_of(rest) }
     end
 
-    # 1 for the word itself, STEM_ONLY for a stem hit, 0 for none. A stem shorter than
-    # STEM_CHARS is a whole short word, so it also meets the longer stems it starts.
-    def hit(section, word, stem)
-      return 1 if section.words.include?(word)
+    # 1 when the section has one of the query words itself, STEM_ONLY for a stem hit,
+    # 0 for none. A stem shorter than STEM_CHARS is a whole short word, so it also
+    # meets the longer stems it starts.
+    def hit(section, stem, query_words)
+      return 1 if query_words.any? { |word| section.words.include?(word) }
       return STEM_ONLY if section.stems.include?(stem)
       return STEM_ONLY if stem.length < STEM_CHARS && section.stems.any? { |other| other.start_with?(stem) }
 
@@ -171,17 +193,19 @@ module Insika
 
     # Smoothed so that a stem every entry shares still scores above zero: in a catalog
     # of two tools a shared word must still match, it just cannot rank.
-    def idf_for(terms, universe)
+    def idf_for(terms, universe, index)
       size = universe.size
-      terms.to_h do |word, stem|
-        hits = universe.count { |entry| terms_for(entry).each_value.any? { |section| hit(section, word, stem).positive? } }
+      terms.to_h do |stem, query_words|
+        hits = universe.count do |entry|
+          index.fetch(entry.name).each_value.any? { |section| hit(section, stem, query_words).positive? }
+        end
         [stem, Math.log((size + 1.0) / (hits + 0.5))]
       end
     end
 
     def score_entry(sections, terms, idf)
-      terms.sum do |word, stem|
-        SECTIONS.sum { |key, weight| weight * hit(sections[key], word, stem) } * idf[stem]
+      terms.sum do |stem, query_words|
+        SECTIONS.sum { |key, weight| weight * hit(sections[key], stem, query_words) } * idf[stem]
       end
     end
 
