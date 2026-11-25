@@ -446,9 +446,18 @@ module Studio
       (mod = presence(r.params["guardrail_moderator"])) && (out["moderator"] = mod)
       responses = guardrail_responses_patch(r)
       out["responses"] = responses unless responses.empty?
+      echo_allow = guardrail_echo_allow_patch(r)
+      out["echo_allow"] = echo_allow unless echo_allow.empty?
       existing = @agent.guardrails || {}
       out["corpora"] = existing["corpora"] if existing["corpora"]
       out
+    end
+
+    # Canned texts the prompt-echo cut lets through: one per block, blocks
+    # separated by a blank line (a text with paragraphs still works — each
+    # paragraph is taken out of the prompt on its own).
+    def guardrail_echo_allow_patch(r)
+      r.params["guardrail_echo_allow"].to_s.split(/\n[ \t]*\r?\n/).map(&:strip).reject(&:empty?)
     end
 
     # Per-category safe-reply overrides (config over convention). Only

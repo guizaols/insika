@@ -44,4 +44,11 @@
           <% end %>
         </div>
       </details>
+      <details class="newfile">
+        <summary>canned texts the agent repeats <span class="muted">(never cut as a prompt leak; copy each exactly from the prompt, one per block, blank line between)</span></summary>
+        <% echo_allow = Array(@guardrails["echo_allow"] || @guardrails[:echo_allow]) %>
+        <label>texts
+          <textarea name="guardrail_echo_allow" rows="6"><%= echo_allow.join("\n\n") %></textarea>
+        </label>
+      </details>
     </fieldset>
