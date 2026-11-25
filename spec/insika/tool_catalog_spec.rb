@@ -140,6 +140,39 @@ RSpec.describe Insika::ToolCatalog do
       expect(catalog.search("sends recipient").map(&:name)).to eq(%w[send_email send_sms])
     end
 
+    # Review of insika#2: a word shorter than the stem only met itself, so "tag" lost list_tags.
+    it "a short word meets the longer words it starts" do
+      registry.register("list_tags") { FakeTool.new("Lists the tags of the store.") }
+      registry.register("list_faqs") { FakeTool.new("Lists the FAQs of the store.") }
+      expect(catalog.search("tag").map(&:name)).to eq(["list_tags"])
+      expect(catalog.search("faq").map(&:name)).to eq(["list_faqs"])
+    end
+
+    it "the word itself outranks a word that only shares its stem" do
+      reg = Insika::ToolRegistry.new
+      reg.register("configure_store") { FakeTool.new("Configure the store settings.") }
+      reg.register("confirm_order") { FakeTool.new("Confirmar o pedido do cliente.") }
+      cat = described_class.new(tool_registry: reg)
+      # "confirmar" and "configure" share "confi"
+      expect(cat.search("confirmar").map(&:name)).to eq(%w[confirm_order configure_store])
+    end
+
+    it "a tool named only with one-letter words is still found by its exact name" do
+      registry.register("a_b") { FakeTool.new("Tool with a short name") }
+      expect(catalog.search("a_b").map(&:name)).to eq(["a_b"])
+    end
+
+    it "tools asked for by exact name all come back, past the limit" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      names = catalog.search("send_email create_invoice send_sms", limit: 2).map(&:name)
+      expect(names).to contain_exactly("send_email", "create_invoice", "send_sms")
+    end
+
+    it "the limit counts the exact names, then fills with the closest by description" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("create_invoice recipient", limit: 2).map(&:name)).to eq(%w[create_invoice send_email])
+    end
+
     it "punctuation and one-letter words do not become terms" do
       expect(catalog.search("(e) , .")).to eq([])
       expect(catalog.search("(send_email)").map(&:name).first).to eq("send_email")

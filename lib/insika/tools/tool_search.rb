@@ -11,8 +11,9 @@ module Insika
     # RubyLLM::Tool) — it does not enter lib/insika.rb; the Executor loads it lazily in
     # configure_chat (like LoadSkill).
     class ToolSearch < RubyLLM::Tool
-      description "Searches and enables additional tools by describing the need"
-      parameter :query, description: "What you need to do (e.g.: 'send email', 'generate invoice')"
+      description "Enables tools listed in <available_tools> by their exact names, or finds the closest few by need"
+      parameter :query, description: "Tool names from <available_tools>, several at once (e.g.: 'send_email create_invoice'), " \
+                                      "or a short description of the need"
 
       # RubyLLM::Tool#name derives from self.class.name — for a nested class
       # (Insika::Tools::ToolSearch) it produces "insika--tools--tool_search", not
