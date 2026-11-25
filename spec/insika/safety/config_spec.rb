@@ -91,6 +91,17 @@ RSpec.describe Insika::Safety::Config do
     end
   end
 
+  describe "echo_allow" do
+    it "defaults to none" do
+      expect(described_class.from_hash({}).echo_allow).to eq([])
+    end
+
+    it "keeps the texts, drops blanks, ignores a non-list" do
+      expect(described_class.from_hash("echo_allow" => [" A text ", "", nil]).echo_allow).to eq(["A text"])
+      expect(described_class.from_hash("echo_allow" => "A text").echo_allow).to eq([])
+    end
+  end
+
   describe "responses (config-over-convention overrides)" do
     it "defaults to an empty override map" do
       expect(described_class.from_hash({}).responses).to eq({})

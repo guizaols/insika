@@ -10,16 +10,18 @@ module Insika
     #
     # An echo is a LONG verbatim run of the prompt (MIN_ECHO chars, whitespace
     # ignored). Packs also carry canned text the model is meant to repeat word for
-    # word, and some of it is longer than MIN_ECHO. A pack marks that text as a
-    # quote: lines starting with `>` (after any indentation). Those lines are left
-    # out of the text compared, so repeating them is never an echo, while the rest
-    # of the prompt stays protected at the same MIN_ECHO.
+    # word, and some of it is longer than MIN_ECHO. The engine cannot tell that text
+    # from an internal rule by its formatting (packs use quotes and lists for both),
+    # so the operator lists it: `guardrails.echo_allow`, exact texts. Those texts are
+    # taken out of the prompt before comparing, so repeating one is never an echo,
+    # while the rest of the prompt stays protected at the same MIN_ECHO.
     module PromptEcho
       WINDOW = 80
       STRIDE = 40
       MIN_ECHO = 400
-      # Squeezed prompts kept, keyed by the prompt text: an agent's prompt is the
-      # same on every turn, so squeezing it again per reply was wasted work.
+      # Squeezed prompts kept, keyed by the prompt text and the allow list: an
+      # agent's prompt is the same on every turn, so squeezing it again per reply
+      # was wasted work.
       CACHE_MAX = 64
       SQUEEZED = {}
 
@@ -28,11 +30,12 @@ module Insika
       # -> [text, echoed_chars]. text = the reply up to where the echo starts
       # (trailing whitespace dropped); echoed_chars = 0 when there was none.
       # Everything from the echo on goes: text after a pasted prompt is suspect too.
-      def cut(reply, prompt)
+      # `allow` = canned texts the agent may repeat (guardrails.echo_allow).
+      def cut(reply, prompt, allow: [])
         reply = reply.to_s
         return [reply, 0] if reply.size < MIN_ECHO # squeezing never lengthens it
 
-        haystack = squeezed_prompt(prompt.to_s)
+        haystack = squeezed_prompt(prompt.to_s, allow)
         return [reply, 0] if haystack.size < MIN_ECHO
 
         norm, map = squeeze_with_map(reply)
@@ -65,15 +68,22 @@ module Insika
       def squeeze(text) = text.gsub(/\s+/, " ")
 
       # Plain Hash, cleared when full: a miss only costs the squeeze again.
-      # Quote lines (`> …`) are dropped first: they are what the pack wants said.
-      def squeezed_prompt(prompt)
-        SQUEEZED.fetch(prompt) do
+      def squeezed_prompt(prompt, allow = [])
+        SQUEEZED.fetch([prompt, allow]) do
           SQUEEZED.clear if SQUEEZED.size >= CACHE_MAX
-          SQUEEZED[prompt] = squeeze(without_quotes(prompt))
+          SQUEEZED[[prompt, allow]] = without_allowed(squeeze(prompt), allow)
         end
       end
 
-      def without_quotes(prompt) = prompt.each_line.reject { |line| line.lstrip.start_with?(">") }.join
+      # Each allowed text is cut out of the squeezed prompt (a literal match, never a
+      # pattern). The "\n" left in its place never appears in a squeezed reply, so no
+      # run can bridge across it.
+      def without_allowed(haystack, allow)
+        allow.reduce(haystack) do |acc, text|
+          canned = squeeze(text.to_s).strip
+          canned.empty? ? acc : acc.gsub(canned, "\n")
+        end
+      end
 
       # The squeezed text plus, for each of its chars, the index in the original.
       def squeeze_with_map(text)

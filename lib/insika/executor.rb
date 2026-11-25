@@ -1431,7 +1431,9 @@ module Insika
     # system prompt keeps only what came before it (or the safe refusal when that is
     # nothing). The cut rides :guardrail_flagged like any other, with action "cut".
     def without_prompt_echo(state, answer)
-      text, echoed = Insika::Safety::PromptEcho.cut(answer, Insika::ModelVisible.instructions_of(state.chat))
+      allow = state.profile ? Insika::Safety::Config.from_profile(state.profile).echo_allow : []
+      text, echoed = Insika::Safety::PromptEcho.cut(answer, Insika::ModelVisible.instructions_of(state.chat),
+                                                    allow: allow)
       return answer if echoed.zero?
 
       state.guardrail_flags = Array(state.guardrail_flags) +

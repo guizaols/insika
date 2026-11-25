@@ -199,9 +199,15 @@ moderator off. See [`examples/guardrails/`](https://github.com/guizaols/insika/t
   "output": true,
   "moderator": "provider/model",     // optional LLM moderator; omit for detectors only
   "strictness": "low | medium | high",
-  "responses": { "injection": "safe reply…", "default": "…" }
+  "responses": { "injection": "safe reply…", "default": "…" },
+  "echo_allow": ["canned text the agent repeats word for word…"]
 }
 ```
+
+A reply that repeats 400+ characters of the system prompt in a row is cut there as a
+prompt leak. When the prompt carries a canned text that long which the agent must
+repeat verbatim, list it in `echo_allow` (exact text, whitespace ignored). It is taken
+out of the prompt before the comparison; every other part of the prompt stays protected.
 
 Strictness selects the detector categories (`low` = injection only; `medium`
 (default) and `high` add sexual and abuse). Safe-reply lookup falls back per

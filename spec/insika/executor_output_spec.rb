@@ -227,6 +227,37 @@ RSpec.describe "Insika::Executor turn output" do
     end
   end
 
+  # The last gate: a reply that pastes 400+ chars of the prompt is cut, unless the
+  # pasted text is one the agent's guardrails.echo_allow lists.
+  describe "the prompt-echo cut" do
+    let(:canned) { "Official notice: #{'our team reviews every request within two business days. ' * 8}".strip }
+    let(:prompt) { "#{'Internal rule text that must stay private. ' * 12}\nReply exactly:\n#{canned}" }
+
+    def echo_turn(allow)
+      self.profile = Insika::AgentProfile.build(id: "sales", model: "gpt", base_prompt: prompt,
+                                                guardrails: { "echo_allow" => allow })
+      chat = FakeChat.new
+      chat.final_content = "Sure!\n#{canned}"
+      run_turn(build_executor, chat)
+    end
+
+    attr_writer :profile
+
+    def profile = @profile || super
+
+    it "lets an allowed canned text through" do
+      echo_turn([canned])
+
+      expect(terminal_content).to eq("Sure!\n#{canned}")
+    end
+
+    it "cuts it when it is not allowed" do
+      echo_turn([])
+
+      expect(terminal_content).to eq("Sure!")
+    end
+  end
+
   describe "an :agent after-hook that replaces the response" do
     it "wins over what the model streamed — an explicit override is not narration" do
       hooks = Insika::Hooks.new
