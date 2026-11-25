@@ -438,6 +438,30 @@ RSpec.describe Insika::Tools::DataDefinedTool do
           .to raise_error(Insika::ValidationError, /exactly one of/)
       end
     end
+
+    describe "drop_lead_in" do
+      let(:body) { '{"tool_result":{"status":"SUBSCRIBED"}}' }
+      let(:halt) { { json_path: "tool_result.status", equals: ["SUBSCRIBED"] } }
+
+      it "travels with the halt, with or without a say" do
+        bare = tool(subscribe_def.merge(halt_when: halt.merge(drop_lead_in: true)),
+                    result: { status: 200, body: body }).execute(id: 6)
+        with_say = tool(subscribe_def.merge(halt_when: halt.merge(drop_lead_in: true, say: { text: "CALL_SUPPORT" })),
+                        result: { status: 200, body: body }).execute(id: 6)
+
+        expect(Insika::ToolDefinition.drop_lead_in?(bare.content)).to be(true)
+        expect(Insika::ToolDefinition.halt_say_of(bare.content)).to be_nil
+        expect(Insika::ToolDefinition.drop_lead_in?(with_say.content)).to be(true)
+        expect(Insika::ToolDefinition.halt_say_of(with_say.content)).to eq("CALL_SUPPORT")
+      end
+
+      it "is off unless set to true" do
+        result = tool(subscribe_def.merge(halt_when: halt.merge(drop_lead_in: "yes")),
+                      result: { status: 200, body: body }).execute(id: 6)
+
+        expect(result.content).to eq(body)
+      end
+    end
   end
 
   it "emits :data_tool_call with status, without leaking body/secret" do

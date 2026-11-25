@@ -2119,7 +2119,8 @@ module Insika
       # empty turn, which is what the consumer suppresses. The lead-in still WINS —
       # a model that introduced the escalation already said the right thing, and
       # publishing both would deliver the message twice, which is the whole reason
-      # `halt_when` exists.
+      # `halt_when` exists. Unless the tool set `halt_when.drop_lead_in`: then the
+      # lead-in is dropped, because for that tool any lead-in is a second message.
       return halt_answer(response, output) if halted?(response)
       # An :agent after-hook REPLACED the response. An explicit override outranks
       # what the model streamed (the OutputValidator still sees the result).
@@ -2135,12 +2136,14 @@ module Insika
     end
 
     # The lead-in when there is one; otherwise whatever the halting tool declared it
-    # wants the customer to get (`halt_when.say`). Never both.
+    # wants the customer to get (`halt_when.say`). Never both. A tool with
+    # `halt_when.drop_lead_in` skips the lead-in: only its `say`, or nothing.
     def halt_answer(response, output)
-      lead = output.halt_text.to_s
+      content = content_of(response)
+      lead = Insika::ToolDefinition.drop_lead_in?(content) ? "" : output.halt_text.to_s
       return lead unless lead.strip.empty?
 
-      Insika::ToolDefinition.halt_say_of(content_of(response)).to_s
+      Insika::ToolDefinition.halt_say_of(content).to_s
     end
 
     def halted?(response) = response.is_a?(Insika::ToolDefinition::Halt)

@@ -203,6 +203,22 @@ prompt.
 - Omit `say` and the behaviour is unchanged — a halt with no lead-in completes empty,
   which is what a channel consumer drops.
 
+#### `drop_lead_in`: when any lead-in is the wrong message
+
+Some tools make every lead-in wrong. An escalation whose channel already sends its own
+handoff message gets "I'll open a ticket for you" right before it — a second message
+that the prompt forbids and the model writes anyway, in the same message as the call.
+`"drop_lead_in": true` never publishes the text written before the call: the turn is
+`say` when the tool declared one, else empty.
+
+```jsonc
+"halt_when": { "json_path": "tool_result.delivered", "equals": ["true"],
+               "drop_lead_in": true }
+```
+
+The cost is the useful part of a lead-in too ("your items are on pre-order"). Off by
+default; only `true` turns it on.
+
 `say` is declared on the **tool**, because what a backend answers is a property of that
 backend, not of whoever calls it. Every agent sharing the tool gets the same value.
 

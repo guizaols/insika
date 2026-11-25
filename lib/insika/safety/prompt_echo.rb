@@ -9,8 +9,11 @@ module Insika
     # searches, so it runs on every turn.
     #
     # An echo is a LONG verbatim run of the prompt (MIN_ECHO chars, whitespace
-    # ignored). Packs carry canned lines the model is meant to repeat ("to return
-    # an item, open…"); those are far shorter, so a quote is never an echo.
+    # ignored). Packs also carry canned text the model is meant to repeat word for
+    # word, and some of it is longer than MIN_ECHO. A pack marks that text as a
+    # quote: lines starting with `>` (after any indentation). Those lines are left
+    # out of the text compared, so repeating them is never an echo, while the rest
+    # of the prompt stays protected at the same MIN_ECHO.
     module PromptEcho
       WINDOW = 80
       STRIDE = 40
@@ -62,12 +65,15 @@ module Insika
       def squeeze(text) = text.gsub(/\s+/, " ")
 
       # Plain Hash, cleared when full: a miss only costs the squeeze again.
+      # Quote lines (`> …`) are dropped first: they are what the pack wants said.
       def squeezed_prompt(prompt)
         SQUEEZED.fetch(prompt) do
           SQUEEZED.clear if SQUEEZED.size >= CACHE_MAX
-          SQUEEZED[prompt] = squeeze(prompt)
+          SQUEEZED[prompt] = squeeze(without_quotes(prompt))
         end
       end
+
+      def without_quotes(prompt) = prompt.each_line.reject { |line| line.lstrip.start_with?(">") }.join
 
       # The squeezed text plus, for each of its chars, the index in the original.
       def squeeze_with_map(text)
