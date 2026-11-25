@@ -261,18 +261,19 @@ module Insika
     # 0 for none. A query word shorter than STEM_CHARS is its own stem and also meets
     # the longer stems it starts; a stem the plural cut shortened ("mais" -> "mai") is
     # not a word the model typed, so it does not.
-    def hit(section, stem, query_words)
+    def hit(section, stem, query_words, name: false)
       return 1 if query_words.any? { |word| section.words.include?(word) }
       return STEM_ONLY if section.stems.include?(stem)
       return STEM_ONLY if prefix?(stem, query_words) && section.stems.any? { |other| other.start_with?(stem) }
-      return STEM_ONLY if section.stems.any? { |other| short_word?(other, section) && stem.start_with?(other) }
+      return STEM_ONLY if name && section.stems.any? { |other| short_word?(other, section) && stem.start_with?(other) }
 
       0
     end
 
-    # The other way round: a short word in the tool ("list", "tag", "get") meets the
-    # longer query words it starts ("listar", "tagged", "getting"). Under PLURAL_MIN
-    # letters ("da", "do") it would meet almost everything, so it does not count.
+    # The other way round: a short word in the tool name ("list", "tag", "get") meets the
+    # longer query words it starts ("listar", "tagged", "getting"). Name only: prose is
+    # full of "com", "que", "use", which would meet "comprar", "query", "user". Under
+    # PLURAL_MIN letters ("da", "do") it would meet almost everything, so it does not count.
     def short_word?(stem, section)
       stem.length.between?(PLURAL_MIN, STEM_CHARS - 1) && section.words.include?(stem)
     end
@@ -283,7 +284,7 @@ module Insika
     # then read by both the IDF and the score.
     def hits_of(sections, terms)
       terms.to_h do |stem, query_words|
-        [stem, SECTIONS.keys.to_h { |key| [key, hit(sections[key], stem, query_words)] }]
+        [stem, SECTIONS.keys.to_h { |key| [key, hit(sections[key], stem, query_words, name: key == :name)] }]
       end
     end
 

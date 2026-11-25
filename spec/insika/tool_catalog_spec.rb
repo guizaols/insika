@@ -218,6 +218,14 @@ RSpec.describe Insika::ToolCatalog do
       expect(described_class.new(tool_registry: reg).search("listar", limit: 8).map(&:name)).to eq(["list_orders"])
     end
 
+    # Review of insika#2: "com" in every description met "comprovante", so it ranked nothing.
+    it "a short word in a description does not meet the longer query words it starts" do
+      reg = Insika::ToolRegistry.new
+      reg.register("get_receipt") { FakeTool.new("Envia o comprovante do pedido.") }
+      6.times { |i| reg.register("misc_#{i}") { FakeTool.new("Fala com o cliente.") } }
+      expect(described_class.new(tool_registry: reg).search("comprovante", limit: 8).map(&:name)).to eq(["get_receipt"])
+    end
+
     it "a denied name written as a plain word still ranks the others" do
       reg = Insika::ToolRegistry.new
       reg.register("email") { FakeTool.new("Denied.") }
