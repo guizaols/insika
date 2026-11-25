@@ -30,7 +30,7 @@ module Insika
       RANKED_BUDGET_FACTOR = 3
 
       def initialize(catalog, deferred_allowed, chat, tool_registry:, event_stream:,
-                     checkpoint_store:, state:, trace_recorder: nil)
+                     checkpoint_store:, state:, trace_recorder: nil, enabled: [])
         @catalog = catalog
         @deferred_allowed = Array(deferred_allowed).map(&:to_s)
         @chat = chat
@@ -39,7 +39,9 @@ module Insika
         @checkpoint_store = checkpoint_store
         @state = state
         @trace_recorder = trace_recorder
-        @promoted = [] # names already promoted IN THIS chat — idempotency
+        # names already promoted IN THIS chat — idempotency. `enabled:` seeds the ones a
+        # resumed turn brings back from the approval pause, so a search skips them too.
+        @promoted = Array(enabled).map(&:to_s)
         @ranked_count = 0 # tools this turn enabled by description, against the budget
         super()
       end

@@ -88,7 +88,8 @@ module Insika
                                        tool_registry: @tool_registry,
                                        checkpoint_store: @checkpoint_store,
                                        event_stream: @event_stream, state: state,
-                                       trace_recorder: @tool_trace_store)
+                                       trace_recorder: @tool_trace_store,
+                                       enabled: restored & deferred_allowed)
       end
 
       # load_skill is a system default (outside the allowlist), otherwise
