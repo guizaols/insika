@@ -786,8 +786,9 @@ held client, which does its own discovery on first use regardless of whether
    as one (`send_email`, `getOrder`) is not read as description words too: a query
    of names alone enables just those tools. A plain word that is also a name
    ("orders") still ranks the other tools. A name listed in `<available_tools>` but
-   denied to the agent enables nothing, brings no lookalike, and `message` says it
-   is not available. The other words lose
+   denied to the agent, written as a name, enables nothing, brings no lookalike, and
+   `message` says it is not available. A name the agent is not shown is read as
+   plain words. The other words lose
    a final "s" and are compared by their first five characters ("tags" meets "tag";
    a word typed shorter than that meets the words it starts: "tag" meets "tagged",
    but "mais", cut to "mai", does not meet "mail"), the word itself counts twice a
@@ -803,7 +804,7 @@ held client, which does its own discovery on first use regardless of whether
    the exact names. Names asked for past the cap still come, up to three times the
    cap; the result names the ones left out. Tools already enabled in the chat leave
    the ranking and are listed by name in `already_enabled`, so a similar search
-   brings the next ones; `message` says how many matches the cap cut. One chat
+   brings the next ones; `message` says how many matches the cap cut. One turn
    enables at most three times the cap by description; past that only exact names
    work, and `message` says so. Without the
    cap, a 590-tool catalog had one query enable nearly all of them.

@@ -200,6 +200,34 @@ RSpec.describe Insika::ToolCatalog do
       expect(found.unavailable).to eq(["delete_order"])
     end
 
+    it "a name the agent is not shown is plain words, never unavailable" do
+      reg = Insika::ToolRegistry.new
+      reg.register("email") { FakeTool.new("Another agent's tool.") }
+      reg.register("get_customer") { FakeTool.new("This agent's eager tool.") }
+      reg.register("send_email") { FakeTool.new("Sends an email.") }
+      found = described_class.new(tool_registry: reg)
+                             .find("get_customer email", within: ["send_email"], listed: ["send_email"], limit: 8)
+      expect(found.entries.map(&:name)).to eq(["send_email"])
+      expect(found.unavailable).to eq([])
+    end
+
+    it "a short tool word meets the longer query words it starts" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_orders") { FakeTool.new("Shows orders.") }
+      reg.register("cancel_order") { FakeTool.new("Cancels one.") }
+      expect(described_class.new(tool_registry: reg).search("listar", limit: 8).map(&:name)).to eq(["list_orders"])
+    end
+
+    it "a denied name written as a plain word still ranks the others" do
+      reg = Insika::ToolRegistry.new
+      reg.register("email") { FakeTool.new("Denied.") }
+      reg.register("send_email") { FakeTool.new("Sends an email.") }
+      found = described_class.new(tool_registry: reg)
+                             .find("email", within: ["send_email"], listed: %w[email send_email], limit: 8)
+      expect(found.entries.map(&:name)).to eq(["send_email"])
+      expect(found.unavailable).to eq([])
+    end
+
     it "matches far below the best one are dropped, not counted as more" do
       reg = Insika::ToolRegistry.new
       reg.register("list_orders") { FakeTool.new("Lista os pedidos da loja.") }

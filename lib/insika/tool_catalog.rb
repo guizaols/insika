@@ -47,13 +47,15 @@ module Insika
     #   names in <available_tools> and asks for the ones it needs, so a list of names
     #   gets all of them. A matched name written as a name (`send_email`) is not read as
     #   description words too, so it does not bring every tool saying "send" or "email";
-    #   a plain word that is also a name ("orders") is. A name outside `within:` enables
-    #   nothing and is never read as words (see Found#unavailable).
+    #   a plain word that is also a name ("orders") is. A name in `listed:` but outside
+    #   `within:` enables nothing (see Found#unavailable); a name the agent is not shown
+    #   is only words, so another agent's `email` tool never eats the word "email".
     # - The other words lose a final "s" and are compared by their first STEM_CHARS
     #   characters, so "listar" meets "Lista", "produtos" meets "produto" and "tags"
     #   meets "tag". A query word already shorter than that meets any word it starts
     #   ("tag" meets "tagged"); one the "s" cut shortened does not ("mais" does not
-    #   meet "mail"). The word itself counts twice as much as a stem-only hit
+    #   meet "mail"). The other way round too: a tool word of three or four letters
+    #   meets the query words it starts ("listar" meets `list`). The word itself counts twice as much as a stem-only hit
     #   ("confirmar" over "configure"); query words that share a stem count once,
     #   by the best of them, whatever their order. Names are also split at camelCase
     #   (`getOrderStatus` meets "order").
@@ -78,20 +80,22 @@ module Insika
     # - known: matches among `known:` (already enabled), never in entries nor counted
     #   against the limit, so asking again brings the next ones instead of the same top;
     # - left_out: exact names past the name cap, to ask for in another call;
-    # - unavailable: exact names of catalog tools outside `within:` (listed in the
-    #   prompt but denied); never split into words, so no lookalike comes instead;
+    # - unavailable: names written as names (`delete_order`) of tools in `listed:` (the
+    #   names the prompt shows) but outside `within:`; never split into words, so no
+    #   lookalike comes instead;
     # - more: how many description matches the limit cut.
     #
     # `ranked_cap:` caps the description matches on top of `limit:` (the caller's
     # per-chat budget).
     Found = Data.define(:entries, :named, :known, :left_out, :unavailable, :more)
 
-    def find(query, within: nil, limit: nil, known: [], ranked_cap: nil)
+    def find(query, within: nil, listed: nil, limit: nil, known: [], ranked_cap: nil)
       current = snapshot # one index for the whole search, even if `reload` runs meanwhile
       universe = within ? select_names(current.entries, within) : current.entries
+      shown = listed ? select_names(current.entries, listed) | universe : current.entries
       known = Array(known).map(&:to_s)
       tokens = query.to_s.scan(NAME_TOKEN)
-      named = by_name(tokens, current.entries, universe, known, limit)
+      named = by_name(tokens, shown, universe, known, limit)
       ranked = rank(stem_groups(rank_words(tokens, named).join(" ")), universe, current.terms,
                     skip: named[:exact])
       build_found(named, ranked, known, limit, ranked_cap)
@@ -125,21 +129,19 @@ module Insika
       exact = matched & universe
       repeated, fresh = exact.partition { |entry| known.include?(entry.name) }
       kept = limit ? fresh.first(limit * NAME_CAP_FACTOR) : fresh
+      shaped = tokens.select { |token| token.match?(NAME_SHAPE) }.map(&:downcase)
       { matched: matched, exact: exact, repeated: repeated, fresh: fresh, kept: kept,
-        unavailable: matched - universe }
+        unavailable: (matched - universe).select { |entry| shaped.include?(entry.name.downcase) } }
     end
 
     # A matched name that looks like one (`send_email`, `getOrder`) stays out of the
     # ranking, so it does not bring every tool saying "send" or "email". A plain word
     # that happens to be a name (`orders`) still ranks: "list orders" must reach
-    # `list_orders`. A denied name never ranks, so no lookalike comes in its place.
+    # `list_orders`, even when `orders` is denied. A denied name written as a name never
+    # ranks, so no lookalike comes in its place.
     def rank_words(tokens, named)
       names = named[:matched].map { |entry| entry.name.downcase }
-      denied = named[:unavailable].map { |entry| entry.name.downcase }
-      tokens.reject do |token|
-        name = token.downcase
-        denied.include?(name) || (names.include?(name) && token.match?(NAME_SHAPE))
-      end
+      tokens.reject { |token| token.match?(NAME_SHAPE) && names.include?(token.downcase) }
     end
 
     def build_found(named, ranked, known, limit, ranked_cap)
@@ -263,8 +265,16 @@ module Insika
       return 1 if query_words.any? { |word| section.words.include?(word) }
       return STEM_ONLY if section.stems.include?(stem)
       return STEM_ONLY if prefix?(stem, query_words) && section.stems.any? { |other| other.start_with?(stem) }
+      return STEM_ONLY if section.stems.any? { |other| short_word?(other, section) && stem.start_with?(other) }
 
       0
+    end
+
+    # The other way round: a short word in the tool ("list", "tag", "get") meets the
+    # longer query words it starts ("listar", "tagged", "getting"). Under PLURAL_MIN
+    # letters ("da", "do") it would meet almost everything, so it does not count.
+    def short_word?(stem, section)
+      stem.length.between?(PLURAL_MIN, STEM_CHARS - 1) && section.words.include?(stem)
     end
 
     def prefix?(stem, query_words) = stem.length < STEM_CHARS && query_words.include?(stem)

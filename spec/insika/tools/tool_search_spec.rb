@@ -199,8 +199,12 @@ RSpec.describe Insika::Tools::ToolSearch do
   end
 
   it "a denied tool asked by name says so and enables nothing" do
+    profile = Insika::AgentProfile.build(id: "a", model: "m", tools_deferred: %w[send_email create_invoice])
     chat = FakeChat.new
-    result = build_search(chat).execute(query: "create_invoice")
+    search = described_class.new(catalog, ["send_email"], chat, tool_registry: registry, event_stream: event_stream,
+                                 checkpoint_store: checkpoint_store,
+                                 state: Insika::TurnState.new(task: task, profile: profile, turn: 1, message: "hi"))
+    result = search.execute(query: "create_invoice")
     expect(chat.tools).to eq([])
     expect(result[:message]).to include("Not available to this agent: create_invoice")
   end
@@ -216,7 +220,23 @@ RSpec.describe Insika::Tools::ToolSearch do
     spent = search.execute(query: "mail")
     expect(spent[:matched]).to eq([])
     expect(spent[:message]).to include("ask for tools by exact name")
+    expect(spent[:message]).not_to include("no tool found")
     expect(search.execute(query: "mail_3")[:matched].map { |m| m[:name] }).to eq(["mail_3"])
+  end
+
+  it "when the budget, not the limit, cut the matches, the note says budget" do
+    state.profile.limits[:tool_search_limit] = 4
+    reg = Insika::ToolRegistry.new
+    16.times { |i| reg.register("mail_#{i}") { deferred_tool("mail_#{i}", "Sends mail #{i}") } }
+    3.times { |i| reg.register("alpha_#{i}") { deferred_tool("alpha_#{i}", "Alpha thing #{i}") } }
+    cat = Insika::ToolCatalog.new(tool_registry: reg)
+    search = described_class.new(cat, cat.all.map(&:name), FakeChat.new, tool_registry: reg,
+                                 event_stream: event_stream, checkpoint_store: checkpoint_store, state: state)
+    %w[mail alpha mail].each { |query| search.execute(query: query) } # 4 + 3 + 4 of 12
+    last = search.execute(query: "mail")
+    expect(last[:matched].size).to eq(1)
+    expect(last[:message]).to include("used its searches by description")
+    expect(last[:message]).not_to include("past the limit")
   end
 
   describe "mid-loop propagation with FakeChat" do

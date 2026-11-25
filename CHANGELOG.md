@@ -79,7 +79,7 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 
   asked); a query of names alone enables just those tools, while a plain word that
   is also a name ("orders") still ranks the rest. A listed but denied name enables
   nothing and the result says it is not available, instead of enabling lookalikes.
-  Matches under a quarter of the best score are dropped, and one chat enables at
+  Matches under a quarter of the best score are dropped, and one turn enables at
   most three times the cap by description (exact names stay open), so repeated
   vague searches no longer refill the window. camelCase names are split into words. Tools already
   enabled in the chat leave the ranking (listed in `already_enabled`), so a similar
