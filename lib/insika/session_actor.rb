@@ -63,7 +63,9 @@ module Insika
       # the FIFO with nothing to join — it became a turn of its own behind two
       # others, and a `stream=false` caller then waited for BOTH to run before it
       # heard anything. A window is now what EXTENDS the door, never what creates it.
-      @doors[task.id] = open_door(task) if policy&.collect?
+      # A caller-composed turn takes no fragments: a customer's text merged into it
+      # would ride `origin: engine`, which the moderator skips (SCRUM-7415).
+      @doors[task.id] = open_door(task) if policy&.collect? && customer_turn?(task)
       @queue.enqueue([task, profile, resume_from, policy, timing])
       task.id
     end
@@ -169,6 +171,12 @@ module Insika
 
       @executor.emit_coalesced(task, merged: merged, arrivals: pending[:arrivals])
       @executor.task_store.find(task.id) || task
+    end
+
+    def customer_turn?(task)
+      command = task.respond_to?(:command) ? task.command : nil
+      payload = command.is_a?(Hash) ? (command["payload"] || command[:payload] || {}) : {}
+      [nil, "", MessageOrigin::CUSTOMER].include?(payload["origin"] || payload[:origin])
     end
 
     def open_door(task)

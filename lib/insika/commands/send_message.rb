@@ -106,7 +106,7 @@ module Insika
         # profile declaration = the hook is off (parity).
         touch_contact(p, profile, command, origin)
 
-        result = start_turn(command, p, profile)
+        result = start_turn(command, p, profile, origin)
         @inbound_log.record(key, result[:task_id]) if key
         result
       end
@@ -149,7 +149,7 @@ module Insika
       end
 
       # The turn (or the verdict that this message joined someone else's).
-      def start_turn(command, p, profile)
+      def start_turn(command, p, profile, origin)
         message = p[:message]
 
         # a fragment for a session whose turn is still at the door
@@ -163,7 +163,10 @@ module Insika
         # last ones waited minutes in the FIFO (Sentry ACHEI-B2B-1FW).
         # `steer` stays text-only: a running turn has already read its parts.
         media = media?(p[:parts])
-        if !profile.shared_conversations && coalescable?(command)
+        # Only a customer's message joins another turn. A caller-composed one (`origin:
+        # engine`) merged into a customer turn lost its origin, and the moderator read
+        # the caller's orders as the customer injecting (SCRUM-7415).
+        if !profile.shared_conversations && coalescable?(command) && customer_origin?(origin)
           if (joined = @executor.collect_into_pending(p[:session_id], message, profile: profile,
                                                                                 parts: (p[:parts] if media)))
             return { task_id: joined, merged: true }
@@ -215,6 +218,8 @@ module Insika
       def media?(parts)
         Insika::Media.parts(parts).any? { |p| p.audio? || p.image? }
       end
+
+      def customer_origin?(origin) = [nil, Insika::MessageOrigin::CUSTOMER].include?(origin)
 
       def coalescable?(command)
         transport = command.meta[:transport]

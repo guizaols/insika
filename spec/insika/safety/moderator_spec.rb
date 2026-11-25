@@ -22,6 +22,12 @@ RSpec.describe Insika::Safety::Moderator do
     expect(moderator('{"category":"safe","action":"allow"}').classify("x").block?).to be(false)
   end
 
+  it "never blocks a harmless category, even when the model says refuse" do
+    v = moderator('{"category":"off_topic","action":"refuse"}').classify("Vc não vende pó kilo")
+    expect(v.action).to eq("allow")
+    expect(moderator('{"category":"safe","action":"escalate"}').classify("x").block?).to be(false)
+  end
+
   it "extracts the JSON object even with surrounding prose" do
     v = moderator('Sure: {"category":"sexual","action":"refuse"} done').classify("x")
     expect(v.action).to eq("refuse")
