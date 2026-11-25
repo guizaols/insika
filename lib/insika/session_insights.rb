@@ -13,9 +13,9 @@ module Insika
   #   but no task — it never ran through the engine, so it says nothing about it;
   # · simulator/eval sessions (SessionStore.synthetic?) are left out unless asked for.
   #
-  # ponytail: every call reads all session stats and all tasks (one bulk read each).
-  # Fine for thousands of sessions on one SQLite file; add per-agent indexes when a
-  # call gets slow.
+  # ponytail: every call reads all session stats (one bulk read) and scans every task
+  # one record at a time, keeping three fields (TaskStore#session_refs). Memory stays
+  # flat; add a per-session task index when a call gets slow.
   class SessionInsights
     SNIPPET = 400
 
@@ -94,7 +94,7 @@ module Insika
     end
 
     def turns_by_session(since)
-      tasks = @tasks.all.select(&:session_id)
+      tasks = @tasks.session_refs
       tasks = tasks.select { |t| t.created_at.to_s >= since } if since
       tasks.group_by(&:session_id)
     end

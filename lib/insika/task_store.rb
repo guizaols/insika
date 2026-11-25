@@ -233,13 +233,23 @@ module Insika
 
     def with_status(*statuses)
       wanted = statuses.flatten
-      @store.list(SCOPE, KEY_PREFIX).each_with_index.filter_map do |key, i|
-        Async::Task.current?&.yield if (i % SCAN_YIELD_EVERY).zero? && defined?(Async::Task)
-        record = @store.get(SCOPE, key)
-        next if record.nil?
-
+      scan.filter_map do |record|
         task = to_task(record)
         task if wanted.include?(task.status)
+      end
+    end
+
+    # -> [Ref] session, status and creation time of every task that has a session.
+    # Reads one record at a time and keeps three fields: #all parses every task
+    # (command payload, executions) at once, and each report call held GBs in the
+    # worker that served it.
+    Ref = Data.define(:session_id, :status, :created_at)
+
+    def session_refs
+      scan.filter_map do |record|
+        next if record["session_id"].nil?
+
+        Ref.new(session_id: record["session_id"], status: record["status"], created_at: record["created_at"])
       end
     end
 
@@ -292,6 +302,17 @@ module Insika
     end
 
     private
+
+    # Every task record, read one by one, yielding every SCAN_YIELD_EVERY (see #with_status).
+    def scan
+      return enum_for(:scan) unless block_given?
+
+      @store.list(SCOPE, KEY_PREFIX).each_with_index do |key, i|
+        Async::Task.current?&.yield if (i % SCAN_YIELD_EVERY).zero? && defined?(Async::Task)
+        record = @store.get(SCOPE, key)
+        yield record unless record.nil?
+      end
+    end
 
     def key_for(id)
       "#{KEY_PREFIX}#{id}"

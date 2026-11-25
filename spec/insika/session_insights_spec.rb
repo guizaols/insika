@@ -31,6 +31,12 @@ RSpec.describe Insika::SessionInsights do
                              "turns_by_status" => { "queued" => 2 }, "flagged_sessions" => 1)
     end
 
+    it "never bulk-reads the tasks scope (each report held GBs in the worker)" do
+      allow(backend).to receive(:entries).and_call_original
+      expect(backend).not_to receive(:entries).with(Insika::TaskStore::SCOPE, anything)
+      expect(insights.agent_summary.first["turns"]).to eq(2)
+    end
+
     it "includes synthetic sessions when asked" do
       expect(insights.agent_summary(include_synthetic: true).first["sessions_with_turns"]).to eq(2)
     end
