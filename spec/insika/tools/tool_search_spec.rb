@@ -102,6 +102,17 @@ RSpec.describe Insika::Tools::ToolSearch do
     expect(result2[:already_enabled]).to eq(["send_email"]) # still found
   end
 
+  it "tools a resumed turn brought back count as already enabled" do
+    chat = FakeChat.new
+    search = described_class.new(catalog, ["send_email"], chat,
+                                 tool_registry: registry, event_stream: event_stream,
+                                 checkpoint_store: checkpoint_store, state: state, enabled: ["send_email"])
+    result = search.execute(query: "email")
+    expect(chat.tools).to be_empty # not wired a second time
+    expect(result[:matched]).to eq([])
+    expect(result[:already_enabled]).to eq(["send_email"])
+  end
+
   describe "tool_search_limit" do
     let(:registry) do
       reg = Insika::ToolRegistry.new
