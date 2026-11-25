@@ -83,9 +83,9 @@ RSpec.describe Insika::ToolCatalog do
       expect(catalog.search("invoice", within: ["send_email"])).to eq([])
     end
 
-    it "ranking: a name match (weight 2) comes before a description-only match (weight 1)" do
+    it "ranking: a name match comes before a description-only match" do
       registry.register("report") { FakeTool.new("faz um email resumido") } # 'email' in the desc
-      # 'email' hits the name of send_email (2) and the desc of report (1)
+      # 'email' hits the name of send_email and only the desc of report
       expect(catalog.search("email").map(&:name)).to eq(%w[send_email report])
     end
 
@@ -96,6 +96,249 @@ RSpec.describe Insika::ToolCatalog do
       cat = described_class.new(tool_registry: reg)
       # both hit only the desc ('xyz'), equal score -> registration order (z before a)
       expect(cat.search("xyz").map(&:name)).to eq(%w[z_tool a_tool])
+    end
+
+    it "compares words by their stem, so a verb form meets its noun" do
+      registry.register("list_products") { FakeTool.new("Lista os produtos do catálogo da loja.") }
+      # "listar" is not a substring of "Lista", but they share the stem
+      expect(catalog.search("listar").map(&:name)).to eq(["list_products"])
+    end
+
+    it "a query word equal to a tool name puts that tool first" do
+      registry.register("send_email_report") { FakeTool.new("Sends the e-mail report to the recipient") }
+      # send_email_report hits more words (report x2, recipient), but the name asked wins
+      expect(catalog.search("recipient report create_invoice").map(&:name).first).to eq("create_invoice")
+    end
+
+    it "several exact names in one query all come first" do
+      registry.register("report") { FakeTool.new("Sends a report to the recipient") }
+      names = catalog.search("send_email create_invoice recipient").map(&:name)
+      expect(names.first(2)).to contain_exactly("send_email", "create_invoice")
+    end
+
+    it "a word every tool shares cannot outrank a rare one (IDF)" do
+      reg = Insika::ToolRegistry.new
+      reg.register("store_hours") { FakeTool.new("Horário de atendimento da loja da sessão") }
+      reg.register("store_faq") { FakeTool.new("FAQ da loja da sessão, da categoria pedida") }
+      reg.register("queue_state") { FakeTool.new("Estado das filas do Sidekiq da loja") }
+      cat = described_class.new(tool_registry: reg)
+      # by raw count the three tie; "da"/"loja" are in every description, "sidekiq" in one
+      expect(cat.search("da loja da sessão sidekiq").map(&:name).first).to eq("queue_state")
+    end
+
+    it "the description's first sentence outweighs the rest" do
+      reg = Insika::ToolRegistry.new
+      reg.register("switch_a") { FakeTool.new("Turns the banner on or off. Use after list_faqs, not for FAQs.") }
+      reg.register("switch_b") { FakeTool.new("Turns a FAQ on or off. The panel asks for approval.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("turn faq off").map(&:name)).to eq(%w[switch_b switch_a])
+    end
+
+    it "limit: caps the result at the best matches" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("sends recipient", limit: 1).map(&:name)).to eq(["send_email"])
+      expect(catalog.search("sends recipient").map(&:name)).to eq(%w[send_email send_sms])
+    end
+
+    # Review of insika#2: a word shorter than the stem only met itself, so "tag" lost list_tags.
+    it "a short word meets the longer words it starts" do
+      registry.register("list_tags") { FakeTool.new("Lists the tags of the store.") }
+      registry.register("list_faqs") { FakeTool.new("Lists the FAQs of the store.") }
+      expect(catalog.search("tag").map(&:name)).to eq(["list_tags"])
+      expect(catalog.search("faq").map(&:name)).to eq(["list_faqs"])
+    end
+
+    it "the word itself outranks a word that only shares its stem" do
+      reg = Insika::ToolRegistry.new
+      reg.register("configure_store") { FakeTool.new("Configure the store settings.") }
+      reg.register("confirm_order") { FakeTool.new("Confirmar o pedido do cliente.") }
+      cat = described_class.new(tool_registry: reg)
+      # "confirmar" and "configure" share "confi"
+      expect(cat.search("confirmar").map(&:name)).to eq(%w[confirm_order configure_store])
+    end
+
+    it "a tool named only with one-letter words is still found by its exact name" do
+      registry.register("a_b") { FakeTool.new("Tool with a short name") }
+      expect(catalog.search("a_b").map(&:name)).to eq(["a_b"])
+    end
+
+    it "tools asked for by exact name all come back, past the limit" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      names = catalog.search("send_email create_invoice send_sms", limit: 2).map(&:name)
+      expect(names).to contain_exactly("send_email", "create_invoice", "send_sms")
+    end
+
+    it "the limit counts the exact names, then fills with the closest by description" do
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("create_invoice recipient", limit: 2).map(&:name)).to eq(%w[create_invoice send_email])
+    end
+
+    # Review r2 of insika#2: the matched name was also read as words, so "send_email"
+    # brought every tool saying "send" or "email" and 4 extra schemas per search.
+    it "a query of exact names brings only those tools" do
+      registry.register("send_email_report") { FakeTool.new("Emails the weekly report") }
+      registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+      expect(catalog.search("send_email", limit: 8).map(&:name)).to eq(["send_email"])
+    end
+
+    # Review r3 of insika#2: a plain word equal to a name was dropped from the ranking.
+    it "a plain word that is also a tool name still ranks the other tools" do
+      reg = Insika::ToolRegistry.new
+      reg.register("orders") { FakeTool.new("Order overview.") }
+      reg.register("list_faqs") { FakeTool.new("List the FAQs.") }
+      reg.register("list_orders") { FakeTool.new("List the orders.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("list orders", limit: 2).map(&:name)).to eq(%w[orders list_orders])
+    end
+
+    it "a denied tool asked by name enables nothing and brings no lookalike" do
+      reg = Insika::ToolRegistry.new
+      reg.register("delete_order") { FakeTool.new("Deletes an order.") }
+      reg.register("cancel_order") { FakeTool.new("Cancels an order.") }
+      found = described_class.new(tool_registry: reg).find("delete_order", within: ["cancel_order"], limit: 8)
+      expect(found.entries).to eq([])
+      expect(found.unavailable).to eq(["delete_order"])
+    end
+
+    it "a name the agent is not shown is plain words, never unavailable" do
+      reg = Insika::ToolRegistry.new
+      reg.register("email") { FakeTool.new("Another agent's tool.") }
+      reg.register("get_customer") { FakeTool.new("This agent's eager tool.") }
+      reg.register("send_email") { FakeTool.new("Sends an email.") }
+      found = described_class.new(tool_registry: reg)
+                             .find("get_customer email", within: ["send_email"], listed: ["send_email"], limit: 8)
+      expect(found.entries.map(&:name)).to eq(["send_email"])
+      expect(found.unavailable).to eq([])
+    end
+
+    it "a short tool word meets the longer query words it starts" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_orders") { FakeTool.new("Shows orders.") }
+      reg.register("cancel_order") { FakeTool.new("Cancels one.") }
+      expect(described_class.new(tool_registry: reg).search("listar", limit: 8).map(&:name)).to eq(["list_orders"])
+    end
+
+    # Review of insika#2: "com" in every description met "comprovante", so it ranked nothing.
+    it "a short word in a description does not meet the longer query words it starts" do
+      reg = Insika::ToolRegistry.new
+      reg.register("get_receipt") { FakeTool.new("Envia o comprovante do pedido.") }
+      6.times { |i| reg.register("misc_#{i}") { FakeTool.new("Fala com o cliente.") } }
+      expect(described_class.new(tool_registry: reg).search("comprovante", limit: 8).map(&:name)).to eq(["get_receipt"])
+    end
+
+    it "a denied name written as a plain word still ranks the others" do
+      reg = Insika::ToolRegistry.new
+      reg.register("email") { FakeTool.new("Denied.") }
+      reg.register("send_email") { FakeTool.new("Sends an email.") }
+      found = described_class.new(tool_registry: reg)
+                             .find("email", within: ["send_email"], listed: %w[email send_email], limit: 8)
+      expect(found.entries.map(&:name)).to eq(["send_email"])
+      expect(found.unavailable).to eq([])
+    end
+
+    it "matches far below the best one are dropped, not counted as more" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_orders") { FakeTool.new("Lista os pedidos da loja.") }
+      9.times { |i| reg.register("tool_#{i}") { FakeTool.new("Configura a loja #{i}.") } }
+      found = described_class.new(tool_registry: reg).find("pedidos da loja", limit: 8)
+      expect(found.entries.map(&:name)).to eq(["list_orders"])
+      expect(found.more).to eq(0)
+    end
+
+    it "the name cap keeps the names in the order asked" do
+      %w[a_tool b_tool].each { |name| registry.register(name) { FakeTool.new("Other") } }
+      names = catalog.find("b_tool create_invoice a_tool send_email", limit: 1).entries.map(&:name)
+      expect(names).to eq(%w[b_tool create_invoice a_tool])
+    end
+
+    it "ranked_cap: caps the description matches below the limit" do
+      found = catalog.find("recipient", limit: 8, ranked_cap: 0)
+      expect(found.entries).to eq([])
+      expect(found.more).to be_positive
+    end
+
+    it "a plural meets its singular" do
+      reg = Insika::ToolRegistry.new
+      reg.register("list_tag") { FakeTool.new("Lista a tag da loja.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("tags").map(&:name)).to eq(["list_tag"])
+      expect(cat.search("lojas").map(&:name)).to eq(["list_tag"])
+    end
+
+    it "query words sharing a stem all count as words, in any order" do
+      reg = Insika::ToolRegistry.new
+      reg.register("configure_store") { FakeTool.new("Configure the store settings.") }
+      reg.register("confirm_order") { FakeTool.new("Confirmar o pedido do cliente.") }
+      reg.register("export_orders") { FakeTool.new("Listagem dos pedidos.") }
+      reg.register("list_orders") { FakeTool.new("Lista os pedidos.") }
+      cat = described_class.new(tool_registry: reg)
+      both = %w[configure_store confirm_order]
+      expect(cat.search("configure confirmar", limit: 2).map(&:name)).to eq(both)
+      expect(cat.search("confirmar configure", limit: 2).map(&:name)).to eq(both)
+      # "lista" is kept next to "listar": the tool saying "Lista" scores the whole word
+      expect(cat.search("listar lista").map(&:name).first).to eq("list_orders")
+    end
+
+    # Review r3 of insika#2: MCP tools are often camelCase, and "getOrderStatus" was
+    # one word that "order" never met.
+    it "a camelCase name meets the words it is made of" do
+      reg = Insika::ToolRegistry.new
+      reg.register("getOrderStatus") { FakeTool.new("Returns the status.") }
+      reg.register("createInvoice") { FakeTool.new("Generates a PDF.") }
+      reg.register("list_orders") { FakeTool.new("Lists them.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("order").map(&:name)).to contain_exactly("getOrderStatus", "list_orders")
+      expect(cat.search("getorderstatus").map(&:name)).to eq(["getOrderStatus"])
+    end
+
+    it "a stem the plural cut shortened is not a prefix of other words" do
+      reg = Insika::ToolRegistry.new
+      reg.register("send_mail") { FakeTool.new("Sends a mail to the menu owner.") }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("mais")).to eq([])
+      expect(cat.search("meus")).to eq([])
+      expect(cat.search("mai").map(&:name)).to eq(["send_mail"]) # typed short: still a prefix
+    end
+
+    describe "#find" do
+      before do
+        registry.register("send_sms") { FakeTool.new("Sends a text message to the recipient") }
+        registry.register("send_push") { FakeTool.new("Sends a push message to the recipient") }
+      end
+
+      it "known tools leave the ranking, so the limit goes to the next ones" do
+        found = catalog.find("sends recipient", limit: 1, known: ["send_email"])
+        expect(found.entries.map(&:name)).to eq(["send_sms"])
+        expect(found.known).to eq(["send_email"])
+        expect(found.more).to eq(1) # send_push
+      end
+
+      it "exact names stop at NAME_CAP_FACTOR times the limit and report the rest" do
+        found = catalog.find("send_email create_invoice send_sms send_push", limit: 1)
+        expect(found.entries.map(&:name)).to eq(%w[send_email create_invoice send_sms])
+        expect(found.left_out).to eq(["send_push"])
+      end
+
+      it "a known exact name is listed as known and does not take the cap" do
+        found = catalog.find("send_email send_sms", limit: 1, known: ["send_email"])
+        expect(found.entries.map(&:name)).to eq(["send_sms"])
+        expect(found.known).to eq(["send_email"])
+      end
+    end
+
+    it "punctuation and one-letter words do not become terms" do
+      expect(catalog.search("(e) , .")).to eq([])
+      expect(catalog.search("(send_email)").map(&:name).first).to eq("send_email")
+    end
+
+    it "reload drops the word index, so a changed description is searchable" do
+      desc = "Sends a message"
+      reg = Insika::ToolRegistry.new
+      reg.register("notify") { FakeTool.new(desc) }
+      cat = described_class.new(tool_registry: reg)
+      expect(cat.search("webhook")).to eq([])
+      desc = "Calls the webhook"
+      expect(cat.reload.search("webhook").map(&:name)).to eq(["notify"])
     end
   end
 

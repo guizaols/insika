@@ -332,6 +332,9 @@ module Insika
       # (Settings["tool_concurrency"]), and a default here would make the key present
       # on every agent, so the platform value would apply to nobody. Resolved by
       # TurnState#requested_tool_concurrency.
+      # tool_search_limit is absent too: the Studio saves `limits` whole, so a default
+      # here would be stored on every saved agent and outlive a change to it.
+      # ToolSearch::DEFAULT_LIMIT applies when the agent sets none.
     }.freeze
 
     # `model` is OPTIONAL as of v2: an agent without one resolves the

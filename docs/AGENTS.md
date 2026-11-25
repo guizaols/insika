@@ -123,6 +123,11 @@ the next tool-batch boundary: "you already ran this, answer with what you
 have"). A repeat after the warning aborts the turn like `max_tool_calls` does.
 Set it below 2 to switch it off.
 
+`tool_search_limit` caps how many deferred tools one `tool_search` call wires into
+the chat (each with its full schema) and lists in its result: 8 when the agent sets
+none, below 1 for no cap. It is not in `DEFAULT_LIMITS`, so a saved agent does not
+store the 8 and keeps following the default. See [Tools](TOOLS.md).
+
 ### `tool_persistence` — don't give up on the first empty result
 
 The loop guard's mirror image. `max_tool_repeat` stops the model from repeating
