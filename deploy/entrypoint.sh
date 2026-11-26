@@ -70,23 +70,22 @@ export INSIKA_BOOT_ID="${INSIKA_BOOT_ID:-$(date +%s)-$$}"
 # Open the store once, alone, before any worker: a file in an older table layout
 # is rebuilt here (seconds on a large file) instead of under N workers racing for
 # the lock at boot. A no-op on an up-to-date file.
+#
+# It also reads every config:* row once. A new container starts with an empty page
+# cache, and at boot every worker reloads the config (skills, settings): scattered
+# reads that, cold, held all workers ~45s after each Railway deploy. Reading the
+# whole file in the background did not help (65 MB/s, 46s for 3 GB, competing with
+# the workers); the config is ~25 MB, so it is read here, before the workers start.
 prepare_db() {
   echo "[entrypoint] preparing ${DB}…"
-  bundle exec ruby -Ilib -rinsika -e 'Insika::Stores::SQLite.new(path: ARGV[0]).close' "${DB}"
-}
-
-# A new container starts with an empty page cache, and at boot every worker
-# reloads the skill catalog: thousands of scattered reads that, cold, held all
-# workers ~45s after each Railway deploy. One sequential read of the file fills
-# the cache far faster. In the background, so the workers start at once as
-# before; the log line says how long it took.
-warm_db() {
-  [ -f "${DB}" ] || return 0
-  (
-    start=$(date +%s)
-    cat "${DB}" "${DB}-wal" > /dev/null 2>&1 || true
-    echo "[entrypoint] page cache warmed: ${DB} in $(( $(date +%s) - start ))s"
-  ) &
+  bundle exec ruby -Ilib -rinsika -e '
+    store = Insika::Stores::SQLite.new(path: ARGV[0])
+    t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    rows = store.scopes("config:").sum { |scope| store.entries(scope).size }
+    ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round
+    puts "[entrypoint] config warmed: #{rows} rows in #{ms}ms"
+    store.close
+  ' "${DB}"
 }
 
 # Postgres store: no SQLite file to prepare and nothing for Litestream to replicate —
@@ -100,7 +99,6 @@ fi
 if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
   echo "[entrypoint] Litestream disabled (LITESTREAM_REPLICA_URL unset) — booting app directly."
   prepare_db
-  warm_db
   exec sh -c "${APP_CMD}"
 fi
 
@@ -119,7 +117,6 @@ else
 fi
 
 prepare_db
-warm_db
 
 # Supervise: Litestream replicates the WAL and forwards signals to the child.
 # When the app exits, Litestream final-syncs and exits too (Railway restarts the
