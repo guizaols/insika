@@ -96,6 +96,7 @@ module Insika
       spec(name: "INSIKA_DATABASE_URL", type: :string, secret: true, description: "Postgres URL for the store (postgres://...). Set, it replaces INSIKA_DB: N workers write without SQLite's single file lock. Needs the pg gem."),
       spec(name: "INSIKA_DATABASE_POOL", type: :integer, description: "Postgres connections per process (default 10)."),
       spec(name: "INSIKA_DB", type: :path, description: "SQLite path; durable config+state. Unset -> ephemeral memory."),
+      spec(name: "INSIKA_CONFIG_DB", type: :path, description: "Optional second SQLite file for the config:* scopes (prompts, skills, tools), so a cold boot reads them sequentially. Needs INSIKA_DB. The first boot copies them over from INSIKA_DB."),
       spec(name: "INSIKA_BIND", description: "Bind address for the transport server."),
       spec(name: "INSIKA_PORT", type: :integer, description: "Port for the transport server."),
       spec(name: "INSIKA_CONVERSATIONS_URL", type: :url, description: "Required central history URL for shared_conversations profiles."),

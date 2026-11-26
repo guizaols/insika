@@ -78,14 +78,23 @@ export INSIKA_BOOT_ID="${INSIKA_BOOT_ID:-$(date +%s)-$$}"
 # the workers); the config is ~25 MB, so it is read here, before the workers start.
 prepare_db() {
   echo "[entrypoint] preparing ${DB}…"
+  # INSIKA_CONFIG_DB: the config lives in its own small file — one sequential read
+  # fills the cache with all of it.
+  if [ -n "${INSIKA_CONFIG_DB}" ] && [ -f "${INSIKA_CONFIG_DB}" ]; then
+    cat "${INSIKA_CONFIG_DB}" "${INSIKA_CONFIG_DB}-wal" > /dev/null 2>&1 || true
+  fi
   bundle exec ruby -Ilib -rinsika -e '
-    store = Insika::Stores::SQLite.new(path: ARGV[0])
+    store = Insika::Wiring::Graph.raw_backend_from_env
+    if store.is_a?(Insika::Stores::ScopeSplit)
+      copied = store.adopt!
+      puts "[entrypoint] config copied to #{ENV["INSIKA_CONFIG_DB"]}: #{copied} rows" if copied.positive?
+    end
     t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     rows = store.scopes("config:").sum { |scope| store.entries(scope).size }
     ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round
     puts "[entrypoint] config warmed: #{rows} rows in #{ms}ms"
     store.close
-  ' "${DB}"
+  '
 }
 
 # Postgres store: no SQLite file to prepare and nothing for Litestream to replicate —
@@ -103,6 +112,23 @@ if [ -z "${LITESTREAM_REPLICA_URL}" ]; then
 fi
 
 CONFIG="/app/deploy/litestream.yml"
+# A separate config file replicates to its own path (LITESTREAM_CONFIG_REPLICA_URL).
+if [ -n "${INSIKA_CONFIG_DB}" ]; then
+  if [ -z "${LITESTREAM_CONFIG_REPLICA_URL}" ]; then
+    echo "[entrypoint] INSIKA_CONFIG_DB needs LITESTREAM_CONFIG_REPLICA_URL when Litestream is on" >&2
+    exit 1
+  fi
+  CONFIG="/tmp/litestream.yml"
+  cat /app/deploy/litestream.yml > "${CONFIG}"
+  cat >> "${CONFIG}" <<'YML'
+  - path: ${INSIKA_CONFIG_DB}
+    truncate-page-n: 0
+    replica:
+      url: ${LITESTREAM_CONFIG_REPLICA_URL}
+      endpoint: ${LITESTREAM_ENDPOINT}
+      region: ${LITESTREAM_REGION}
+YML
+fi
 echo "[entrypoint] Litestream enabled — replica=${LITESTREAM_REPLICA_URL} db=${DB}"
 
 # Fresh box: pull the last replicated snapshot before the app opens the DB.
@@ -114,6 +140,10 @@ if [ ! -f "${DB}" ]; then
   litestream restore -if-replica-exists -config "${CONFIG}" "${DB}"
 else
   echo "[entrypoint] ${DB} present — skipping restore (volume survived)."
+fi
+if [ -n "${INSIKA_CONFIG_DB}" ] && [ ! -f "${INSIKA_CONFIG_DB}" ]; then
+  echo "[entrypoint] ${INSIKA_CONFIG_DB} absent — attempting restore from replica…"
+  litestream restore -if-replica-exists -config "${CONFIG}" "${INSIKA_CONFIG_DB}"
 fi
 
 prepare_db
