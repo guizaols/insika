@@ -90,6 +90,10 @@ prepare_db() {
       puts "[entrypoint] config copied to #{ENV["INSIKA_CONFIG_DB"]}: #{copied} rows" if copied.positive?
     end
     t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    open_tasks = Insika::TaskStore.new(store: store).build_open_index!
+    ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round
+    puts "[entrypoint] open-task index built: #{open_tasks} open tasks in #{ms}ms" if ms > 50
+    t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     rows = store.scopes("config:").sum { |scope| store.entries(scope).size }
     ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round
     puts "[entrypoint] config warmed: #{rows} rows in #{ms}ms"
