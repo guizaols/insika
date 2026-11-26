@@ -258,6 +258,25 @@ RSpec.describe "Insika::Executor turn output" do
     end
   end
 
+  describe "the context-echo cut" do
+    it "drops a context block the consumer sent" do
+      chat = FakeChat.new
+      chat.final_content = "Oi! O que você procura?\n\n<memoria>\ntamanho: 38\n</memoria>"
+      executor = build_executor
+      allow(executor).to receive(:create_chat).and_return(chat)
+      task = task_store.create(
+        command: Insika::Command.build(:send_message, { agent: "sales", message: "<memoria>\ntamanho: 38\n</memoria>\n\nOi" }).to_h,
+        session_id: "s1", id: "t"
+      )
+      Sync do
+        executor.spawn(task, profile: profile)
+        executor.instance_variable_get(:@running)[task.id]&.wait
+      end
+
+      expect(terminal_content).to eq("Oi! O que você procura?")
+    end
+  end
+
   describe "an :agent after-hook that replaces the response" do
     it "wins over what the model streamed — an explicit override is not narration" do
       hooks = Insika::Hooks.new

@@ -27,9 +27,15 @@ module Insika
   # 09/11/2026). Anything else — or a name the chat does not offer — is NOT
   # recovered: inventing a call is worse than silence. What is not recovered is
   # still never published: see .strip_markup.
+  #
+  # The tool-name tag also comes with a stray quote (`<call_support">`) and with the
+  # arguments as child tags (`<reason>x</reason>`) or as `reason="x"` lines; all
+  # three are read the same way.
   module TextToolCall
     BLOCK = %r{<tool_call>\s*(.*?)\s*</tool_call>}m
     PARAM = %r{<parameter\s+name\s*=\s*"([^"]+)"[^>]*>(.*?)</parameter>}m
+    CHILD = %r{<([A-Za-z_]\w*)"?[^>]*>(.*?)</\1\s*>}m
+    ATTR = /^\s*([A-Za-z_]\w*)\s*=\s*"(.*)"\s*$/
     NAME = /\A([A-Za-z_][\w.-]*)\s*(?:<|\z)/
     INVOKE = %r{<invoke\s+name\s*=\s*"([^"]+)"[^>]*>(.*?)(?:</invoke>|\z)}m
     # DeepSeek's markup token, in any of the spellings seen: `<｜DSML｜`, `</｜｜DSML｜｜ x>`.
@@ -44,7 +50,7 @@ module Insika
     # -> { calls: [{ name:, arguments: }], text: what is left outside the blocks } | nil
     def parse(content, known)
       text = normalize(content)
-      return nil unless text.match?(MARKUP) || known.any? { |name| text.include?("<#{name}>") }
+      return nil unless text.match?(MARKUP) || text.match?(tool_tag(known))
 
       calls, rest = blocks(text, known)
       return nil if calls.empty? || calls.any? { |call| call.nil? || !known.include?(call[:name]) }
@@ -54,10 +60,19 @@ module Insika
 
     # The text before the first tool-call markup — what is safe to publish. Bare
     # tags right before it (`<call_support>`) go too: they open the same call.
-    def strip_markup(text)
+    # `known`: the chat's tool names; a tag opening one of them is markup too, in
+    # any spelling (`<call_support>`, `<call_support">`, `<send_x/>`).
+    def strip_markup(text, known = [])
       text = text.to_s
-      cut = text.index(MARKUP) or return text
+      cut = [text.index(MARKUP), text.index(tool_tag(known))].compact.min or return text
       text[0...cut].sub(%r{(?:\s*</?[\w.-]+>)+\s*\z}, "").strip
+    end
+
+    # `<name` of a known tool, followed by what can end a tag name.
+    def tool_tag(known)
+      return /(?!)/ if known.empty?
+
+      %r{<(?:#{known.map { |n| Regexp.escape(n) }.join('|')})(?=[\s"/>])}
     end
 
     def normalize(content) = content.to_s.gsub(DSML, "")
@@ -68,13 +83,20 @@ module Insika
       elsif text.match?(INVOKE)
         [text.scan(INVOKE).map { |name, body| params_call(name, body) }, text.gsub(INVOKE, "")]
       else
-        bare = %r{<(#{known.map { |n| Regexp.escape(n) }.join('|')})>(.*?)(?:</\1>|\z)}m
-        calls = text.scan(bare).filter_map { |name, body| params_call(name, body) if body.match?(PARAM) }
+        bare = %r{<(#{known.map { |n| Regexp.escape(n) }.join('|')})"?\s*>(.*?)(?:</\1\s*>|\z)}m
+        calls = text.scan(bare).filter_map { |name, body| bare_call(name, body) }
         [calls, text.gsub(bare, "")]
       end
     end
 
     def params_call(name, body) = { name: name, arguments: body.scan(PARAM).to_h { |k, v| [k, v.strip] } }
+
+    # The tool-name tag's body: <parameter> tags, else child tags, else key="value"
+    # lines. nil when it has none of them.
+    def bare_call(name, body)
+      pairs = [PARAM, CHILD, ATTR].lazy.map { |re| body.scan(re) }.find(&:any?) or return nil
+      { name: name, arguments: pairs.to_h { |k, v| [k, v.strip] } }
+    end
 
     def call_from(body)
       return json_call(body) if body.start_with?("{")

@@ -1423,7 +1423,8 @@ module Insika
         # holding a completed answer for an operator would strand it unpublished.
         state.actor&.drain!
 
-        output.publish(TextToolCall.strip_markup(without_prompt_echo(state, turn_answer(response, asked, output, filter))))
+        answer = without_context_echo(state, without_prompt_echo(state, turn_answer(response, asked, output, filter)))
+        output.publish(TextToolCall.strip_markup(answer, tool_names(state.chat)))
       end
     end
 
@@ -1440,6 +1441,34 @@ module Insika
                               [{ category: "prompt_leak", source: :deterministic, action: "cut",
                                  detail: "#{echoed} chars of the system prompt removed" }]
       text.empty? ? Insika::Safety::SafeResponses.for(:injection) : text
+    end
+
+    # A context block the consumer sent (`<memoria>…</memoria>`) pasted back into
+    # the reply is cut (Safety::ContextEcho), flagged like the prompt echo.
+    def without_context_echo(state, answer)
+      text, blocks = Insika::Safety::ContextEcho.cut(answer, user_texts(state.chat) << state.message.to_s)
+      return answer if blocks.zero?
+
+      state.guardrail_flags = Array(state.guardrail_flags) +
+                              [{ category: "context_leak", source: :deterministic, action: "cut",
+                                 detail: "#{blocks} context block(s) removed" }]
+      text
+    end
+
+    def user_texts(chat)
+      return [] unless chat.respond_to?(:messages)
+
+      Array(chat.messages).filter_map do |m|
+        role, content = m.is_a?(Hash) ? m.values_at(:role, :content) : [m.role, m.content]
+        next unless role.to_s == "user"
+
+        content.respond_to?(:text) ? content.text : content
+      end
+    end
+
+    def tool_names(chat)
+      tools = chat.respond_to?(:tools) ? chat.tools : nil
+      tools.is_a?(Hash) ? tools.keys.map(&:to_s) : []
     end
 
     # stage 6, plain path: the single ask on the assembled chat. Fresh TurnOutput
@@ -1951,7 +1980,7 @@ module Insika
       content = response.content
       return unless content.is_a?(String)
 
-      clean = TextToolCall.strip_markup(content)
+      clean = TextToolCall.strip_markup(content, tool_names(chat))
       return if clean == content
 
       replace_last_message(chat, response, clean, nil)
