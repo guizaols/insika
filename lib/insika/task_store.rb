@@ -18,8 +18,16 @@ module Insika
 
     SCOPE = "tasks"
     KEY_PREFIX = "task:"
+    # Index of the tasks not yet terminal (id -> status), kept in the same write
+    # as the task. Recovery reads it instead of scanning every task: on a cold
+    # disk that scan took 20s+ at each boot, before the claiming worker listened.
+    OPEN_SCOPE = "tasks_open"
+    # Present once build_open_index! filled the index from the existing tasks;
+    # until then with_status scans, as before.
+    OPEN_READY = "_built"
 
     STATUSES = %i[queued running waiting paused completed failed cancelled].freeze
+    TERMINAL = %i[completed failed cancelled].freeze
 
     # Valid transitions — anything outside this is a bug -> ArgumentError.
     TRANSITIONS = {
@@ -61,7 +69,7 @@ module Insika
         "created_at" => now,
         "updated_at" => now
       }
-      @store.set(SCOPE, key, record)
+      save(record)
       to_task(record)
     end
 
@@ -94,7 +102,7 @@ module Insika
         close_open_execution(record, outcome: target.to_s, error: error) if error
         record["status"] = target.to_s
         record["updated_at"] = timestamp
-        @store.set(SCOPE, key_for(id), record)
+        save(record)
         to_task(record)
       end
     end
@@ -113,7 +121,7 @@ module Insika
         "error" => nil
       }]
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      save(record)
       to_task(record)
     end
 
@@ -130,7 +138,7 @@ module Insika
         record["executions"] += [{ "attempt" => record["executions"].size + 1, "started_at" => timestamp,
                                    "finished_at" => nil, "outcome" => nil, "error" => nil }]
         record["updated_at"] = timestamp
-        @store.set(SCOPE, key_for(id), record)
+        save(record)
         to_task(record)
       end
     end
@@ -154,7 +162,7 @@ module Insika
         open["outcome"] = target.to_s
         record["status"] = target.to_s
         record["updated_at"] = timestamp
-        @store.set(SCOPE, key_for(id), record)
+        save(record)
         to_task(record)
       end
     end
@@ -169,7 +177,7 @@ module Insika
       open["finished_at"] = timestamp
       open["outcome"] = outcome.to_s
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      save(record)
       to_task(record)
     end
 
@@ -181,7 +189,7 @@ module Insika
       record = fetch!(id)
       record["timing"] = deep_stringify(timing)
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      save(record)
       to_task(record)
     end
 
@@ -220,7 +228,7 @@ module Insika
       current = presence(payload["message"])
       payload["message"] = current ? "#{current}#{separator}#{fragment}" : fragment if fragment
       record["updated_at"] = timestamp
-      @store.set(SCOPE, key_for(id), record)
+      save(record)
       to_task(record)
     end
 
@@ -228,15 +236,35 @@ module Insika
     # tick sweep. It yields every SCAN_YIELD_EVERY records: store reads never
     # yield, so a big store otherwise froze the worker past Falcon's 30s
     # health check and got it SIGKILLed mid-load.
-    # ponytail: still a full scan per tick; a status index if task counts keep growing.
+    # With the open index built (build_open_index!), a query for open statuses
+    # reads only the open tasks.
     SCAN_YIELD_EVERY = 100
 
     def with_status(*statuses)
-      wanted = statuses.flatten
-      scan.filter_map do |record|
+      wanted = statuses.flatten.map(&:to_sym)
+      records = (wanted - TERMINAL).size == wanted.size && open_index? ? open_records : scan
+      records.filter_map do |record|
         task = to_task(record)
         task if wanted.include?(task.status)
       end
+    end
+
+    # Fills the open-task index from a full scan, once per store (a no-op after).
+    # Run alone, before the workers (deploy/entrypoint.sh). -> open tasks indexed.
+    def build_open_index!
+      return 0 if open_index?
+
+      count = 0
+      @store.transaction do
+        scan.each do |record|
+          next if TERMINAL.include?(record["status"].to_s.to_sym)
+
+          index(record)
+          count += 1
+        end
+        @store.set(OPEN_SCOPE, OPEN_READY, { "built_at" => timestamp })
+      end
+      count
     end
 
     # -> [Ref] session, status and creation time of every task that has a session.
@@ -297,6 +325,7 @@ module Insika
         end
         @store.delete(LLMTraceStore::SCOPE, id.to_s)
         @store.delete(ModelMetricsStore::TURN_SCOPE, id.to_s)
+        @store.delete(OPEN_SCOPE, id.to_s)
         @store.delete(SCOPE, key_for(id))
       end
     end
@@ -316,6 +345,28 @@ module Insika
 
     def key_for(id)
       "#{KEY_PREFIX}#{id}"
+    end
+
+    # Every task write goes through here, so the open index never drifts from it.
+    def save(record)
+      @store.set(SCOPE, key_for(record["id"]), record)
+      index(record)
+    end
+
+    def index(record)
+      if TERMINAL.include?(record["status"].to_s.to_sym)
+        @store.delete(OPEN_SCOPE, record["id"])
+      else
+        @store.set(OPEN_SCOPE, record["id"], { "status" => record["status"] })
+      end
+    end
+
+    def open_index? = !@store.get(OPEN_SCOPE, OPEN_READY).nil?
+
+    def open_records
+      @store.list(OPEN_SCOPE).filter_map do |id|
+        @store.get(SCOPE, key_for(id)) unless id == OPEN_READY
+      end
     end
 
     # NotFoundError if absent (nonexistent task -> 404). Backend StoreError

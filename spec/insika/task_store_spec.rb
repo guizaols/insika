@@ -185,6 +185,45 @@ RSpec.describe Insika::TaskStore do
       expect(tasks.running_or_interrupted).to eq([])
     end
 
+    context "with the open-task index built" do
+      def seed_mixed
+        tasks.create(command: command, id: "q")
+        tasks.transition(tasks.create(command: command, id: "r").id, to: :running)
+        done = tasks.create(command: command, id: "d").id
+        tasks.transition(done, to: :running)
+        tasks.transition(done, to: :completed)
+      end
+
+      it "answers from the index, without scanning every task" do
+        seed_mixed
+        expect(tasks.build_open_index!).to eq(2)
+        allow(backend).to receive(:list).and_call_original
+
+        expect(tasks.running_or_interrupted.map(&:id)).to eq(["r"])
+        expect(tasks.queued.map(&:id)).to eq(["q"])
+        expect(backend).not_to have_received(:list).with(described_class::SCOPE, anything)
+      end
+
+      it "follows every later write: a finished task leaves, a new one enters" do
+        seed_mixed
+        tasks.build_open_index!
+        tasks.complete_execution(tasks.start_execution("q").id, outcome: :completed)
+        tasks.create(command: command, id: "n")
+
+        expect(tasks.queued.map(&:id)).to eq(["n"])
+        expect(backend.list(described_class::OPEN_SCOPE)).to contain_exactly("_built", "r", "n")
+      end
+
+      it "builds once, and a deleted task leaves the index" do
+        seed_mixed
+        tasks.build_open_index!
+        expect(tasks.build_open_index!).to eq(0)
+        tasks.transition("r", to: :cancelled)
+        tasks.delete("r")
+        expect(backend.list(described_class::OPEN_SCOPE)).to contain_exactly("_built", "q")
+      end
+    end
+
     # The tick sweep scans every task: without yielding, a big store froze the
     # worker past Falcon's 30s health check and it was SIGKILLed.
     it "yields to the reactor while scanning" do
@@ -344,7 +383,8 @@ RSpec.describe Insika::TaskStore do
       allow(backend).to receive(:set).and_call_original
 
       started = tasks.start_execution(task.id)
-      expect(backend).to have_received(:set).once
+      # one write of the task (plus its small open-index entry, same transaction)
+      expect(backend).to have_received(:set).with(described_class::SCOPE, anything, anything).once
       expect(started.status).to eq(:running)
       expect(started.executions.size).to eq(1)
       expect(started.executions.last.finished_at).to be_nil
