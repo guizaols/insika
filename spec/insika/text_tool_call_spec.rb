@@ -79,7 +79,41 @@ RSpec.describe Insika::TextToolCall do
     end
   end
 
+  context "with the tool name as the tag and other argument spellings" do
+    let(:known) { %w[call_support search_products] }
+
+    it "reads a tag with a stray quote and child tags as arguments" do
+      content = "Um atendente confere pra você.\n\n<call_support\">\n<reason>restock</reason>\n" \
+                "<user_message>Avisa quando voltar?</user_message>\n</call_support>"
+      expect(described_class.parse(content, known)).to eq(
+        calls: [{ name: "call_support", arguments: { "reason" => "restock", "user_message" => "Avisa quando voltar?" } }],
+        text: "Um atendente confere pra você."
+      )
+    end
+
+    it "reads key=\"value\" lines as arguments" do
+      content = "<call_support>\nreason=\"checkout_error\"\nuser_message=\"Dá 'algo deu errado' no Pix\"\n" \
+                "urgent=\"false\"\n</call_support>"
+      expect(described_class.parse(content, known)[:calls]).to eq(
+        [{ name: "call_support",
+           arguments: { "reason" => "checkout_error", "user_message" => "Dá 'algo deu errado' no Pix", "urgent" => "false" } }]
+      )
+    end
+  end
+
   describe ".strip_markup" do
+    it "cuts at a known tool's tag in any spelling" do
+      known = %w[call_support send_button]
+      aggregate_failures do
+        expect(described_class.strip_markup("Já vejo.\n<call_support\">\n<reason>x", known)).to eq("Já vejo.")
+        expect(described_class.strip_markup("<call_support>\nreason=\"x\"", known)).to eq("")
+        expect(described_class.strip_markup("Pronto.\n\n<send_button>", known)).to eq("Pronto.")
+        expect(described_class.strip_markup("Pronto.\n<carrinho/>", known)).to eq("Pronto.\n<carrinho/>")
+        expect(described_class.strip_markup("<call_support>\nreason=\"x\"")).to eq("<call_support>\nreason=\"x\"")
+      end
+    end
+
+
     it "keeps the prose before the markup and drops the rest" do
       aggregate_failures do
         expect(described_class.strip_markup("Vou ver.\n<parameter name=\"q\">x</｜｜DSML｜｜ parameter>")).to eq("Vou ver.")
