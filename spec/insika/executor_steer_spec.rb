@@ -16,10 +16,10 @@ RSpec.describe "Insika::Executor + the steer door" do
 
   def profile(limits) = Insika::AgentProfile.build(id: "a", model: "gpt", limits: limits)
 
-  def build_executor(profiles: {})
+  def build_executor(profiles: {}, hooks: Insika::Hooks.new)
     Insika::Executor.new(
       context_builder: FakeContextBuilder.new, policy_engine: NullPolicyEngine.new,
-      middleware: Insika::MiddlewareStack.new([]), hooks: Insika::Hooks.new,
+      middleware: Insika::MiddlewareStack.new([]), hooks: hooks,
       tool_registry: FakeToolRegistry.new, skill_catalog: Insika::SkillCatalog.new([]),
       profiles: profiles, session_store: session_store, task_store: task_store,
       checkpoint_store: checkpoint_store, event_stream: event_stream
@@ -133,6 +133,28 @@ RSpec.describe "Insika::Executor + the steer door" do
       expect(event_stream.types).not_to include(:turn_steer_released)
       expect(event_stream.types).to include(:turn_steered)
       expect(session_store.find("s1").messages.map { |m| m["content"] }).to include("1234567")
+      stop_serving(executor)
+    end
+  end
+
+  # SCRUM-7916. Once the model's last round is done, nothing in this turn will read the
+  # mailbox again: a message steered in now would only be released as a follow-up whose
+  # answer has no delivery channel. The door closes, so the caller makes its own turn.
+  it "refuses to steer once the final answer is out, while the turn is still running" do
+    hooks = Insika::Hooks.new
+    hooks.register(:agent, after: ->(response) { Async::Task.current.sleep(0.1); response })
+    executor = build_executor(profiles: { "a" => steering }, hooks: hooks)
+
+    Sync do |top|
+      chat = FakeChat.new
+      chat.script = proc { Async::Task.current.sleep(0.02) }
+      spawn_turn(executor, chat: chat)
+      top.sleep(0.06) # model done, turn still in its post-answer stages
+
+      expect(running_actor(executor, "t1")).not_to be_nil
+      expect(executor.steer_into_running("s1", "Como eu faço ?", profile: steering)).to be_nil
+      top.sleep(0.2)
+      expect(event_stream.types).not_to include(:turn_steer_released)
       stop_serving(executor)
     end
   end

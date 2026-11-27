@@ -436,6 +436,9 @@ module Insika
 
       actor = @running[task.id]
       return nil if actor.nil?
+      # Past the final answer nothing reads the mailbox, and a release has no delivery
+      # channel (SCRUM-7916): the message becomes its own turn instead.
+      return nil if actor.steer_closed?
       # The bound is on what ONE run may absorb, so it counts posts and not the buffer:
       # a message already injected still spent its slot. Overflow degrades to
       # `followup` rather than growing an unbounded tail.
@@ -1879,6 +1882,9 @@ module Insika
     #
     # At most one extra round: if the model ignores the burst, the turn ends anyway.
     def absorb_steer_overflow(task, state, timing, result)
+      # Closed FIRST, before reading the mailbox: anything posted until now is absorbed
+      # below, anything after is refused at the door. No yield in between, so no gap.
+      state.actor&.close_steer!
       injector = state.steer_injector
       return unless injector && state.chat.respond_to?(:complete)
       return unless state.actor&.user_messages_posted&.positive?
