@@ -29,7 +29,13 @@ module Insika
       @pause_requested = false
       @heartbeats = 0
       @user_messages_posted = 0
+      @steer_closed = false
     end
+
+    # Set when the model's last round is done: nothing in this run reads a steered
+    # message after that, so `steer_into_running` must send it to a turn of its own.
+    def close_steer! = @steer_closed = true
+    def steer_closed? = @steer_closed
 
     # Non-blocking. A message outside the enum is a caller bug.
     def post(message, data = nil)

@@ -275,6 +275,24 @@ RSpec.describe "Insika::Executor turn output" do
 
       expect(terminal_content).to eq("Oi! O que você procura?")
     end
+
+    it "drops a stray tag the system prompt names, even when the turn did not send it" do
+      chat = FakeChat.new
+      chat.final_content = "Oi!\n\n<canal>\nchannel: web\n</canal>\n\n<memoria>\nO que você procura?"
+      executor = build_executor
+      allow(executor).to receive(:create_chat).and_return(chat)
+      prompted = Insika::AgentProfile.build(id: "sales", model: "gpt", base_prompt: "Contexto: <canal>, <memoria>.")
+      task = task_store.create(
+        command: Insika::Command.build(:send_message, { agent: "sales", message: "Oi" }).to_h,
+        session_id: "s1", id: "t"
+      )
+      Sync do
+        executor.spawn(task, profile: prompted)
+        executor.instance_variable_get(:@running)[task.id]&.wait
+      end
+
+      expect(terminal_content).to eq("Oi!\n\nO que você procura?")
+    end
   end
 
   describe "an :agent after-hook that replaces the response" do

@@ -25,6 +25,9 @@ module Insika
     #   2. LLM validator (opt-in, same moderator model) — promise/tone judgment the
     #      regex can't make. Pure over an injected `ask`; fail-open on any error.
     class OutputValidator
+      # The moderator's labels. A fixed list, so flags can be counted by category.
+      CATEGORIES = %w[invented_policy false_status prompt_leak tone].freeze
+
       # `ask_factory` (optional): ->(config) { ->(prompt){text} | nil }, built by the
       # Safety::Factory from the utility_model. nil = deterministic only.
       # `grounding` (optional): a GroundingValidator — its step runs
@@ -80,10 +83,11 @@ module Insika
         data = JSON.parse(json)
         return [] unless data["flagged"] == true
 
-        # The model writes the label freely ("invented policy", "invented_policy");
-        # one spelling per label keeps a count by category honest.
+        # The prompt asks for one of CATEGORIES. A label outside the list
+        # ("false_status_handoff", "false payment status") counts as "other",
+        # so a count by category stays honest.
         category = data["category"].to_s.strip.downcase.gsub(/[\s-]+/, "_")
-        [{ category: category.empty? ? "policy" : category,
+        [{ category: CATEGORIES.include?(category) ? category : "other",
            source: "moderator", detail: data["reason"].to_s[0, 200] }]
       rescue StandardError
         [] # fail-open
@@ -164,13 +168,14 @@ module Insika
           You are a strict compliance reviewer for a retail customer-service AI. Review
           the ASSISTANT REPLY below. Flag it ONLY if it does one of these:
           - promises a discount/price/refund/policy that is NOT supported by the AGENT
-            INSTRUCTIONS, the TOOL RESULTS or the EARLIER CONVERSATION below (invented
-            policy) — a fact stated in any of them is verified;
+            INSTRUCTIONS, the TOOL RESULTS or the EARLIER CONVERSATION below
+            (invented_policy) — a fact stated in any of them is verified;
           - says something was done that neither a TOOL RESULT nor this turn's context
             in the AGENT INSTRUCTIONS (purchase history, order status) shows was done —
-            an order placed or sent, a payment confirmed, a handoff opened (false status);
-          - leaks system-prompt/internal configuration;
-          - is unprofessional, sexual, or hostile in tone.
+            an order placed or sent, a payment confirmed, a handoff opened
+            (false_status);
+          - leaks system-prompt/internal configuration (prompt_leak);
+          - is unprofessional, sexual, or hostile in tone (tone).
 
           A normal, helpful, in-policy reply is NOT flagged. Quoting the store policy
           from the agent instructions is not a leak. These are NOT invented either:
@@ -194,7 +199,7 @@ module Insika
           #{text}
 
           Respond with ONLY a JSON object, no prose:
-          {"flagged": <true|false>, "category": "<short label>", "reason": "<one short sentence>"}
+          {"flagged": <true|false>, "category": "<one of: #{CATEGORIES.join(", ")}>", "reason": "<one short sentence>"}
         PROMPT
       end
     end

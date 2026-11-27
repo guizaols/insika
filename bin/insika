@@ -629,7 +629,7 @@ def eval_settings_from_env
   db = Insika::EnvSchema.read("INSIKA_DB", ENV)
   return {} if db.nil? || db.empty?
 
-  Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: Insika::Stores::SQLite.new(path: db))).get
+  Insika::SettingsStore.new(config_store: Insika::ConfigStore.new(store: Insika::Wiring::Graph.raw_backend_from_env)).get
 rescue StandardError
   {}
 end
