@@ -44,10 +44,10 @@ RSpec.describe Insika::Safety::OutputValidator do
     it "flags an unverified discount promise" do
       st = state("Claro! Te dou 90% de desconto em tudo, pode confirmar.",
                  guardrails: { "moderator" => "on" })
-      v = described_class.new(ask_factory: ask_factory('{"flagged":true,"category":"promise","reason":"invented discount"}'))
+      v = described_class.new(ask_factory: ask_factory('{"flagged":true,"category":"invented_policy","reason":"invented discount"}'))
       v.call(st)
       flag = st.guardrail_flags.find { |f| f[:source] == "moderator" }
-      expect(flag[:category]).to eq("promise")
+      expect(flag[:category]).to eq("invented_policy")
     end
 
     it "does not flag an in-policy reply" do
@@ -155,7 +155,7 @@ RSpec.describe Insika::Safety::OutputValidator do
       v.call(st)
       expect(prompts.first).to include("R$ 41,16 — Pago, Confirmado")
       expect(prompts.first).to include("neither a TOOL RESULT nor this turn's context",
-                                       "a payment confirmed, a handoff opened (false status)")
+                                       "a payment confirmed, a handoff opened")
     end
 
     it "tells the moderator that checkout-by-CEP and facts read from the customer's image are not invented" do
@@ -193,6 +193,21 @@ RSpec.describe Insika::Safety::OutputValidator do
       v = described_class.new(ask_factory: ask_factory('{"flagged":true,"category":"Invented Policy","reason":"x"}'))
       v.call(st)
       expect(st.guardrail_flags.first[:category]).to eq("invented_policy")
+    end
+
+    it "counts a label outside the fixed list as other" do
+      st = state("O time já está com o seu caso.", guardrails: { "moderator" => "on" })
+      v = described_class.new(ask_factory: ask_factory('{"flagged":true,"category":"false_status_handoff","reason":"x"}'))
+      v.call(st)
+      expect(st.guardrail_flags.first[:category]).to eq("other")
+    end
+
+    it "asks for one of the fixed categories" do
+      st = state("ok", guardrails: { "moderator" => "on" })
+      prompts = []
+      v = described_class.new(ask_factory: ->(_) { ->(p) { prompts << p; '{"flagged":false}' } })
+      v.call(st)
+      expect(prompts.first).to include("invented_policy, false_status, prompt_leak, tone")
     end
 
     it "fails open when the LLM ask raises (audit must not break the turn)" do
