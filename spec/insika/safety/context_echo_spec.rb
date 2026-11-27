@@ -26,4 +26,22 @@ RSpec.describe Insika::Safety::ContextEcho do
       expect(described_class.cut("<carrinho_vazio/>", inputs)).to eq(["<carrinho_vazio/>", 0])
     end
   end
+  describe "tags the system prompt names" do
+    let(:prompt) { "Leia o contexto: <canal>, <memoria>, <instrucao_do_turno>. Mostre produtos com <carrossel/>." }
+
+    it "cuts blocks and stray tags the prompt explains, even when this turn did not send them" do
+      reply = "Não vou abrir esse link.\n\n<memoria>\n\n<canal>\nchannel: web\n</canal>\n\n" \
+              "<instrucao_do_turno>\n</instrucao_do_turno>\n\nQuer ver novidades?"
+      expect(described_class.cut(reply, inputs, prompt)).to eq(["Não vou abrir esse link.\n\nQuer ver novidades?", 3])
+    end
+
+    it "cuts a stray closing tag of a block the consumer sent" do
+      expect(described_class.cut("Tem sim.\n</historico_compras>", inputs)).to eq(["Tem sim.", 1])
+    end
+
+    it "keeps the markers the prompt shows self-closing, and tags nobody named" do
+      reply = "Olha essas:\n<carrossel/>\n<destaque>novo</destaque>"
+      expect(described_class.cut(reply, inputs, prompt)).to eq([reply, 0])
+    end
+  end
 end
