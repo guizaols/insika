@@ -1443,15 +1443,16 @@ module Insika
       text.empty? ? Insika::Safety::SafeResponses.for(:injection) : text
     end
 
-    # A context block the consumer sent (`<memoria>…</memoria>`) pasted back into
+    # A context block (`<memoria>…</memoria>`) or a stray context tag pasted into
     # the reply is cut (Safety::ContextEcho), flagged like the prompt echo.
     def without_context_echo(state, answer)
-      text, blocks = Insika::Safety::ContextEcho.cut(answer, user_texts(state.chat) << state.message.to_s)
+      text, blocks = Insika::Safety::ContextEcho.cut(answer, user_texts(state.chat) << state.message.to_s,
+                                                     Insika::ModelVisible.instructions_of(state.chat))
       return answer if blocks.zero?
 
       state.guardrail_flags = Array(state.guardrail_flags) +
                               [{ category: "context_leak", source: :deterministic, action: "cut",
-                                 detail: "#{blocks} context block(s) removed" }]
+                                 detail: "#{blocks} context tag(s) removed" }]
       text
     end
 
